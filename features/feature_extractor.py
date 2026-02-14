@@ -33,6 +33,15 @@ class FeatureExtractor:
             flow.forward_packets / total_packets if total_packets > 0 else 0
         )
 
+        features = {
+            "duration": flow.duration,
+            "total_bytes": total_bytes,
+            "total_packets": total_packets,
+            "byte_ratio": byte_ratio,
+            "packet_ratio": packet_ratio,
+        }
+
+        # Save to CSV
         with open(self.output_file, mode="a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -45,3 +54,5 @@ class FeatureExtractor:
                 byte_ratio,
                 packet_ratio
             ])
+
+        return features

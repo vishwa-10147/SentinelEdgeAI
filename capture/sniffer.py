@@ -1,11 +1,18 @@
 from scapy.all import sniff, IP, TCP, UDP
-from features import feature_extractor
 from flow.flow_table import FlowTable
 from features.feature_extractor import FeatureExtractor
+from detection.baseline import BaselineModel
+from detection.anomaly_engine import AnomalyEngine
 
 
-
+# Initialize core components
 flow_table = FlowTable(idle_timeout=30)
+feature_extractor = FeatureExtractor()
+
+# Build baseline from existing dataset
+baseline_model = BaselineModel()
+baseline = baseline_model.build()
+anomaly_engine = AnomalyEngine(baseline)
 
 
 def process_packet(packet):
@@ -14,11 +21,11 @@ def process_packet(packet):
 
         src_ip = ip_layer.src
         dst_ip = ip_layer.dst
-        protocol = ip_layer.proto
         size = len(packet)
 
         src_port = 0
         dst_port = 0
+        protocol_name = "OTHER"
 
         if TCP in packet:
             src_port = packet[TCP].sport
@@ -30,9 +37,6 @@ def process_packet(packet):
             dst_port = packet[UDP].dport
             protocol_name = "UDP"
 
-        else:
-            protocol_name = "OTHER"
-
         flow_table.process_packet(
             src_ip,
             src_port,
@@ -42,11 +46,16 @@ def process_packet(packet):
             size
         )
 
+        # Check expired flows
         expired = flow_table.check_timeouts()
-        for flow in expired:
-            feature_extractor.extract(flow)
-            print("Flow saved to dataset")
 
+        for flow in expired:
+            features = feature_extractor.extract(flow)
+
+            if anomaly_engine.check(features):
+                print("🚨 ALERT: Anomalous flow detected!", flow)
+            else:
+                print("Normal flow")
 
 
 def start_sniffing(interface=None):
