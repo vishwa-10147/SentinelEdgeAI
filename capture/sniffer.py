@@ -4,6 +4,7 @@ from features.feature_extractor import FeatureExtractor
 from detection.adaptive_baseline import AdaptiveBaseline
 from detection.anomaly_engine import AnomalyEngine
 from detection.ml_engine import MLEngine
+from utils.alert_logger import AlertLogger
 
 
 baseline = AdaptiveBaseline(window_size=500)
