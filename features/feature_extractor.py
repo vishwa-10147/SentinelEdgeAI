@@ -41,7 +41,6 @@ class FeatureExtractor:
             "packet_ratio": packet_ratio,
         }
 
-        # Save to CSV
         with open(self.output_file, mode="a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([

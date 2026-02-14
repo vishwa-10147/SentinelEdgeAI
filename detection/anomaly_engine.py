@@ -2,23 +2,33 @@ class AnomalyEngine:
     def __init__(self, baseline):
         self.baseline = baseline
 
-    def check(self, flow_features):
+    def z_score(self, value, mean, std):
+        if std == 0 or std is None:
+            return 0
+        return abs((value - mean) / std)
+
+    def check(self, features):
         score = 0
 
-        # Duration anomaly
-        if flow_features["duration"] > 2 * self.baseline["avg_duration"]:
+        if self.z_score(features["duration"],
+                        self.baseline["duration_mean"],
+                        self.baseline["duration_std"]) > 3:
             score += 1
 
-        # Traffic volume anomaly
-        if flow_features["total_bytes"] > 2 * self.baseline["avg_total_bytes"]:
+        if self.z_score(features["total_bytes"],
+                        self.baseline["bytes_mean"],
+                        self.baseline["bytes_std"]) > 3:
             score += 1
 
-        # Packet anomaly
-        if flow_features["total_packets"] > 2 * self.baseline["avg_total_packets"]:
+        if self.z_score(features["total_packets"],
+                        self.baseline["packets_mean"],
+                        self.baseline["packets_std"]) > 3:
             score += 1
 
-        # Directional imbalance anomaly
-        if abs(flow_features["byte_ratio"] - self.baseline["avg_byte_ratio"]) > 0.4:
+        if self.z_score(features["byte_ratio"],
+                        self.baseline["byte_ratio_mean"],
+                        self.baseline["byte_ratio_std"]) > 3:
             score += 1
 
-        return score >= 2  # anomaly if 2+ conditions triggered
+        # Require multiple anomaly signals
+        return score >= 2

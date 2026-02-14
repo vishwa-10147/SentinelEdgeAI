@@ -5,11 +5,10 @@ from detection.baseline import BaselineModel
 from detection.anomaly_engine import AnomalyEngine
 
 
-# Initialize core components
 flow_table = FlowTable(idle_timeout=30)
 feature_extractor = FeatureExtractor()
 
-# Build baseline from existing dataset
+# Build baseline from collected dataset
 baseline_model = BaselineModel()
 baseline = baseline_model.build()
 anomaly_engine = AnomalyEngine(baseline)
@@ -46,7 +45,6 @@ def process_packet(packet):
             size
         )
 
-        # Check expired flows
         expired = flow_table.check_timeouts()
 
         for flow in expired:
