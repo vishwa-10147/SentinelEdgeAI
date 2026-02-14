@@ -1,5 +1,8 @@
 from scapy.all import sniff, IP, TCP, UDP
+from features import feature_extractor
 from flow.flow_table import FlowTable
+from features.feature_extractor import FeatureExtractor
+
 
 
 flow_table = FlowTable(idle_timeout=30)
@@ -41,7 +44,9 @@ def process_packet(packet):
 
         expired = flow_table.check_timeouts()
         for flow in expired:
-            print(flow)
+            feature_extractor.extract(flow)
+            print("Flow saved to dataset")
+
 
 
 def start_sniffing(interface=None):

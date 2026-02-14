@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Dict, Tuple
+from features.feature_extractor import FeatureExtractor
 from flow.flow_record import FlowRecord
 
 
@@ -75,3 +76,5 @@ class FlowTable:
                 del self.flows[key]
 
         return expired_flows
+
+feature_extractor = FeatureExtractor()
