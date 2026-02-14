@@ -1,4 +1,5 @@
 class AnomalyEngine:
+
     def __init__(self, baseline):
         self.baseline = baseline
 
@@ -7,28 +8,37 @@ class AnomalyEngine:
             return 0
         return abs((value - mean) / std)
 
-    def check(self, features):
+    def analyze(self, features, initiator_ip, protocol, flow=None):
+
+        # Warm-up phase (first 50 flows learn only)
+        if self.baseline.count(initiator_ip, protocol) < 50:
+            return 0
+
+        base = self.baseline.get(initiator_ip, protocol)
+
+        if base is None:
+            return 0
+
         score = 0
 
         if self.z_score(features["duration"],
-                        self.baseline["duration_mean"],
-                        self.baseline["duration_std"]) > 3:
+                        base["duration_mean"],
+                        base["duration_std"]) > 3:
             score += 1
 
         if self.z_score(features["total_bytes"],
-                        self.baseline["bytes_mean"],
-                        self.baseline["bytes_std"]) > 3:
+                        base["bytes_mean"],
+                        base["bytes_std"]) > 3:
             score += 1
 
         if self.z_score(features["total_packets"],
-                        self.baseline["packets_mean"],
-                        self.baseline["packets_std"]) > 3:
+                        base["packets_mean"],
+                        base["packets_std"]) > 3:
             score += 1
 
         if self.z_score(features["byte_ratio"],
-                        self.baseline["byte_ratio_mean"],
-                        self.baseline["byte_ratio_std"]) > 3:
+                        base["byte_ratio_mean"],
+                        base["byte_ratio_std"]) > 3:
             score += 1
 
-        # Require multiple anomaly signals
-        return score >= 2
+        return score
