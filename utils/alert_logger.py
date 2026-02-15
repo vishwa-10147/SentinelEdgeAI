@@ -30,3 +30,5 @@ class AlertLogger:
 
         with open(self.file_path, "w") as f:
             json.dump(alerts, f, indent=4)
+
+
