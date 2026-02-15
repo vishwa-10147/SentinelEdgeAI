@@ -1,41 +1,59 @@
 class AnomalyEngine:
-    def __init__(self, baseline):
+    def __init__(self, baseline, warmup_flows=50, z_threshold=3):
         self.baseline = baseline
+        self.warmup_flows = warmup_flows
+        self.z_threshold = z_threshold
 
     def z_score(self, value, mean, std):
         if std == 0 or std is None:
             return 0
-        return abs((value - mean) / std)
+        return (value - mean) / std
 
-    def check(self, features, initiator_ip, protocol):
-        # Warm-up protection
-        if self.baseline.count(initiator_ip, protocol) < 50:
-            return 0  # No score during learning phase
+    def analyze(self, features, initiator_ip, protocol):
+
+        if self.baseline.count(initiator_ip, protocol) < self.warmup_flows:
+            return {
+                "score": 0,
+                "triggers": [],
+                "confidence": 0
+            }
 
         base = self.baseline.get(initiator_ip, protocol)
         if base is None:
-            return 0
+            return {
+                "score": 0,
+                "triggers": [],
+                "confidence": 0
+            }
 
+        triggers = []
         score = 0
 
-        if self.z_score(features["duration"],
-                        base["duration_mean"],
-                        base["duration_std"]) > 3:
-            score += 1
+        metrics = {
+            "duration": features["duration"],
+            "total_bytes": features["total_bytes"],
+            "total_packets": features["total_packets"],
+            "byte_ratio": features["byte_ratio"]
+        }
 
-        if self.z_score(features["total_bytes"],
-                        base["bytes_mean"],
-                        base["bytes_std"]) > 3:
-            score += 1
+        for metric, value in metrics.items():
 
-        if self.z_score(features["total_packets"],
-                        base["packets_mean"],
-                        base["packets_std"]) > 3:
-            score += 1
+            mean = base[f"{metric}_mean"]
+            std = base[f"{metric}_std"]
 
-        if self.z_score(features["byte_ratio"],
-                        base["byte_ratio_mean"],
-                        base["byte_ratio_std"]) > 3:
-            score += 1
+            z = self.z_score(value, mean, std)
 
-        return score
+            if abs(z) > self.z_threshold:
+                score += 1
+                triggers.append({
+                    "metric": metric,
+                    "z_score": round(z, 2)
+                })
+
+        confidence = min(score / 4, 1)
+
+        return {
+            "score": score,
+            "triggers": triggers,
+            "confidence": round(confidence, 2)
+        }

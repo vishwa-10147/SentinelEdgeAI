@@ -1,32 +1,45 @@
-import json
-from datetime import datetime
-from pathlib import Path
+import logging
+import os
+from logging.handlers import RotatingFileHandler
 
 
-class AlertLogger:
-    def __init__(self, file_path="alerts.json"):
-        self.file_path = Path(file_path)
+def setup_logger(
+    name="sentinel",
+    log_file="logs/sentinel.log",
+    level=logging.INFO,
+    max_bytes=5 * 1024 * 1024,   # 5 MB
+    backup_count=5               # Keep last 5 log files
+):
+    """
+    Set up a logger with rotating file and console handlers.
+    Creates logs directory if it doesn't exist.
+    Automatically rotates log files when max_bytes is exceeded.
+    """
+    os.makedirs("logs", exist_ok=True)
 
-    def log(self, flow, score, severity):
-        alert = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "initiator_ip": flow.initiator_ip,
-            "responder_ip": flow.responder_ip,
-            "protocol": flow.protocol,
-            "duration": flow.duration,
-            "forward_bytes": flow.forward_bytes,
-            "backward_bytes": flow.backward_bytes,
-            "score": score,
-            "severity": severity
-        }
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
 
-        if self.file_path.exists():
-            with open(self.file_path, "r") as f:
-                data = json.load(f)
-        else:
-            data = []
+    # 🔁 Rotating file handler
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=max_bytes,
+        backupCount=backup_count
+    )
+    file_handler.setFormatter(formatter)
 
-        data.append(alert)
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
 
-        with open(self.file_path, "w") as f:
-            json.dump(data, f, indent=4)
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    # Prevent duplicate handlers
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+

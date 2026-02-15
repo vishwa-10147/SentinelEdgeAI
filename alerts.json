@@ -1,0 +1,11 @@
+[
+    {
+        "timestamp": "2026-02-15 04:32:22.702793",
+        "initiator_ip": "192.168.29.190",
+        "responder_ip": "34.139.124.58",
+        "protocol": "TCP",
+        "score": 3,
+        "severity": "CRITICAL",
+        "logged_at": "2026-02-15T04:32:55.059584"
+    }
+]

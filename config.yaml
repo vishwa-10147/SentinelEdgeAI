@@ -1,0 +1,54 @@
+# SentinelEdge AI Configuration
+# Tunable parameters for production deployment
+
+# Risk Severity Thresholds
+risk_thresholds:
+  critical: 75
+  high: 50
+  medium: 25
+
+# Machine Learning Engine
+ml:
+  contamination: 0.02
+  n_estimators: 100
+
+# Adaptive Baseline Configuration
+baseline:
+  window_size: 500
+  warmup_flows: 50
+
+# Behavioral Fingerprinting
+fingerprint:
+  profile_save_interval: 100
+
+# Behavioral Drift Detection
+drift:
+  deviation_threshold: 0.5
+
+# Anomaly Detection
+anomaly:
+  z_threshold: 3
+
+# Flow Table Settings
+flow:
+  idle_timeout: 30
+  max_flows: 10000
+
+# Alert Logging
+alerts:
+  min_risk_score: 50
+  log_file: "alerts.json"
+
+# Persistence
+persistence:
+  profiles_file: "device_profiles.json"
+  timeline_file: "risk_timeline.json"
+  stats_file: "live_stats.json"
+  history_limit: 200
+
+# Logging Configuration
+logging:
+  level: INFO
+  log_file: "logs/sentinel.log"
+  max_bytes: 5242880     # 5 MB
+  backup_count: 5        # Keep last 5 rotated files
