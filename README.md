@@ -16,14 +16,17 @@ A complete IDS/IPS framework combining statistical analysis, machine learning, b
 - [Components](#components)
 - [Monitoring & Observability](#monitoring--observability)
 - [Dashboard](#dashboard)
+- [Dashboard Preview](#-dashboard-preview)
 - [Production Deployment](#production-deployment)
+- [Limitations](#-limitations)
+- [Future Roadmap](#-future-roadmap)
 
 ---
 
 ## ✨ Features
 
 ### Detection Capabilities
-- **Hybrid Anomaly Detection** — Statistical z-score analysis + ML ensemble
+- **Hybrid Anomaly Detection** — Statistical z-score analysis + Isolation Forest-based anomaly detection
 - **Adaptive Baseline Learning** — Self-tuning baseline per protocol/device
 - **Behavioral Fingerprinting** — Device behavior profiling with drift detection
 - **Unified Risk Engine** — Multi-layer risk calculation and escalation
@@ -306,6 +309,14 @@ INFO: System | CPU=12.4% | Memory=148.32 MB
 
 ---
 
+## 📸 Dashboard Preview
+
+*(Add a screenshot of the dashboard here to visually showcase the SOC interface.)*
+
+![Dashboard](docs/dashboard.png)
+
+---
+
 ## 🔐 Production Deployment
 
 ### Network Interface Selection
@@ -351,6 +362,26 @@ Alerts are written to `alerts.json` in standard format:
 - Stream to ELK/Splunk via log shipper
 - Query alerts.json via API
 - Webhook integration (future)
+
+---
+
+## ⚠️ Limitations
+
+- Requires administrator/root privileges for packet capture
+- Designed for lab/small network environments (not distributed scale)
+- ML model not trained on labeled attack datasets
+- JSON-based persistence (not optimized for high-throughput production)
+- No automated response or active blocking
+
+---
+
+## 🚀 Future Roadmap
+
+- Database-backed persistence (PostgreSQL)
+- Distributed sensor architecture
+- REST API interface
+- SIEM streaming integration
+- Model retraining pipeline
 
 ---
 
@@ -434,4 +465,4 @@ Proprietary — SentinelEdge AI v1.0
 
 **Questions? Check sentinel.log for detailed system behavior.**
 
-🚀 *SentinelEdge AI: Enterprise-Grade Threat Detection Made Simple*
+🚀 *SentinelEdge AI: Modular Behavioral Network Detection Framework*
