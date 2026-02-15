@@ -4,29 +4,29 @@ from datetime import datetime
 
 
 class AlertLogger:
-
-    def __init__(self, file_path="alerts/alerts.json"):
+    def __init__(self, file_path="alerts.json"):
         self.file_path = file_path
-        os.makedirs("alerts", exist_ok=True)
 
+        # Create file if it doesn't exist
         if not os.path.exists(self.file_path):
             with open(self.file_path, "w") as f:
                 json.dump([], f)
 
-    def log(self, flow, score):
-        alert = {
-            "timestamp": datetime.now().isoformat(),
-            "initiator_ip": flow.initiator_ip,
-            "responder_ip": flow.responder_ip,
-            "protocol": flow.protocol,
-            "duration": flow.duration,
-            "forward_bytes": flow.forward_bytes,
-            "backward_bytes": flow.backward_bytes,
-            "score": score
-        }
+    def log(self, alert_data):
+        """
+        Append alert to alerts.json
+        """
 
-        with open(self.file_path, "r+") as f:
-            data = json.load(f)
-            data.append(alert)
-            f.seek(0)
-            json.dump(data, f, indent=4)
+        try:
+            with open(self.file_path, "r") as f:
+                alerts = json.load(f)
+        except Exception:
+            alerts = []
+
+        # Add internal ID + logged timestamp
+        alert_data["logged_at"] = datetime.utcnow().isoformat()
+
+        alerts.append(alert_data)
+
+        with open(self.file_path, "w") as f:
+            json.dump(alerts, f, indent=4)

@@ -6,14 +6,22 @@ from detection.anomaly_engine import AnomalyEngine
 from detection.ml_engine import MLEngine
 from utils.alert_logger import AlertLogger
 
+# ===============================
+# 🔧 Initialize Core Components
+# ===============================
 
 baseline = AdaptiveBaseline(window_size=500)
 anomaly_engine = AnomalyEngine(baseline)
 ml_engine = MLEngine()
+alert_logger = AlertLogger()
 
 flow_table = FlowTable(idle_timeout=30)
 feature_extractor = FeatureExtractor()
 
+
+# ===============================
+# 📦 Packet Processing
+# ===============================
 
 def process_packet(packet):
 
@@ -40,6 +48,7 @@ def process_packet(packet):
         dst_port = packet[UDP].dport
         protocol_name = "UDP"
 
+    # Update flow table
     flow_table.process_packet(
         src_ip,
         src_port,
@@ -49,45 +58,65 @@ def process_packet(packet):
         size
     )
 
+    # Check for expired flows
     expired = flow_table.check_timeouts()
 
     for flow in expired:
 
+        # Extract features
         features = feature_extractor.extract(flow)
 
-        # Statistical detection
-        stat_score = anomaly_engine.analyze(
+        # ===============================
+        # 🧠 Anomaly Detection
+        # ===============================
+
+        threat_score = anomaly_engine.check(
             features,
             flow.initiator_ip,
-            flow.protocol,
-            flow
+            flow.protocol
         )
 
-        # ML detection
-        ml_score = ml_engine.predict(features)
-
-        final_score = stat_score + ml_score
-
-        if final_score >= 2:
-            print(f"🚨 ALERT | Score: {final_score} | {flow}")
-        elif final_score == 1:
-            print("⚠ Suspicious")
+        if threat_score >= 3:
+            severity = "CRITICAL"
+        elif threat_score == 2:
+            severity = "HIGH"
+        elif threat_score == 1:
+            severity = "SUSPICIOUS"
         else:
-            print("Normal flow")
+            severity = "NORMAL"
 
-        # Learn baseline AFTER detection
+        print(f"[{severity}] Score={threat_score} | {flow}")
+
+        # ===============================
+        # 🚨 Alert Logging (only HIGH+)
+        # ===============================
+
+        if threat_score >= 2:
+            alert = {
+                "timestamp": str(flow.end_time),
+                "initiator_ip": flow.initiator_ip,
+                "responder_ip": flow.responder_ip,
+                "protocol": flow.protocol,
+                "score": threat_score,
+                "severity": severity
+            }
+
+            alert_logger.log(alert)
+
+        # ===============================
+        # 🧠 Adaptive Learning
+        # ===============================
+
         baseline.update(
             features,
             flow.initiator_ip,
             flow.protocol
         )
 
-        # Train ML only on clean flows
-        if final_score == 0:
-            ml_engine.add_training_sample(features)
 
-        ml_engine.train()
-
+# ===============================
+# 🚀 Start Engine
+# ===============================
 
 def start_sniffing(interface=None):
     print("Starting SentinelEdge AI Hybrid Engine...")
