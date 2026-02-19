@@ -463,6 +463,3 @@ Proprietary — SentinelEdge AI v1.0
 
 ---
 
-**Questions? Check sentinel.log for detailed system behavior.**
-
-🚀 *SentinelEdge AI: Modular Behavioral Network Detection Framework*
