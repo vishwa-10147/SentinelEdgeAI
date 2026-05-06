@@ -1,0 +1,190 @@
+
+<style>
+  .step-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+  .step-num { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:var(--color-background-info); color:var(--color-text-info); font-size:13px; font-weight:500; flex-shrink:0; }
+  .step-title { font-size:15px; font-weight:500; color:var(--color-text-primary); margin:0 0 8px 0; }
+  .step-sub { font-size:13px; color:var(--color-text-secondary); margin:0 0 10px 0; line-height:1.6; }
+  .tag { display:inline-block; background:var(--color-background-secondary); border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); padding:2px 8px; font-size:11px; color:var(--color-text-secondary); margin:2px 2px 2px 0; font-family:var(--font-mono); }
+  .tip { background:var(--color-background-warning); border-left:3px solid var(--color-border-warning); border-radius:0 var(--border-radius-md) var(--border-radius-md) 0; padding:8px 12px; font-size:12px; color:var(--color-text-warning); margin-top:10px; }
+  .nav { display:flex; gap:8px; margin-bottom:1rem; align-items:center; }
+  .prog { flex:1; height:4px; background:var(--color-background-secondary); border-radius:2px; overflow:hidden; }
+  .prog-fill { height:100%; background:var(--color-text-info); border-radius:2px; transition: width .3s; }
+  .step-img { width:100%; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-md); overflow:hidden; margin-top:12px; }
+</style>
+
+<h2 class="sr-only">Step-by-step guide: how to model the SentinelEdgeAI enclosure in FreeCAD</h2>
+
+<div class="nav">
+  <button id="btn-prev" onclick="move(-1)">← Prev</button>
+  <div class="prog"><div class="prog-fill" id="prog"></div></div>
+  <span id="step-label" style="font-size:13px;color:var(--color-text-secondary);white-space:nowrap">Step 1 / 8</span>
+  <button id="btn-next" onclick="move(1)">Next →</button>
+</div>
+
+<div id="steps-wrap"></div>
+
+<script>
+const steps = [
+  {
+    title: "Install FreeCAD and open a new document",
+    sub: "Download FreeCAD 0.21+ from freecad.org. Open it, go to File → New. Switch the workbench to Part Design using the dropdown at the top.",
+    tags: ["File → New", "Workbench → Part Design"],
+    tip: "Use FreeCAD 0.21 or newer — older versions have Part Design bugs with pockets.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="400" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <rect x="10" y="10" width="400" height="22" rx="6" fill="#16213e" stroke="#444" stroke-width="0.5"/>
+      <rect x="10" y="28" width="400" height="4" fill="#16213e"/>
+      <text x="20" y="25" font-size="10" fill="#aaa" font-family="monospace">File  Edit  View  Workbench</text>
+      <rect x="130" y="14" width="80" height="14" rx="3" fill="#0f3460" stroke="#378ADD" stroke-width="0.5"/>
+      <text x="170" y="24" font-size="9" fill="#85B7EB" font-family="monospace" text-anchor="middle">Part Design</text>
+      <rect x="20" y="42" width="110" height="30" rx="4" fill="#0d0d1a" stroke="#333" stroke-width="0.5"/>
+      <text x="75" y="61" font-size="9" fill="#888" font-family="monospace" text-anchor="middle">3D Viewport</text>
+      <rect x="300" y="42" width="100" height="30" rx="4" fill="#0d0d1a" stroke="#333" stroke-width="0.5"/>
+      <text x="350" y="61" font-size="9" fill="#888" font-family="monospace" text-anchor="middle">Model Tree</text>
+    </svg>`
+  },
+  {
+    title: "Create a Body and a Sketch",
+    sub: "In Part Design, click Part Design → Body → Create Body. Then click Sketch → New Sketch, choose the XY plane. You will draw the enclosure footprint here.",
+    tags: ["Part Design → Body", "Sketch → New Sketch", "XY Plane"],
+    tip: "Always create a Body first in Part Design — without it, features won't attach correctly.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="180" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <text x="100" y="28" font-size="9" fill="#aaa" font-family="monospace" text-anchor="middle">Model Tree</text>
+      <rect x="20" y="35" width="160" height="16" rx="3" fill="#0f3460" stroke="#378ADD" stroke-width="0.5"/>
+      <text x="100" y="46" font-size="9" fill="#85B7EB" font-family="monospace" text-anchor="middle">Body</text>
+      <rect x="30" y="55" width="140" height="16" rx="3" fill="#16213e" stroke="#333" stroke-width="0.5"/>
+      <text x="100" y="66" font-size="9" fill="#999" font-family="monospace" text-anchor="middle">Sketch (XY Plane)</text>
+      <rect x="210" y="10" width="200" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <line x1="310" y1="10" x2="310" y2="80" stroke="#1D9E75" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <line x1="210" y1="45" x2="410" y2="45" stroke="#1D9E75" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <rect x="240" y="22" width="140" height="45" rx="3" fill="none" stroke="#378ADD" stroke-width="1.2" stroke-dasharray="4 2"/>
+      <text x="310" y="48" font-size="9" fill="#85B7EB" font-family="monospace" text-anchor="middle">220 × 140 mm</text>
+    </svg>`
+  },
+  {
+    title: "Draw the base rectangle (220 × 140 mm)",
+    sub: "In the Sketcher, use Sketch → Sketcher geometries → Rectangle. Click two corners. Then use Sketch → Constrain horizontal distance = 220 mm and vertical = 140 mm. Click Close.",
+    tags: ["Rectangle tool", "Constrain H = 220", "Constrain V = 140", "Close sketch"],
+    tip: "Lock the sketch origin to one corner using a Coincident constraint so your model stays centered.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="400" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <rect x="80" y="20" width="260" height="50" rx="3" fill="none" stroke="#378ADD" stroke-width="1.5"/>
+      <circle cx="80" cy="20" r="3" fill="#378ADD"/>
+      <circle cx="340" cy="20" r="3" fill="#378ADD"/>
+      <circle cx="80" cy="70" r="3" fill="#378ADD"/>
+      <circle cx="340" cy="70" r="3" fill="#378ADD"/>
+      <text x="210" y="16" font-size="9" fill="#85B7EB" font-family="monospace" text-anchor="middle">220 mm</text>
+      <text x="350" y="48" font-size="9" fill="#85B7EB" font-family="monospace">140 mm</text>
+      <line x1="80" y1="13" x2="340" y2="13" stroke="#378ADD" stroke-width="0.5" marker-end="url(#a)"/>
+    </svg>`
+  },
+  {
+    title: "Pad (extrude) to 60 mm height",
+    sub: "With the sketch selected in the tree, click Part Design → Pad. Set Length = 60 mm, direction = normal to sketch. Click OK. You now have the solid shell block.",
+    tags: ["Part Design → Pad", "Length = 60 mm"],
+    tip: "Enable 'Symmetric to plane' if you want the box centered on the XY plane — easier for mirroring later.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="400" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <polygon points="120,70 280,70 320,40 160,40" fill="#185FA5" stroke="#378ADD" stroke-width="0.8" fill-opacity="0.7"/>
+      <polygon points="120,70 120,35 160,5 160,40" fill="#0f3460" stroke="#378ADD" stroke-width="0.8"/>
+      <polygon points="120,35 280,35 320,5 160,5" fill="#0d2a4a" stroke="#378ADD" stroke-width="0.8"/>
+      <line x1="280" y1="70" x2="280" y2="35" stroke="#378ADD" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <line x1="280" y1="35" x2="320" y2="5" stroke="#378ADD" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <text x="380" y="40" font-size="9" fill="#85B7EB" font-family="monospace">60 mm</text>
+      <line x1="320" y1="5" x2="370" y2="38" stroke="#85B7EB" stroke-width="0.5"/>
+    </svg>`
+  },
+  {
+    title: "Shell the solid (hollow it out, 2.5 mm walls)",
+    sub: "Select the top face of the solid. Go to Part Design → Thickness. Set thickness = 2.5 mm, mode = Skin. This hollows the box leaving walls + floor but removes the top — perfect for a lid.",
+    tags: ["Select top face", "Part Design → Thickness", "2.5 mm", "Skin mode"],
+    tip: "If Thickness fails, use a Shell operation from the Part workbench instead — same result.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="400" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <polygon points="100,72 300,72 340,42 140,42" fill="#0f3460" stroke="#378ADD" stroke-width="0.8"/>
+      <polygon points="100,72 100,38 140,8 140,42" fill="#0a2540" stroke="#378ADD" stroke-width="0.8"/>
+      <polygon points="100,38 300,38 340,8 140,8" fill="#185FA5" stroke="#378ADD" stroke-width="1.2"/>
+      <polygon points="106,67 294,67 330,42 146,42" fill="#1a1a2e" stroke="none"/>
+      <polygon points="106,67 106,40 146,13 146,42" fill="#111" stroke="none"/>
+      <text x="210" y="56" font-size="9" fill="#aaa" font-family="monospace" text-anchor="middle">hollow interior</text>
+      <text x="210" y="30" font-size="9" fill="#85B7EB" font-family="monospace" text-anchor="middle">top face selected (open)</text>
+    </svg>`
+  },
+  {
+    title: "Add cutouts with Pocket operations",
+    sub: "For each cutout (display, fan holes, ports), create a new Sketch on the relevant face, draw the shape, then use Part Design → Pocket → Through All. Repeat for every opening.",
+    tags: ["Sketch on face", "Part Design → Pocket", "Through All"],
+    tip: "Do all pockets on the same face in one sketch where possible — it keeps the model tree clean.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="400" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <rect x="30" y="20" width="360" height="22" rx="3" fill="#0f3460" stroke="#378ADD" stroke-width="0.5"/>
+      <rect x="110" y="20" width="200" height="22" rx="3" fill="#1a1a2e" stroke="#378ADD" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="210" y="35" font-size="9" fill="#85B7EB" font-family="monospace" text-anchor="middle">display cutout pocket</text>
+      <rect x="30" y="55" width="60" height="22" rx="3" fill="#1a1a2e" stroke="#888" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="60" y="70" font-size="8" fill="#888" font-family="monospace" text-anchor="middle">fan ×2</text>
+      <rect x="320" y="55" width="70" height="22" rx="3" fill="#1a1a2e" stroke="#888" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="355" y="70" font-size="8" fill="#888" font-family="monospace" text-anchor="middle">ports ×5</text>
+    </svg>`
+  },
+  {
+    title: "Add fillets and standoff bosses",
+    sub: "Select all vertical outer edges, apply Part Design → Fillet = 8 mm. Then add small cylindrical Pad features (Ø 6 mm, height 5 mm) on the floor at standoff positions for the Jetson and Pi.",
+    tags: ["Fillet = 8 mm", "Pad boss Ø6 × 5 mm", "4× Jetson", "4× Pi5"],
+    tip: "Model standoff bosses as separate Pads from a floor sketch — drill the M3 hole through them with a Pocket after.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="400" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <rect x="50" y="20" width="320" height="50" rx="10" fill="#0f3460" stroke="#378ADD" stroke-width="1.2"/>
+      <circle cx="80" cy="58" r="6" fill="#185FA5" stroke="#378ADD" stroke-width="0.8"/>
+      <circle cx="105" cy="58" r="6" fill="#185FA5" stroke="#378ADD" stroke-width="0.8"/>
+      <circle cx="200" cy="58" r="6" fill="#1D9E75" stroke="#0F6E56" stroke-width="0.8"/>
+      <circle cx="225" cy="58" r="6" fill="#1D9E75" stroke="#0F6E56" stroke-width="0.8"/>
+      <text x="92" y="38" font-size="8" fill="#85B7EB" font-family="monospace" text-anchor="middle">Jetson standoffs</text>
+      <text x="212" y="38" font-size="8" fill="#9FE1CB" font-family="monospace" text-anchor="middle">Pi5 standoffs</text>
+    </svg>`
+  },
+  {
+    title: "Export as STL",
+    sub: "Select the Body in the model tree. Go to File → Export, choose STL Mesh (*.stl). Set mesh deviation = 0.1 mm for good print quality. Open in PrusaSlicer, Bambu Studio, or Cura to slice.",
+    tags: ["File → Export", "STL Mesh", "Deviation = 0.1 mm"],
+    tip: "Check the STL in Meshmixer or Netfabb before printing — FreeCAD occasionally exports non-manifold geometry.",
+    svg: `<svg viewBox="0 0 420 90" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="185" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <text x="102" y="28" font-size="9" fill="#aaa" font-family="monospace" text-anchor="middle">FreeCAD</text>
+      <rect x="30" y="35" width="145" height="16" rx="3" fill="#0f3460" stroke="#378ADD" stroke-width="0.5"/>
+      <text x="102" y="46" font-size="9" fill="#85B7EB" font-family="monospace" text-anchor="middle">File → Export → .stl</text>
+      <line x1="195" y1="45" x2="225" y2="45" stroke="#1D9E75" stroke-width="1.2" marker-end="url(#a)"/>
+      <rect x="225" y="10" width="185" height="70" rx="6" fill="#1a1a2e" stroke="#444" stroke-width="0.5"/>
+      <text x="317" y="28" font-size="9" fill="#aaa" font-family="monospace" text-anchor="middle">Slicer</text>
+      <rect x="245" y="35" width="145" height="16" rx="3" fill="#16213e" stroke="#1D9E75" stroke-width="0.5"/>
+      <text x="317" y="46" font-size="9" fill="#9FE1CB" font-family="monospace" text-anchor="middle">enclosure.stl → G-code</text>
+    </svg>`
+  }
+];
+
+let cur = 0;
+
+function render() {
+  const s = steps[cur];
+  const pct = Math.round(((cur + 1) / steps.length) * 100);
+  document.getElementById('prog').style.width = pct + '%';
+  document.getElementById('step-label').textContent = `Step ${cur + 1} / ${steps.length}`;
+  document.getElementById('btn-prev').disabled = cur === 0;
+  document.getElementById('btn-next').disabled = cur === steps.length - 1;
+  document.getElementById('steps-wrap').innerHTML = `
+    <div class="step-card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div class="step-num">${cur + 1}</div>
+        <p class="step-title">${s.title}</p>
+      </div>
+      <p class="step-sub">${s.sub}</p>
+      <div>${s.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+      ${s.tip ? `<div class="tip">${s.tip}</div>` : ''}
+      <div class="step-img">${s.svg}</div>
+    </div>
+  `;
+}
+
+function move(d) { cur = Math.max(0, Math.min(steps.length - 1, cur + d)); render(); }
+render();
+</script>

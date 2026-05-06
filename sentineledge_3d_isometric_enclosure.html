@@ -1,0 +1,210 @@
+
+<style>
+  @keyframes floatBox { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+  #iso-wrap { animation: floatBox 4s ease-in-out infinite; transform-origin: center; }
+  .panel-btn { cursor:pointer; transition: opacity .15s; }
+  .panel-btn:hover { opacity:.8; }
+  #tooltip {
+    position:absolute; background:var(--color-background-primary);
+    border:0.5px solid var(--color-border-secondary);
+    border-radius:var(--border-radius-md);
+    padding:6px 12px; font-size:12px; color:var(--color-text-primary);
+    pointer-events:none; display:none; white-space:nowrap;
+  }
+  #controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  #controls button { font-size:12px; padding:4px 12px; }
+</style>
+
+<h2 class="sr-only">Interactive isometric 3D illustration of the SentinelEdgeAI enclosure with clickable panels</h2>
+
+<div style="position:relative;">
+  <div id="tooltip"></div>
+
+  <div id="controls">
+    <button onclick="highlight('top')">Top panel</button>
+    <button onclick="highlight('front')">Front vents</button>
+    <button onclick="highlight('side')">Port panel</button>
+    <button onclick="highlight('none')">Reset</button>
+  </div>
+
+  <svg id="iso-wrap" width="100%" viewBox="0 0 680 520" role="img">
+    <title>SentinelEdgeAI enclosure — isometric 3D view</title>
+    <desc>Isometric illustration of the compact edge AI enclosure showing top, front, and right-side faces with internal component positions</desc>
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- ── ISOMETRIC BOX ──
+         Isometric projection: x-axis goes right+down (2:1), y-axis goes left+down (2:1), z-axis goes straight up.
+         Box real size: W=220 L=360 H=96 (scaled from 14cm,22cm,6cm)
+         Origin point (front-bottom corner): ox=340, oy=420
+         iso unit vectors: right=(2,1) up=(0,-2) depth=(-2,1)
+    -->
+
+    <!-- RIGHT FACE (depth face, right side) -->
+    <polygon id="face-side"
+      points="340,420  560,310  560,190  340,300"
+      fill="#c8c5bc" stroke="#888780" stroke-width="0.8"/>
+
+    <!-- FRONT FACE (main front) -->
+    <polygon id="face-front"
+      points="120,310  340,420  340,300  120,190"
+      fill="#dedad3" stroke="#888780" stroke-width="0.8"/>
+
+    <!-- TOP FACE -->
+    <polygon id="face-top"
+      points="120,190  340,300  560,190  340,80"
+      fill="#eeecea" stroke="#888780" stroke-width="0.8"/>
+
+    <!-- ── TOP FACE DETAILS ── -->
+    <!-- LED screen inset (centered top face) -->
+    <polygon id="screen-top"
+      points="200,195  340,272  460,207  320,130"
+      fill="#185FA5" stroke="#0C447C" stroke-width="0.8"/>
+    <text class="ts" x="330" y="212" text-anchor="middle" fill="#B5D4F4" font-size="11">LED display — 7 in</text>
+
+    <!-- Vent slots top-rear -->
+    <line x1="350" y1="102" x2="530" y2="197" stroke="#B4B2A9" stroke-width="1"/>
+    <line x1="360" y1="108" x2="540" y2="203" stroke="#B4B2A9" stroke-width="1"/>
+    <line x1="370" y1="114" x2="550" y2="209" stroke="#B4B2A9" stroke-width="1"/>
+
+    <!-- ── FRONT FACE DETAILS ── -->
+    <!-- Front intake grille strips -->
+    <line x1="135" y1="208" x2="180" y2="232" stroke="#B4B2A9" stroke-width="1.2"/>
+    <line x1="135" y1="220" x2="180" y2="244" stroke="#B4B2A9" stroke-width="1.2"/>
+    <line x1="135" y1="232" x2="180" y2="256" stroke="#B4B2A9" stroke-width="1.2"/>
+    <line x1="135" y1="244" x2="180" y2="268" stroke="#B4B2A9" stroke-width="1.2"/>
+    <line x1="135" y1="256" x2="180" y2="280" stroke="#B4B2A9" stroke-width="1.2"/>
+    <line x1="135" y1="268" x2="180" y2="292" stroke="#B4B2A9" stroke-width="1.2"/>
+
+    <!-- fan circle front -->
+    <ellipse cx="155" cy="255" rx="20" ry="11" fill="none" stroke="#888780" stroke-width="0.8"/>
+    <line x1="135" y1="255" x2="175" y2="255" stroke="#888780" stroke-width="0.5"/>
+    <line x1="155" y1="244" x2="155" y2="266" stroke="#888780" stroke-width="0.5"/>
+    <ellipse cx="155" cy="255" rx="5" ry="3" fill="#888780"/>
+
+    <!-- Branding text front face -->
+    <text class="ts" x="248" y="378" text-anchor="middle" fill="#5F5E5A" font-size="11">SentinelEdge AI</text>
+    <line x1="195" y1="372" x2="300" y2="400" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 3"/>
+
+    <!-- Status LED dot row front -->
+    <ellipse cx="200" cy="340" rx="3" ry="2" fill="#1D9E75"/>
+    <ellipse cx="212" cy="346" rx="3" ry="2" fill="#1D9E75"/>
+    <ellipse cx="224" cy="352" rx="3" ry="2" fill="#BA7517"/>
+    <ellipse cx="236" cy="358" rx="3" ry="2" fill="#B4B2A9"/>
+
+    <!-- ── RIGHT SIDE FACE — PORT PANEL ── -->
+    <!-- WAN port -->
+    <rect x="0" y="0" width="0" height="0"/>
+    <polygon points="370,298  395,311  395,327  370,314" fill="#185FA5" stroke="#0C447C" stroke-width="0.5"/>
+    <text class="ts" x="382" y="315" text-anchor="middle" fill="#B5D4F4" font-size="9">WAN</text>
+
+    <!-- LAN port -->
+    <polygon points="402,316  427,329  427,345  402,332" fill="#0F6E56" stroke="#085041" stroke-width="0.5"/>
+    <text class="ts" x="414" y="333" text-anchor="middle" fill="#9FE1CB" font-size="9">LAN</text>
+
+    <!-- USB ports (x2) -->
+    <polygon points="434,334  452,343  452,355  434,346" fill="#444441" stroke="#2C2C2A" stroke-width="0.5"/>
+    <text class="ts" x="443" y="347" text-anchor="middle" fill="#D3D1C7" font-size="8">USB</text>
+    <polygon points="456,345  474,354  474,366  456,357" fill="#444441" stroke="#2C2C2A" stroke-width="0.5"/>
+    <text class="ts" x="465" y="358" text-anchor="middle" fill="#D3D1C7" font-size="8">USB</text>
+
+    <!-- HDMI port -->
+    <polygon points="478,356  500,367  500,381  478,370" fill="#3C3489" stroke="#26215C" stroke-width="0.5"/>
+    <text class="ts" x="489" y="371" text-anchor="middle" fill="#CECBF6" font-size="8">HDMI</text>
+
+    <!-- Power socket -->
+    <polygon points="504,369  530,382  530,398  504,385" fill="#712B13" stroke="#4A1B0C" stroke-width="0.5"/>
+    <text class="ts" x="517" y="386" text-anchor="middle" fill="#F5C4B3" font-size="8">PWR</text>
+
+    <!-- Exhaust fan right-rear -->
+    <ellipse cx="540" cy="250" rx="17" ry="9" fill="none" stroke="#888780" stroke-width="0.8"/>
+    <line x1="523" y1="250" x2="557" y2="250" stroke="#888780" stroke-width="0.5"/>
+    <line x1="540" y1="241" x2="540" y2="259" stroke="#888780" stroke-width="0.5"/>
+    <ellipse cx="540" cy="250" rx="4" ry="2.5" fill="#888780"/>
+
+    <!-- ── INTERNAL GHOST COMPONENTS (seen through top) ── -->
+    <!-- Jetson ghost -->
+    <polygon
+      points="195,235  295,290  380,243  280,188"
+      fill="#7F77DD" fill-opacity="0.25" stroke="#534AB7" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <text class="ts" x="288" y="248" text-anchor="middle" fill="#3C3489" font-size="10">Jetson</text>
+
+    <!-- Pi ghost -->
+    <polygon
+      points="310,264  390,307  445,278  365,235"
+      fill="#1D9E75" fill-opacity="0.2" stroke="#0F6E56" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <text class="ts" x="378" y="278" text-anchor="middle" fill="#085041" font-size="10">Pi 5</text>
+
+    <!-- SSD ghost -->
+    <polygon
+      points="415,287  470,316  490,305  435,276"
+      fill="#BA7517" fill-opacity="0.2" stroke="#854F0B" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <text class="ts" x="453" y="300" text-anchor="middle" fill="#633806" font-size="9">SSD</text>
+
+    <!-- ── AIRFLOW ARROW across top ── -->
+    <path d="M148,278 Q240,260 340,290 Q420,310 530,255" fill="none" stroke="#D85A30" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#arr)"/>
+    <text class="ts" x="340" y="316" text-anchor="middle" fill="#993C1D" font-size="10">airflow: front → rear</text>
+
+    <!-- ── ANNOTATION LEADERS ── -->
+    <!-- LED label -->
+    <line x1="330" y1="130" x2="230" y2="70" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <circle cx="230" cy="70" r="2" fill="#888780"/>
+    <text class="ts" x="228" y="62" text-anchor="middle" fill="#5F5E5A" font-size="11">LED display</text>
+
+    <!-- Intake label -->
+    <line x1="155" y1="244" x2="80" y2="200" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <circle cx="80" cy="200" r="2" fill="#888780"/>
+    <text class="ts" x="78" y="192" text-anchor="middle" fill="#5F5E5A" font-size="11">Intake fan</text>
+
+    <!-- Exhaust label -->
+    <line x1="540" y1="241" x2="610" y2="195" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <circle cx="610" cy="195" r="2" fill="#888780"/>
+    <text class="ts" x="618" y="188" text-anchor="start" fill="#5F5E5A" font-size="11">Exhaust</text>
+
+    <!-- Port panel label -->
+    <line x1="445" y1="360" x2="608" y2="400" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 2"/>
+    <circle cx="608" cy="400" r="2" fill="#888780"/>
+    <text class="ts" x="616" y="405" text-anchor="start" fill="#5F5E5A" font-size="11">Port panel</text>
+
+    <!-- Dimensions annotation -->
+    <text class="ts" x="340" y="460" text-anchor="middle" fill="#888780" font-size="11">22 cm × 14 cm × 6 cm</text>
+    <text class="ts" x="340" y="476" text-anchor="middle" fill="#888780" font-size="11">Aluminum / ABS+PLA — dual 40mm fan cooling</text>
+  </svg>
+</div>
+
+<script>
+const tt = document.getElementById('tooltip');
+const faces = {
+  top: { el: document.getElementById('face-top'), label: 'Top panel — LED display + vent slots' },
+  front: { el: document.getElementById('face-front'), label: 'Front — intake fan + grille + status LEDs' },
+  side: { el: document.getElementById('face-side'), label: 'Right side — port panel (WAN/LAN/USB/HDMI/PWR)' },
+};
+
+Object.entries(faces).forEach(([k, v]) => {
+  v.el.classList.add('panel-btn');
+  v.el.addEventListener('mouseenter', e => {
+    tt.textContent = v.label;
+    tt.style.display = 'block';
+    tt.style.left = (e.offsetX + 12) + 'px';
+    tt.style.top = (e.offsetY - 10) + 'px';
+  });
+  v.el.addEventListener('mousemove', e => {
+    tt.style.left = (e.offsetX + 12) + 'px';
+    tt.style.top = (e.offsetY - 10) + 'px';
+  });
+  v.el.addEventListener('mouseleave', () => { tt.style.display = 'none'; });
+});
+
+function highlight(face) {
+  document.getElementById('face-top').style.opacity = '1';
+  document.getElementById('face-front').style.opacity = '1';
+  document.getElementById('face-side').style.opacity = '1';
+  if (face === 'none') return;
+  ['top','front','side'].forEach(f => {
+    if (f !== face) document.getElementById('face-' + f).style.opacity = '0.35';
+  });
+}
+</script>

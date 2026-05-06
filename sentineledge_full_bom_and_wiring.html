@@ -1,0 +1,361 @@
+
+<style>
+  * { box-sizing: border-box; }
+  .section { margin-bottom: 1.5rem; }
+  .sec-title { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 6px 8px; color: var(--color-text-secondary); font-weight: 500; border-bottom: 0.5px solid var(--color-border-secondary); }
+  td { padding: 7px 8px; color: var(--color-text-primary); border-bottom: 0.5px solid var(--color-border-tertiary); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+  .tag-core { background: var(--color-background-info); color: var(--color-text-info); }
+  .tag-power { background: var(--color-background-warning); color: var(--color-text-warning); }
+  .tag-conn { background: var(--color-background-success); color: var(--color-text-success); }
+  .tag-enc { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .tag-extra { background: #EEEDFE; color: #3C3489; }
+  .price { font-weight: 500; color: var(--color-text-primary); white-space: nowrap; }
+  .total-row td { font-weight: 500; font-size: 13px; background: var(--color-background-secondary); }
+  .grand-row td { font-weight: 500; font-size: 14px; background: var(--color-background-info); color: var(--color-text-info); border-radius: 4px; }
+  .note { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+  .warn { background: var(--color-background-warning); color: var(--color-text-warning); border-left: 3px solid var(--color-border-warning); padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 12px; margin-bottom: 12px; }
+  .ok { background: var(--color-background-success); color: var(--color-text-success); border-left: 3px solid var(--color-border-success); padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 12px; margin-bottom: 12px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tab { padding: 5px 14px; border: 0.5px solid var(--color-border-secondary); border-radius: 6px; font-size: 12px; cursor: pointer; background: transparent; color: var(--color-text-secondary); }
+  .tab.active { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-info); }
+  .pane { display: none; }
+  .pane.active { display: block; }
+  .metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 8px; margin-bottom: 16px; }
+  .metric { background: var(--color-background-secondary); border-radius: 8px; padding: 10px 12px; }
+  .m-label { font-size: 11px; color: var(--color-text-secondary); margin: 0 0 2px; }
+  .m-val { font-size: 20px; font-weight: 500; color: var(--color-text-primary); margin: 0; }
+  .m-sub { font-size: 11px; color: var(--color-text-secondary); }
+  .wire-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 0.5px solid var(--color-border-tertiary); font-size: 12px; }
+  .wire-color { width: 32px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .wire-label { flex: 1; color: var(--color-text-primary); }
+  .wire-spec { color: var(--color-text-secondary); font-size: 11px; }
+</style>
+
+<h2 class="sr-only">SentinelEdgeAI complete bill of materials with pricing, power feasibility check, and wiring guide</h2>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('bom')">Full BOM + prices</button>
+  <button class="tab" onclick="showTab('power')">Power feasibility</button>
+  <button class="tab" onclick="showTab('wiring')">Wiring diagram</button>
+</div>
+
+<!-- ════ BOM TAB ════ -->
+<div class="pane active" id="pane-bom">
+
+<div class="metric-row">
+  <div class="metric"><p class="m-label">Total components</p><p class="m-val">28</p><span class="m-sub">items</span></div>
+  <div class="metric"><p class="m-label">Estimated total</p><p class="m-val">$571</p><span class="m-sub">USD (approx)</span></div>
+  <div class="metric"><p class="m-label">Core electronics</p><p class="m-val">$449</p><span class="m-sub">USD</span></div>
+  <div class="metric"><p class="m-label">Enclosure + misc</p><p class="m-val">$122</p><span class="m-sub">USD</span></div>
+</div>
+
+<div class="section">
+  <p class="sec-title">Core compute</p>
+  <table>
+    <tr><th>#</th><th>Product (exact name)</th><th>Tag</th><th>Qty</th><th>Unit $</th><th>Total</th></tr>
+    <tr>
+      <td>1</td>
+      <td><strong>NVIDIA Jetson Orin Nano Super Developer Kit (8 GB)</strong><div class="note">Model: 945-13766-0000-000 · Buy: Amazon / NVIDIA official / Seeed Studio</div></td>
+      <td><span class="tag tag-core">Core AI</span></td>
+      <td>1</td><td class="price">$249</td><td class="price">$249</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><strong>Raspberry Pi 5 — 4 GB RAM</strong><div class="note">Model: SC1112 · Buy: Approved resellers (PiShop, Adafruit, CanaKit). Note: prices rose in 2025–2026 due to LPDDR shortage</div></td>
+      <td><span class="tag tag-core">Core IO</span></td>
+      <td>1</td><td class="price">$70</td><td class="price">$70</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><strong>Samsung 970 EVO Plus 500 GB M.2 NVMe SSD (MZ-V7S500B/AM)</strong><div class="note">PCIe Gen 3.0 x4, M.2 2280 · Buy: Amazon</div></td>
+      <td><span class="tag tag-core">Storage</span></td>
+      <td>1</td><td class="price">$55</td><td class="price">$55</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><strong>Elecrow 7" IPS Capacitive Touchscreen 1024×600 HDMI (EW70C3B)</strong><div class="note">HDMI + USB touch, driver-free, compatible with Jetson + Pi · Buy: Amazon / Elecrow</div></td>
+      <td><span class="tag tag-core">Display</span></td>
+      <td>1</td><td class="price">$40</td><td class="price">$40</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <p class="sec-title">Power system (corrected + verified)</p>
+  <table>
+    <tr><th>#</th><th>Product (exact name)</th><th>Tag</th><th>Qty</th><th>Unit $</th><th>Total</th></tr>
+    <tr>
+      <td>5</td>
+      <td><strong>ALITOVE 12 V 6 A 72 W AC/DC Power Adapter, 5.5×2.5 mm barrel (B082PCR5YS)</strong><div class="note">Input 100–240 V universal · OCP + OVP + OTP protection · Buy: Amazon. Replaces the original under-spec'd barrel jack</div></td>
+      <td><span class="tag tag-power">PSU</span></td>
+      <td>1</td><td class="price">$14</td><td class="price">$14</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td><strong>GoHz DC-DC 12 V → 5 V 5 A 25 W Buck Converter Module (B0DZNSMJFW)</strong><div class="note">For Raspberry Pi 5 power rail · 95% efficiency · OCP/OTP/short-circuit protected · Buy: Amazon</div></td>
+      <td><span class="tag tag-power">Buck</span></td>
+      <td>1</td><td class="price">$9</td><td class="price">$9</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td><strong>USB-C Female Panel Mount Connector + 30 cm cable (5 V / 5 A rated)</strong><div class="note">For clean Pi 5 power connection from buck output · Buy: Amazon / AliExpress</div></td>
+      <td><span class="tag tag-power">Connector</span></td>
+      <td>1</td><td class="price">$7</td><td class="price">$7</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td><strong>DC Barrel Jack Panel Mount Socket 5.5×2.5 mm (10-pack, B07PVX3DZH)</strong><div class="note">Enclosure power inlet · center positive · Buy: Amazon</div></td>
+      <td><span class="tag tag-power">Connector</span></td>
+      <td>1 pk</td><td class="price">$8</td><td class="price">$8</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td><strong>DC Power Splitter Y-Cable 1 female → 2 male 5.5×2.5 mm (B01M9FO2U3)</strong><div class="note">Splits 12 V rail to Jetson + buck converter · Buy: Amazon</div></td>
+      <td><span class="tag tag-power">Cable</span></td>
+      <td>1</td><td class="price">$7</td><td class="price">$7</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <p class="sec-title">Fans + thermal</p>
+  <table>
+    <tr><th>#</th><th>Product (exact name)</th><th>Tag</th><th>Qty</th><th>Unit $</th><th>Total</th></tr>
+    <tr>
+      <td>10</td>
+      <td><strong>Noctua NF-A4x10 5V PWM 40×10 mm Fan (NF-A4x10 5V PWM)</strong><div class="note">Ultra-quiet, 4-pin PWM, 17.9 dB(A) · Buy: Amazon / Noctua direct</div></td>
+      <td><span class="tag tag-enc">Thermal</span></td>
+      <td>2</td><td class="price">$15</td><td class="price">$30</td>
+    </tr>
+    <tr>
+      <td>11</td>
+      <td><strong>PWM Fan Controller 4-Pin 5 V (B09KHDSLQ5)</strong><div class="note">Controls both fans from Pi GPIO · Buy: Amazon</div></td>
+      <td><span class="tag tag-enc">Thermal</span></td>
+      <td>1</td><td class="price">$9</td><td class="price">$9</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <p class="sec-title">Networking + ports</p>
+  <table>
+    <tr><th>#</th><th>Product (exact name)</th><th>Tag</th><th>Qty</th><th>Unit $</th><th>Total</th></tr>
+    <tr>
+      <td>12</td>
+      <td><strong>TP-Link UE306 USB 3.0 to Gigabit Ethernet Adapter</strong><div class="note">WAN port — USB3 on Jetson side · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Network</span></td>
+      <td>1</td><td class="price">$19</td><td class="price">$19</td>
+    </tr>
+    <tr>
+      <td>13</td>
+      <td><strong>RJ45 Panel Mount Ethernet Coupler Female to Female Cat6 (B07B9BZ7YT)</strong><div class="note">Flush mount WAN + LAN ports on side panel · 2× needed · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Panel Port</span></td>
+      <td>2</td><td class="price">$7</td><td class="price">$14</td>
+    </tr>
+    <tr>
+      <td>14</td>
+      <td><strong>USB-A Female Panel Mount Connector (2-pack, B07C5JCVGW)</strong><div class="note">Flush mount USB ports on side panel · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Panel Port</span></td>
+      <td>1 pk</td><td class="price">$9</td><td class="price">$9</td>
+    </tr>
+    <tr>
+      <td>15</td>
+      <td><strong>HDMI Female Panel Mount Connector + 30 cm pigtail (B07B9J7CMB)</strong><div class="note">Flush HDMI port on side · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Panel Port</span></td>
+      <td>1</td><td class="price">$8</td><td class="price">$8</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <p class="sec-title">Cables + wiring</p>
+  <table>
+    <tr><th>#</th><th>Product (exact name)</th><th>Tag</th><th>Qty</th><th>Unit $</th><th>Total</th></tr>
+    <tr>
+      <td>16</td>
+      <td><strong>Cat 6 Ethernet Patch Cable 30 cm flat (2-pack)</strong><div class="note">Internal RJ45 panel → boards · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Cable</span></td>
+      <td>1 pk</td><td class="price">$7</td><td class="price">$7</td>
+    </tr>
+    <tr>
+      <td>17</td>
+      <td><strong>Micro HDMI to HDMI Cable 30 cm (B014I8UQJY)</strong><div class="note">Jetson → 7" display · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Cable</span></td>
+      <td>1</td><td class="price">$7</td><td class="price">$7</td>
+    </tr>
+    <tr>
+      <td>18</td>
+      <td><strong>USB-A to Micro-USB Cable 30 cm (touch power for display)</strong><div class="note">Display touch → Jetson USB3 · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Cable</span></td>
+      <td>1</td><td class="price">$5</td><td class="price">$5</td>
+    </tr>
+    <tr>
+      <td>19</td>
+      <td><strong>22 AWG Silicone Wire Kit — Red/Black/Yellow (5 m rolls)</strong><div class="note">Internal 12 V + 5 V DC wiring · flexible + heat resistant · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Wire</span></td>
+      <td>1 kit</td><td class="price">$12</td><td class="price">$12</td>
+    </tr>
+    <tr>
+      <td>20</td>
+      <td><strong>JST XH 2.54 mm Connector Kit (male + female, 40 pairs)</strong><div class="note">Fan + LED connectors · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Connector</span></td>
+      <td>1 kit</td><td class="price">$9</td><td class="price">$9</td>
+    </tr>
+    <tr>
+      <td>21</td>
+      <td><strong>Velcro Cable Ties 20-pack + Nylon Zip Ties 100-pack</strong><div class="note">Internal cable management · Buy: Amazon</div></td>
+      <td><span class="tag tag-conn">Management</span></td>
+      <td>1 kit</td><td class="price">$8</td><td class="price">$8</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <p class="sec-title">Enclosure hardware</p>
+  <table>
+    <tr><th>#</th><th>Product (exact name)</th><th>Tag</th><th>Qty</th><th>Unit $</th><th>Total</th></tr>
+    <tr>
+      <td>22</td>
+      <td><strong>M3 Brass Standoffs Kit — 5 mm height (50-pack mixed M3)</strong><div class="note">Board mounting · Buy: Amazon</div></td>
+      <td><span class="tag tag-enc">Hardware</span></td>
+      <td>1 kit</td><td class="price">$9</td><td class="price">$9</td>
+    </tr>
+    <tr>
+      <td>23</td>
+      <td><strong>M3 Screw Assortment Kit (200-pack, 6/8/10/12 mm pan-head)</strong><div class="note">Buy: Amazon</div></td>
+      <td><span class="tag tag-enc">Hardware</span></td>
+      <td>1 kit</td><td class="price">$8</td><td class="price">$8</td>
+    </tr>
+    <tr>
+      <td>24</td>
+      <td><strong>Self-Adhesive Rubber Feet Ø 10 mm × 3 mm (20-pack)</strong><div class="note">Buy: Amazon</div></td>
+      <td><span class="tag tag-enc">Hardware</span></td>
+      <td>1 pk</td><td class="price">$5</td><td class="price">$5</td>
+    </tr>
+    <tr>
+      <td>25</td>
+      <td><strong>Thermal Paste — Arctic MX-4 2 g (ACTCP00007A)</strong><div class="note">Jetson heatsink · Buy: Amazon</div></td>
+      <td><span class="tag tag-enc">Thermal</span></td>
+      <td>1</td><td class="price">$7</td><td class="price">$7</td>
+    </tr>
+    <tr>
+      <td>26</td>
+      <td><strong>5 mm RGB LED (common cathode, 25-pack) + 330 Ω resistors</strong><div class="note">Status indicator LEDs on front panel · Buy: Amazon</div></td>
+      <td><span class="tag tag-extra">Extra</span></td>
+      <td>1 kit</td><td class="price">$6</td><td class="price">$6</td>
+    </tr>
+    <tr>
+      <td>27</td>
+      <td><strong>Momentary Push Button (panel mount 16 mm, 2-pack)</strong><div class="note">Power + reset buttons on front panel · Buy: Amazon</div></td>
+      <td><span class="tag tag-extra">Extra</span></td>
+      <td>1 pk</td><td class="price">$8</td><td class="price">$8</td>
+    </tr>
+    <tr>
+      <td>28</td>
+      <td><strong>PLA+/ABS+ Filament 1 kg roll OR aluminum sheet 220×140×2 mm</strong><div class="note">Enclosure shell · 3D print or cut · Buy: Amazon / local metal shop</div></td>
+      <td><span class="tag tag-enc">Enclosure</span></td>
+      <td>1</td><td class="price">$22</td><td class="price">$22</td>
+    </tr>
+    <tr class="total-row">
+      <td colspan="5">Grand total (estimated)</td>
+      <td class="price">~$571</td>
+    </tr>
+  </table>
+</div>
+</div>
+
+<!-- ════ POWER TAB ════ -->
+<div class="pane" id="pane-power">
+  <div class="ok">Port spec is now fixed: 12 V / 6 A (72 W) barrel, 5.5×2.5 mm — provides 37 W headroom above peak draw of ~35 W. The original design only said "PWR" with no rating.</div>
+
+  <div class="section">
+    <p class="sec-title">Power rail architecture</p>
+    <table>
+      <tr><th>Rail</th><th>Voltage</th><th>Supplied by</th><th>Consumers</th><th>Peak A</th></tr>
+      <tr><td>Main DC</td><td>12 V</td><td>ALITOVE 72 W adapter</td><td>Jetson Orin Nano (direct), Buck converter input</td><td>2.5 A</td></tr>
+      <tr><td>5 V logic</td><td>5 V</td><td>GoHz buck converter</td><td>Raspberry Pi 5, display, fans, LEDs</td><td>3.5 A</td></tr>
+      <tr><td>Fan</td><td>5 V PWM</td><td>5 V rail via PWM controller</td><td>2× Noctua NF-A4x10</td><td>0.2 A</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <p class="sec-title">Per-component power breakdown</p>
+    <table>
+      <tr><th>Component</th><th>Rail</th><th>Idle W</th><th>Peak W</th><th>Notes</th></tr>
+      <tr><td>Jetson Orin Nano Super</td><td>12 V</td><td>7</td><td>25</td><td>MAXN SUPER mode up to 25 W per JetPack 6.2</td></tr>
+      <tr><td>Raspberry Pi 5 (4 GB)</td><td>5 V</td><td>3</td><td>5</td><td>Via USB-C from buck</td></tr>
+      <tr><td>Samsung 970 EVO Plus SSD</td><td>3.3 V (Jetson)</td><td>0.5</td><td>3</td><td>Powered by Jetson M.2 slot</td></tr>
+      <tr><td>Elecrow 7" display</td><td>5 V</td><td>2</td><td>4</td><td>Via USB + HDMI from Jetson</td></tr>
+      <tr><td>2× Noctua NF-A4x10</td><td>5 V</td><td>0.5</td><td>1</td><td>PWM controlled</td></tr>
+      <tr><td>2× Ethernet (active)</td><td>5 V</td><td>0.5</td><td>1</td><td>USB3 adapter + Pi built-in</td></tr>
+      <tr><td>Status LEDs + buttons</td><td>3.3 V</td><td>0.1</td><td>0.2</td><td>Negligible</td></tr>
+      <tr><td>Buck converter loss (~5%)</td><td>—</td><td>0.5</td><td>0.7</td><td>Heat dissipated internally</td></tr>
+      <tr class="total-row"><td colspan="2">Total</td><td>14.1 W</td><td>39.9 W</td><td></td></tr>
+      <tr class="total-row"><td colspan="2">PSU (72 W) headroom</td><td>57.9 W</td><td>32.1 W</td><td>45% headroom at peak ✓</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ════ WIRING TAB ════ -->
+<div class="pane" id="pane-wiring">
+  <div class="warn">Route 12 V and 5 V wires on opposite sides of the enclosure. Keep high-current 12 V wires (18 AWG minimum) away from the SSD and fan signal wires.</div>
+
+  <div class="section">
+    <p class="sec-title">Internal wiring map</p>
+
+    <div style="position:relative;width:100%;height:320px;">
+      <canvas id="wire-chart" role="img" aria-label="Block wiring diagram showing power flow from barrel jack through splitter to Jetson and buck converter, then to Pi 5 and peripherals"></canvas>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="sec-title">Wire spec by connection</p>
+    <div class="wire-row"><div class="wire-color" style="background:#e63946"></div><span class="wire-label">Barrel jack → Y-splitter → Jetson DC barrel in</span><span class="wire-spec">18 AWG red · 12 V · 2 A peak</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#e63946"></div><span class="wire-label">Y-splitter → Buck converter IN+</span><span class="wire-spec">18 AWG red · 12 V · 3.5 A peak</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#1d3557"></div><span class="wire-label">All GND returns (barrel, splitter, buck)</span><span class="wire-spec">18 AWG black · common ground</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#f4a261"></div><span class="wire-label">Buck OUT → USB-C panel mount → Pi 5</span><span class="wire-spec">20 AWG orange · 5 V / 5 A</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#2a9d8f"></div><span class="wire-label">Buck OUT → PWM fan controller → 2× fans</span><span class="wire-spec">22 AWG teal · 5 V / 0.2 A</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#6a4c93"></div><span class="wire-label">Pi GPIO → PWM fan controller signal</span><span class="wire-spec">24 AWG purple · 3.3 V logic</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#457b9d"></div><span class="wire-label">Jetson HDMI → HDMI panel mount → display</span><span class="wire-spec">Micro-HDMI 30 cm pigtail</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#457b9d"></div><span class="wire-label">Jetson USB3 → USB-A panel mount (WAN adapter)</span><span class="wire-spec">USB-A 30 cm pigtail</span></div>
+    <div class="wire-row"><div class="wire-color" style="background:#457b9d"></div><span class="wire-label">Pi Ethernet → RJ45 panel mount (LAN)</span><span class="wire-spec">Cat6 flat 30 cm</span></div>
+    <div class="wire-row" style="border:none"><div class="wire-color" style="background:#2d6a4f"></div><span class="wire-label">Pi GPIO → 4× status LEDs (via 330 Ω)</span><span class="wire-spec">24 AWG green · 3.3 V / 10 mA each</span></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('[onclick="showTab(\'' + name + '\')"]').classList.add('active');
+  document.getElementById('pane-' + name).classList.add('active');
+  if (name === 'wiring' && !window.wireChartBuilt) buildWireChart();
+}
+
+function buildWireChart() {
+  window.wireChartBuilt = true;
+  new Chart(document.getElementById('wire-chart'), {
+    type: 'bar',
+    data: {
+      labels: ['Jetson\nOrin Nano', 'Raspberry\nPi 5', 'SSD\n(Jetson slot)', '7" Display', '2× Fans', 'Ethernet\nports', 'LEDs +\nbuttons'],
+      datasets: [
+        { label: 'Idle (W)', data: [7, 3, 0.5, 2, 0.5, 0.5, 0.1], backgroundColor: 'rgba(83,74,183,0.3)', borderColor: '#534AB7', borderWidth: 1 },
+        { label: 'Extra at peak (W)', data: [18, 2, 2.5, 2, 0.5, 0.5, 0.1], backgroundColor: 'rgba(83,74,183,0.75)', borderColor: '#534AB7', borderWidth: 1 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 10, padding: 10 } } },
+      scales: {
+        x: { stacked: true, ticks: { font: { size: 10 } }, grid: { display: false } },
+        y: { stacked: true, ticks: { font: { size: 11 }, callback: v => v + ' W' }, grid: { color: 'rgba(128,128,128,.1)' }, title: { display: true, text: 'Power (W)', font: { size: 11 } } }
+      }
+    }
+  });
+}
+</script>

@@ -1,0 +1,125 @@
+
+<style>
+.comp-table { width:100%; border-collapse:collapse; font-size:12px; }
+.comp-table th { background:var(--color-background-secondary); color:var(--color-text-secondary); font-weight:500; font-size:11px; padding:8px 10px; text-align:left; border-bottom:0.5px solid var(--color-border-tertiary); }
+.comp-table td { padding:8px 10px; border-bottom:0.5px solid var(--color-border-tertiary); color:var(--color-text-primary); vertical-align:middle; }
+.comp-table tr:last-child td { border-bottom:none; }
+.comp-table tr.highlight td { background:var(--color-background-info); }
+.comp-table tr.highlight td:first-child { font-weight:500; color:var(--color-text-info); }
+.badge { display:inline-block; font-size:10px; padding:2px 7px; border-radius:4px; font-weight:500; }
+.badge-g { background:var(--color-background-success); color:var(--color-text-success); }
+.badge-r { background:var(--color-background-danger); color:var(--color-text-danger); }
+.badge-a { background:var(--color-background-warning); color:var(--color-text-warning); }
+.pros-cons { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
+.pc-card { background:var(--color-background-secondary); border-radius:8px; padding:12px 14px; }
+.pc-title { font-size:12px; font-weight:500; margin-bottom:8px; }
+.pc-item { font-size:12px; color:var(--color-text-secondary); margin-bottom:5px; display:flex; gap:6px; align-items:flex-start; }
+.dot-g { color:var(--color-text-success); font-size:14px; line-height:1; }
+.dot-r { color:var(--color-text-danger); font-size:14px; line-height:1; }
+</style>
+
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden">Competitive analysis comparing SentinelEdgeAI to alternatives</h2>
+
+<p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0 0 10px">Competitive comparison — real-time edge security alternatives</p>
+
+<table class="comp-table">
+<thead>
+<tr>
+  <th>Product</th>
+  <th>AI/ML detection</th>
+  <th>Edge / local</th>
+  <th>Zero-day</th>
+  <th>Open source</th>
+  <th>Cost</th>
+  <th>Hardware-agnostic</th>
+</tr>
+</thead>
+<tbody>
+<tr class="highlight">
+  <td>SentinelEdgeAI</td>
+  <td><span class="badge badge-g">Yes — Isolation Forest + LSTM</span></td>
+  <td><span class="badge badge-g">Fully local</span></td>
+  <td><span class="badge badge-g">Yes — behavioral</span></td>
+  <td><span class="badge badge-g">Yes</span></td>
+  <td><span class="badge badge-g">&lt;$300 hardware</span></td>
+  <td><span class="badge badge-g">Custom Pi + Jetson</span></td>
+</tr>
+<tr>
+  <td>Palo Alto NGFW</td>
+  <td><span class="badge badge-g">Yes — WildFire ML</span></td>
+  <td><span class="badge badge-r">Partial — cloud sync</span></td>
+  <td><span class="badge badge-g">Yes</span></td>
+  <td><span class="badge badge-r">No</span></td>
+  <td><span class="badge badge-r">$10k–$100k+</span></td>
+  <td><span class="badge badge-r">Proprietary HW</span></td>
+</tr>
+<tr>
+  <td>Darktrace</td>
+  <td><span class="badge badge-g">Yes — unsupervised AI</span></td>
+  <td><span class="badge badge-a">Appliance + cloud</span></td>
+  <td><span class="badge badge-g">Yes</span></td>
+  <td><span class="badge badge-r">No</span></td>
+  <td><span class="badge badge-r">$30k–$150k/yr</span></td>
+  <td><span class="badge badge-r">Proprietary</span></td>
+</tr>
+<tr>
+  <td>pfSense + Suricata</td>
+  <td><span class="badge badge-r">No — rule-based only</span></td>
+  <td><span class="badge badge-g">Fully local</span></td>
+  <td><span class="badge badge-r">No</span></td>
+  <td><span class="badge badge-g">Yes</span></td>
+  <td><span class="badge badge-g">Free / low cost</span></td>
+  <td><span class="badge badge-g">x86 hardware</span></td>
+</tr>
+<tr>
+  <td>Cisco Meraki MX</td>
+  <td><span class="badge badge-a">Limited — signatures</span></td>
+  <td><span class="badge badge-r">Cloud-managed</span></td>
+  <td><span class="badge badge-r">Limited</span></td>
+  <td><span class="badge badge-r">No</span></td>
+  <td><span class="badge badge-r">$1k–$20k/yr</span></td>
+  <td><span class="badge badge-r">Proprietary HW</span></td>
+</tr>
+<tr>
+  <td>CrowdStrike Falcon (endpoint)</td>
+  <td><span class="badge badge-g">Yes — ML</span></td>
+  <td><span class="badge badge-r">Cloud-dependent</span></td>
+  <td><span class="badge badge-g">Yes</span></td>
+  <td><span class="badge badge-r">No</span></td>
+  <td><span class="badge badge-r">$15–$60/device/yr</span></td>
+  <td><span class="badge badge-a">Agent on endpoints</span></td>
+</tr>
+<tr>
+  <td>Zeek + ELK Stack (DIY)</td>
+  <td><span class="badge badge-r">No ML out-of-box</span></td>
+  <td><span class="badge badge-g">Fully local</span></td>
+  <td><span class="badge badge-r">No</span></td>
+  <td><span class="badge badge-g">Yes</span></td>
+  <td><span class="badge badge-a">Free (ops cost)</span></td>
+  <td><span class="badge badge-g">Any hardware</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="pros-cons">
+  <div class="pc-card">
+    <p class="pc-title" style="color:var(--color-text-success)">SentinelEdgeAI strengths</p>
+    <div class="pc-item"><span class="dot-g">+</span><span>Only option combining AI-native detection with fully local, no-cloud operation at under $300 hardware cost</span></div>
+    <div class="pc-item"><span class="dot-g">+</span><span>Detects zero-days and novel attack patterns that signature-based tools (pfSense, Meraki) will miss entirely</span></div>
+    <div class="pc-item"><span class="dot-g">+</span><span>GPU-accelerated inference on Jetson keeps latency under 100ms without degrading network throughput</span></div>
+    <div class="pc-item"><span class="dot-g">+</span><span>Fully open, modifiable, and extensible — no vendor lock-in, no subscription dependency</span></div>
+    <div class="pc-item"><span class="dot-g">+</span><span>Adaptive response (log / alert / block / isolate) is more granular than most SME products offer</span></div>
+    <div class="pc-item"><span class="dot-g">+</span><span>Data stays on-premise — critical for regulated industries (healthcare, finance, legal)</span></div>
+  </div>
+  <div class="pc-card">
+    <p class="pc-title" style="color:var(--color-text-danger)">Honest limitations</p>
+    <div class="pc-item"><span class="dot-r">−</span><span>Baseline AI model needs ~2–4 weeks of real traffic to train meaningfully — cold-start false positive rate is high</span></div>
+    <div class="pc-item"><span class="dot-r">−</span><span>No managed threat intelligence feed at prototype stage — Darktrace and Palo Alto have massive labeled datasets behind them</span></div>
+    <div class="pc-item"><span class="dot-r">−</span><span>Raspberry Pi 5 network throughput cap (~1–2 Gbps) — unsuitable for high-bandwidth enterprise environments without upgrade</span></div>
+    <div class="pc-item"><span class="dot-r">−</span><span>No encrypted-traffic deep inspection at v1 — TLS 1.3 payloads are opaque; relies on metadata and flow behavior only</span></div>
+    <div class="pc-item"><span class="dot-r">−</span><span>Requires internal technical capability to operate — not plug-and-forget like managed appliances</span></div>
+    <div class="pc-item"><span class="dot-r">−</span><span>Hardware failure = full outage — no HA/failover cluster at prototype stage</span></div>
+  </div>
+</div>
+
+<p style="font-size:11px;color:var(--color-text-secondary);margin:14px 0 0">Pricing estimates as of 2025. Click any phase in the roadmap above to start building.</p>
