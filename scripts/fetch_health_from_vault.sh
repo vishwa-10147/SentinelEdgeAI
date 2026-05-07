@@ -25,4 +25,19 @@ if command -v systemctl >/dev/null 2>&1; then
   systemctl try-restart sentinel-health-agent.service || true
 fi
 
+# Emit a timestamp file so Prometheus (or a simple file-based monitor) can detect
+# the last successful fetch. The file is written atomically and is world-readable.
+RUN_DIR=/var/run/sentinel
+TS_FILE=${RUN_DIR}/last_fetch
+
+mkdir -p "$RUN_DIR"
+chown root:root "$RUN_DIR" || true
+chmod 755 "$RUN_DIR" || true
+
+TMP_TS=$(mktemp /tmp/last_fetch.XXXX)
+date -u +"%Y-%m-%dT%H:%M:%SZ" > "$TMP_TS"
+install -o root -g root -m 644 "$TMP_TS" "$TS_FILE"
+rm -f "$TMP_TS"
+
 exit 0
+
