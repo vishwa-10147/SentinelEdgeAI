@@ -50,4 +50,18 @@ sudo systemctl enable --now sentinel-health-vault.service
 
 4. Consider adding a timer to rotate or refresh secrets periodically, or invoke the service from your existing rotation workflow.
 
+Timer (recommended)
+-------------------
+
+This repository includes a ready-made systemd timer `packaging/sentinel-health-vault.timer` and an installer helper `scripts/install_vault_fetcher.sh` to install and enable the timer and unit.
+
+Install using the helper (runs installs and enables the timer):
+
+```sh
+sh scripts/install_vault_fetcher.sh
+```
+
+The timer runs the fetcher shortly after boot and then every 24 hours. Adjust `packaging/sentinel-health-vault.timer` if you need a different cadence.
+
+
 
