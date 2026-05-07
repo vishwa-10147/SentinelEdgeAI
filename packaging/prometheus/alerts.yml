@@ -19,3 +19,13 @@ groups:
         annotations:
           summary: "Sentinel rotation service not active"
           description: "The sentinel-rotate.service is not active on {{ $labels.instance }} for at least 10 minutes. Check systemd logs and rotation outputs."
+
+      - alert: SentinelVaultFetcherTimerInactive
+        # Alerts when the Vault fetcher timer is not active. Requires node_exporter systemd collector.
+        expr: systemd_unit_state_active{unit="sentinel-health-vault.timer"} == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sentinel Vault fetcher timer not active"
+          description: "The sentinel-health-vault.timer is not active on {{ $labels.instance }} for at least 30 minutes. Verify timer and service installation."

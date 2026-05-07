@@ -25,6 +25,12 @@ Alerting:
 	- `SentinelHealthDown` fires when Prometheus cannot scrape the `sentinel` job (the health endpoint) for 5 minutes.
 	- `SentinelRotateFailed` fires when `sentinel-rotate.service` is not active for 10 minutes. This requires `node_exporter` with the systemd collector enabled (which exposes `systemd_unit_state_active`).
 
+Vault fetcher timer alert:
+
+- `SentinelVaultFetcherTimerInactive` fires when `sentinel-health-vault.timer` is not active for 30 minutes. It requires `node_exporter` with the systemd collector enabled which exposes `systemd_unit_state_active` metrics.
+
+If you don't run `node_exporter`, consider exposing a small metric (file, HTTP, or journald exporter) indicating last successful fetch time and alert on its staleness instead.
+
 To enable alerts:
 
 1. Place `packaging/prometheus/alerts.yml` on your Prometheus server and include it in `prometheus.yml` via `rule_files`.
