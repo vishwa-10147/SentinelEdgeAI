@@ -15,6 +15,7 @@ from detection.mitre_mapper import MitreMapper
 from core.engine import SentinelEngine
 from core.config_loader import Config
 from core.health import HealthMonitor
+from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
 
 # Load configuration
@@ -146,6 +147,11 @@ def process_packet(packet):
 
                 # Update metrics
                 ENGINE_METRICS["flows_processed"] += 1
+                try:
+                    if FLOWS_COUNTER is not None:
+                        FLOWS_COUNTER.inc()
+                except Exception:
+                    pass
                 ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
                 health_monitor.update_flows()
 
@@ -295,22 +301,29 @@ def process_packet(packet):
             try:
                 with open(LIVE_STATS_FILE, "r") as f:
                     stats = json.load(f)
-            except:
-                stats = {
-                    "total_flows": 0,
-                    "unique_ips": [],
-                    "flow_history": []
-                }
+            except Exception:
+                stats = {}
+
+            # Ensure required keys exist
+            stats.setdefault("total_flows", 0)
+            stats.setdefault("unique_ips", [])
+            stats.setdefault("flow_history", [])
 
             stats["total_flows"] += 1
 
             if flow.initiator_ip not in stats["unique_ips"]:
                 stats["unique_ips"].append(flow.initiator_ip)
 
-            stats["flow_history"].append({
-                "timestamp": time.time(),
-                "score": final_risk
-            })
+            try:
+                stats["flow_history"].append({
+                    "timestamp": time.time(),
+                    "score": final_risk
+                })
+            except Exception:
+                stats["flow_history"] = [{
+                    "timestamp": time.time(),
+                    "score": final_risk
+                }]
 
             # Keep only last N entries
             history_limit = config.get("persistence", "history_limit")

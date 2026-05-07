@@ -3,12 +3,7 @@ from core.config_loader import Config
 from core.health_server import start_health_server
 from utils.logger import setup_logger
 import logging
-try:
-    from prometheus_client import start_http_server, Gauge, Counter
-except Exception:
-    start_http_server = None
-    Gauge = None
-    Counter = None
+from utils.metrics import start_metrics_server, PROCESS_UP, FLOWS_COUNTER
 
 
 def _log_config_summary(cfg, logger):
@@ -50,15 +45,16 @@ if __name__ == "__main__":
     # Start Prometheus metrics endpoint if library present
     try:
         metrics_port = config.get("app", "metrics_port") or 8001
-        if start_http_server:
-            # basic metrics: up and flows processed (flows_processed left for capture to increment)
-            start_http_server(int(metrics_port))
-            process_up = Gauge("sentinel_process_up", "Sentinel process up (1/0)")
-            flows_processed = Counter("sentinel_flows_processed_total", "Total flows processed")
-            process_up.set(1)
+        ok = start_metrics_server(metrics_port)
+        if ok:
+            try:
+                if PROCESS_UP is not None:
+                    PROCESS_UP.set(1)
+            except Exception:
+                pass
             logger.info("Prometheus metrics available on port %s", metrics_port)
         else:
-            logger.debug("prometheus_client not installed; skipping metrics endpoint")
+            logger.debug("prometheus_client not installed or failed; skipping metrics endpoint")
     except Exception:
         logger.exception("Failed to start Prometheus metrics server")
 
