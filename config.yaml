@@ -52,3 +52,8 @@ logging:
   log_file: "logs/sentinel.log"
   max_bytes: 5242880     # 5 MB
   backup_count: 5        # Keep last 5 rotated files
+
+# HTTP health endpoint settings (used by the built-in health server)
+app:
+  host: 0.0.0.0
+  port: 5000
