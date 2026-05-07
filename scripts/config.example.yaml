@@ -1,0 +1,17 @@
+# Example config for SentinelEdgeAI
+# Copy to config.yaml and edit values for your deployment.
+
+app:
+  name: SentinelEdgeAI
+  host: 0.0.0.0
+  port: 5000
+
+logging:
+  level: INFO
+  file: logs/app.log
+
+capture:
+  interface: eth0
+  pcap_dir: /var/lib/sentineledgeai/pcaps
+
+# Add other project-specific configuration entries below
