@@ -18,3 +18,16 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now sentinel-health-vault.timer
 
 echo "Installation complete. Timer enabled. Use 'systemctl status sentinel-health-vault.timer' to verify."
+
+# Ensure node_exporter textfile collector directories exist with correct perms so the fetcher can write metrics
+TEXTDIRS="/var/lib/node_exporter/textfile_collector /var/run/node_exporter/textfile_collector /var/cache/node_exporter/textfile_collector"
+for d in $TEXTDIRS; do
+	if [ ! -d "$d" ]; then
+		echo "Creating textfile directory $d"
+		sudo mkdir -p "$d"
+		sudo chown root:root "$d"
+		sudo chmod 755 "$d"
+	fi
+done
+
+echo "Created/verified node_exporter textfile collector directories."
