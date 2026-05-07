@@ -1,0 +1,21 @@
+groups:
+  - name: sentineledge.rules
+    rules:
+      - alert: SentinelHealthDown
+        expr: up{job="sentinel"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SentinelEdgeAI health endpoint is down (instance={{ $labels.instance }})"
+          description: "Prometheus failed to scrape the /health endpoint for more than 5 minutes."
+
+      - alert: SentinelRotateFailed
+        # Requires node_exporter systemd collector or equivalent exposing unit state.
+        expr: systemd_unit_state_active{unit="sentinel-rotate.service"} == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sentinel rotation service not active"
+          description: "The sentinel-rotate.service is not active on {{ $labels.instance }} for at least 10 minutes. Check systemd logs and rotation outputs."
