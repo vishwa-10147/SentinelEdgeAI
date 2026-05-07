@@ -3,13 +3,17 @@ from detection.adaptive_baseline import AdaptiveBaseline
 
 
 def test_adaptive_baseline_keys():
-    ab = AdaptiveBaseline()
-    durations = [1, 2, 3]
-    bytes_ = [100, 200, 300]
-    packets = [1, 2, 3]
-    ratios = [100, 100, 100]
-    ab._compute_stats_for_key(("1.2.3.4", "TCP"), durations, bytes_, packets, ratios)
-    stats = ab.stats.get(("1.2.3.4", "TCP"))
+    ab = AdaptiveBaseline(window_size=10)
+    # feed >=10 samples so stats are computed
+    for i in range(12):
+        features = {
+            "duration": float(i + 1),
+            "total_bytes": float(100 * (i + 1)),
+            "total_packets": float(1 + i),
+            "byte_ratio": float(100),
+        }
+        ab.update(features, "1.2.3.4", "TCP")
+    stats = ab.get("1.2.3.4", "TCP")
     assert stats is not None
     # compatibility keys
     assert "bytes_mean" in stats

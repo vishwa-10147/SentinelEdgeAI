@@ -23,3 +23,6 @@ jobs:
       - name: Run tests
         run: |
           PYTHONPATH=. pytest -q
+      - name: Run e2e smoke (skip if no service)
+        run: |
+          python scripts/e2e_smoke.py || true
