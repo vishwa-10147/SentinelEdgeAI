@@ -5,6 +5,9 @@ set -euo pipefail
 # Requires: `vault` CLI authenticated (VAULT_ADDR and token via env or agent).
 
 VAULT_SECRET_PATH=${VAULT_SECRET_PATH:-secret/sentineledge/health}
+# Default VAULT_ADDR to localhost HTTP if not provided (Vault dev server uses HTTP by default)
+VAULT_ADDR=${VAULT_ADDR:-http://127.0.0.1:8200}
+export VAULT_ADDR
 OUT=/etc/sentinel/health.env
 TMP=$(mktemp /tmp/health.env.XXXX)
 
@@ -12,6 +15,23 @@ PASS=$(vault kv get -field=HEALTH_PASS "$VAULT_SECRET_PATH") || exit 2
 if [ -z "$PASS" ]; then
   echo "vault: no HEALTH_PASS at $VAULT_SECRET_PATH" >&2
   exit 3
+fi
+
+# If the vault CLI failed above (or is unavailable), try HTTP API fallback using VAULT_TOKEN
+if [ -z "${PASS:-}" ] && [ -n "${VAULT_TOKEN:-}" ]; then
+  # KV v2 data path: /v1/<mount>/data/<path>
+  MOUNT=$(echo "$VAULT_SECRET_PATH" | cut -d'/' -f1)
+  SUBPATH=$(echo "$VAULT_SECRET_PATH" | cut -d'/' -f2-)
+  API_URL="${VAULT_ADDR%/}/v1/${MOUNT}/data/${SUBPATH}"
+  JSON=$(curl -sS -H "X-Vault-Token: ${VAULT_TOKEN}" "$API_URL") || true
+  PASS=$(echo "$JSON" | python3 -c 'import sys, json
+data=json.load(sys.stdin)
+print(data.get("data", {}).get("data", {}).get("HEALTH_PASS", ""))' 2>/dev/null || true)
+fi
+
+if [ -z "$PASS" ]; then
+  echo "vault: failed to obtain HEALTH_PASS via CLI or API" >&2
+  exit 4
 fi
 
 # write atomically with strict permissions

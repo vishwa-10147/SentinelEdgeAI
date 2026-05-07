@@ -6,7 +6,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/fetch-health-from-vault.sh
-Environment=VAULT_ADDR=https://127.0.0.1:8200
+# Default to http (Vault dev server uses HTTP). Can be overridden in environment.
+Environment=VAULT_ADDR=http://127.0.0.1:8200
+EnvironmentFile=/etc/sentinel/vault.env
 
 [Install]
 WantedBy=multi-user.target

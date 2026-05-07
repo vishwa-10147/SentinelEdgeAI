@@ -50,6 +50,31 @@ sudo systemctl enable --now sentinel-health-vault.service
 
 4. Consider adding a timer to rotate or refresh secrets periodically, or invoke the service from your existing rotation workflow.
 
+Providing a Vault token to systemd
+--------------------------------
+
+The systemd unit supports reading a Vault token from `/etc/sentinel/vault.env`. Create that file with root-only permissions so systemd can use it when contacting Vault (useful for automated fetches or when running the service as a timer):
+
+```sh
+sudo mkdir -p /etc/sentinel
+sudo tee /etc/sentinel/vault.env > /dev/null <<'EOF'
+VAULT_TOKEN=your-vault-token-here
+EOF
+sudo chown root:root /etc/sentinel/vault.env
+sudo chmod 600 /etc/sentinel/vault.env
+```
+
+Replace `your-vault-token-here` with a token that has `kv/get` permission for the path set in `VAULT_SECRET_PATH` (default `secret/sentineledge/health`).
+
+After creating the file, reload systemd and run the service once:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl start --no-block sentinel-health-vault.service
+sudo systemctl status sentinel-health-vault.service --no-pager -l
+```
+
+
 Timer (recommended)
 -------------------
 
