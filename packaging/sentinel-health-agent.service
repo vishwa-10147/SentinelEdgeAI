@@ -1,0 +1,15 @@
+[Unit]
+Description=SentinelEdgeAI Health Agent (writes runtime credentials)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/mkdir -p /run/sentinel
+ExecStartPre=/bin/chown root:root /run/sentinel
+ExecStartPre=/bin/chmod 700 /run/sentinel
+ExecStart=/usr/local/bin/sentinel-health-agent.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
