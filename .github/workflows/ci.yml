@@ -48,3 +48,38 @@ jobs:
           CI_HEALTH_PORT: 5050
         run: |
           python scripts/ci_health_probe.py
+
+  vault-fetcher-test:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vault CLI
+        uses: hashicorp/setup-vault@v2
+        with:
+          vault_version: '1.14.0'
+      - name: Start Vault dev server
+        run: |
+          nohup vault server -dev -dev-root-token-id=root -dev-listen-address=127.0.0.1:8200 > vault.log 2>&1 &
+          sleep 1
+      - name: Configure Vault and write secret
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: root
+        run: |
+          export VAULT_ADDR=http://127.0.0.1:8200
+          export VAULT_TOKEN=root
+          # ensure kv engine available (ignore errors)
+          vault secrets enable -path=secret -version=2 kv || true
+          vault kv put secret/sentineledge/health HEALTH_PASS=ci-pass
+          vault kv get secret/sentineledge/health
+      - name: Run fetcher script against Vault
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: root
+          VAULT_SECRET_PATH: secret/sentineledge/health
+        run: |
+          sudo bash scripts/fetch_health_from_vault.sh
+      - name: Verify health env written
+        run: |
+          sudo cat /etc/sentinel/health.env
