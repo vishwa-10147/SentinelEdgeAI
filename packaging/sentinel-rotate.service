@@ -1,0 +1,11 @@
+[Unit]
+Description=Rotate SentinelEdgeAI health credentials
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rotate-health.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -9,3 +9,19 @@ Recommendations:
 - Use a centralized secrets store (HashiCorp Vault) for production secrets.
 - Enable `systemd` service sandboxes (`PrivateTmp=yes`, `ProtectSystem=full`) where compatible.
 - Regularly rotate credentials in `/etc/sentinel/health.env` and consider an automated agent.
+
+Rotation helper:
+- This repo contains `scripts/rotate_health.sh` plus a unit and timer under `packaging/` to run daily.
+- To install the rotation timer on the device (requires root):
+  1. Copy the script and units into place:
+	  ```bash
+	  sudo install -m 755 scripts/rotate_health.sh /usr/local/bin/rotate-health.sh
+	  sudo install -m 644 packaging/sentinel-rotate.service /etc/systemd/system/sentinel-rotate.service
+	  sudo install -m 644 packaging/sentinel-rotate.timer /etc/systemd/system/sentinel-rotate.timer
+	  ```
+  2. Reload systemd, enable and start the timer:
+	  ```bash
+	  sudo systemctl daemon-reload
+	  sudo systemctl enable --now sentinel-rotate.timer
+	  ```
+
