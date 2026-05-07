@@ -29,3 +29,13 @@ groups:
         annotations:
           summary: "Sentinel Vault fetcher timer not active"
           description: "The sentinel-health-vault.timer is not active on {{ $labels.instance }} for at least 30 minutes. Verify timer and service installation."
+
+      - alert: SentinelLastFetchStale
+        # Fires when the last successful Vault fetch is older than 36h (requires node_exporter textfile_collector exposing `sentinel_last_fetch_timestamp`).
+        expr: time() - sentinel_last_fetch_timestamp > 129600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sentinel Vault fetcher has not fetched secrets recently"
+          description: "No successful Vault fetch recorded for over 36 hours on {{ $labels.instance }}. Check the fetcher service, Vault connectivity, and logs."

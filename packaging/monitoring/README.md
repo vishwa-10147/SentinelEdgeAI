@@ -31,6 +31,32 @@ Vault fetcher timer alert:
 
 If you don't run `node_exporter`, consider exposing a small metric (file, HTTP, or journald exporter) indicating last successful fetch time and alert on its staleness instead.
 
+Textfile collector (recommended)
+-------------------------------
+
+This repo now writes a Prometheus textfile metric when the Vault fetcher succeeds:
+
+- `sentinel_last_fetch_timestamp` (gauge) — Unix epoch seconds of the last successful fetch.
+
+Where the metric is written:
+
+- The fetcher will write `sentinel_last_fetch.prom` to the first existing directory among:
+	- `/var/lib/node_exporter/textfile_collector`
+	- `/var/run/node_exporter/textfile_collector`
+	- `/var/cache/node_exporter/textfile_collector`
+- If none exist it will create `/var/run/node_exporter/textfile_collector` and write the file there.
+
+Enable node_exporter textfile collector:
+
+1. Install and run `node_exporter` on the device.
+2. Ensure the `--collector.textfile.directory` flag points to one of the paths above (default commonly `/var/lib/node_exporter/textfile_collector`).
+3. Restart `node_exporter` and confirm the metric appears in Prometheus by scraping the node_exporter target.
+
+Prometheus rule:
+
+- `SentinelLastFetchStale` alerts when `sentinel_last_fetch_timestamp` is older than 36 hours. Adjust the threshold in `packaging/prometheus/alerts.yml` if your fetch cadence differs.
+
+
 To enable alerts:
 
 1. Place `packaging/prometheus/alerts.yml` on your Prometheus server and include it in `prometheus.yml` via `rule_files`.

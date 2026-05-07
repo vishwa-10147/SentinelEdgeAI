@@ -39,5 +39,28 @@ date -u +"%Y-%m-%dT%H:%M:%SZ" > "$TMP_TS"
 install -o root -g root -m 644 "$TMP_TS" "$TS_FILE"
 rm -f "$TMP_TS"
 
+# Also write a Prometheus textfile metric for node_exporter textfile collector
+# Try common textfile collector directories and write `sentinel_last_fetch_timestamp` as epoch seconds
+TS_EPOCH=$(date -u +%s)
+METRIC_NAME=sentinel_last_fetch_timestamp
+METRIC_FILE_TMP=$(mktemp /tmp/sentinel_last_fetch.XXXX)
+echo "# HELP ${METRIC_NAME} Unix timestamp of last successful Vault fetch" > "$METRIC_FILE_TMP"
+echo "# TYPE ${METRIC_NAME} gauge" >> "$METRIC_FILE_TMP"
+echo "${METRIC_NAME} ${TS_EPOCH}" >> "$METRIC_FILE_TMP"
+
+TEXTDIRS="/var/lib/node_exporter/textfile_collector /var/run/node_exporter/textfile_collector /var/cache/node_exporter/textfile_collector"
+for d in $TEXTDIRS; do
+  if [ -d "$d" ]; then
+    install -o root -g root -m 644 "$METRIC_FILE_TMP" "$d/sentinel_last_fetch.prom" || true
+    FOUND=1 && break
+  fi
+done
+if [ -z "${FOUND:-}" ]; then
+  # create a local textfile dir under /var/run and write there
+  mkdir -p /var/run/node_exporter/textfile_collector >/dev/null 2>&1 || true
+  install -o root -g root -m 644 "$METRIC_FILE_TMP" /var/run/node_exporter/textfile_collector/sentinel_last_fetch.prom || true
+fi
+rm -f "$METRIC_FILE_TMP"
+
 exit 0
 
