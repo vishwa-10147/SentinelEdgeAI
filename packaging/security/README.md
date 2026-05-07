@@ -25,3 +25,29 @@ Rotation helper:
 	  sudo systemctl enable --now sentinel-rotate.timer
 	  ```
 
+Optional: Vault integration
+---------------------------
+
+You can replace manual `/etc/sentinel/health.env` maintenance with a Vault-backed fetcher.
+
+Files included:
+
+- `scripts/fetch_health_from_vault.sh` — uses the `vault` CLI to read `HEALTH_PASS` from a KV path (defaults to `secret/sentineledge/health`) and writes `/etc/sentinel/health.env` with `root:root 600` permissions.
+- `packaging/sentinel-health-vault.service` — a one-shot systemd unit that runs the fetcher. Install the script to `/usr/local/bin/fetch-health-from-vault.sh` and the unit to `/etc/systemd/system/`.
+
+To enable:
+
+1. Ensure a Vault server is reachable and the machine has a valid Vault token (via environment, agent, or systemd token helper).
+2. Optionally set `VAULT_SECRET_PATH` env var to your KV path (defaults to `secret/sentineledge/health`).
+3. Install the script and unit:
+
+```sh
+sudo install -m 755 scripts/fetch_health_from_vault.sh /usr/local/bin/fetch-health-from-vault.sh
+sudo install -m 644 packaging/sentinel-health-vault.service /etc/systemd/system/sentinel-health-vault.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now sentinel-health-vault.service
+```
+
+4. Consider adding a timer to rotate or refresh secrets periodically, or invoke the service from your existing rotation workflow.
+
+

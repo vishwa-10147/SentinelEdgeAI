@@ -1,0 +1,12 @@
+[Unit]
+Description=Fetch Sentinel health secret from Vault
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fetch-health-from-vault.sh
+Environment=VAULT_ADDR=https://127.0.0.1:8200
+
+[Install]
+WantedBy=multi-user.target
