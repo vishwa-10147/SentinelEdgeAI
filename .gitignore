@@ -1,0 +1,31 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Virtualenvs
+.venv/
+venv/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Logs and runtime files
+logs/
+*.log
+live_stats.json
+health.json
+device_profiles.json
+risk_timeline.json
+
+# Pytest cache
+.pytest_cache/
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+
+# Misc
+*.pyc
