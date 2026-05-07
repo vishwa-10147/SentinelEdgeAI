@@ -26,12 +26,16 @@ class AdaptiveBaseline:
         self.stats[key] = {
             "duration_mean": np.mean(durations),
             "duration_std": np.std(durations),
-
+            # preserve old-style keys and provide compatibility
             "bytes_mean": np.mean(bytes_),
             "bytes_std": np.std(bytes_),
+            "total_bytes_mean": np.mean(bytes_),
+            "total_bytes_std": np.std(bytes_),
 
             "packets_mean": np.mean(packets),
             "packets_std": np.std(packets),
+            "total_packets_mean": np.mean(packets),
+            "total_packets_std": np.std(packets),
 
             "byte_ratio_mean": np.mean(ratios),
             "byte_ratio_std": np.std(ratios),
