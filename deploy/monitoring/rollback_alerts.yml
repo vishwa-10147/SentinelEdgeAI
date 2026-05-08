@@ -1,0 +1,11 @@
+groups:
+  - name: sentinel.rollback.guard
+    rules:
+      - alert: SentinelRollbackGuardTriggered
+        expr: sentinel_rollback_guard_events_total > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sentinel rollback guard triggered on one or more devices"
+          description: "The rollback guard has executed and reversed changes on at least one device. Investigate deployment and recent changes."

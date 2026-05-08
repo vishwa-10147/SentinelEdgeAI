@@ -1,0 +1,100 @@
+STEP 1 — Verify Secret Exists
+
+If you added via website, go to:
+
+Repo → Settings → Secrets and variables → Actions
+
+Confirm you see:
+
+SENTINEL_MODEL_SIGNING_KEY
+STEP 2 — Push a Test Commit
+
+From your Pi:
+
+git status
+
+If there are changes:
+
+git add .
+git commit -m "test model signing pipeline"
+git push
+
+If Git says no changes, make a tiny change:
+
+echo "# test" >> temp.txt
+git add temp.txt
+git commit -m "trigger workflow"
+git push
+STEP 3 — Open GitHub Actions
+
+Go to:
+
+GitHub Repo → Actions
+
+You should now see workflows running.
+
+Look for:
+
+model-signing
+check-model-signature
+CI
+STEP 4 — Verify Workflow Success
+
+You want green checkmarks.
+
+GOOD:
+
+✓ completed successfully
+
+BAD:
+
+signature verification failed
+missing secret
+invalid signature
+STEP 5 — Verify Pi Service Still Healthy
+
+Run on Pi:
+
+sudo systemctl status sentineledgeai.service
+
+You want:
+
+active (running)
+STEP 6 — Check Runtime Logs
+
+Run:
+
+sudo journalctl -u sentineledgeai.service -n 50 --no-pager
+
+Look for:
+
+no crashes
+no signature errors
+no missing key warnings
+IMPORTANT
+
+Do NOT enable enforcement yet.
+
+Keep:
+
+FIREWALL_DRY_RUN=1
+
+until:
+
+workflows pass
+verification works
+rollback tested
+firewall simulation stable
+What You Have Achieved
+
+You now have:
+
+GitHub CI
+    ↓
+Signed ML models
+    ↓
+Secure key verification on Raspberry Pi
+    ↓
+Protected IDS deployment pipeline
+
+That is a proper secure ML deployment architecture.

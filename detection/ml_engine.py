@@ -2,6 +2,7 @@ from sklearn.ensemble import IsolationForest
 import numpy as np
 import joblib
 import os
+from security.model_signing import ModelSignatureError, sign_model, verify_model_signature
 
 
 class MLEngine:
@@ -11,15 +12,20 @@ class MLEngine:
         self.model_path = model_path
         self.training_data = []
         self.trained = False
+        self.allow_unsigned_models = os.environ.get("SENTINEL_ALLOW_UNSIGNED_MODELS", "0") == "1"
 
         # Create folder if not exists
         os.makedirs("model", exist_ok=True)
 
         # Try loading existing model
         if os.path.exists(self.model_path):
+            if self.allow_unsigned_models:
+                print("Loaded unsigned ML model because SENTINEL_ALLOW_UNSIGNED_MODELS=1.")
+            else:
+                verify_model_signature(self.model_path)
+                print("Loaded existing signed ML model.")
             self.model = joblib.load(self.model_path)
             self.trained = True
-            print("✅ Loaded existing ML model.")
         else:
             self.model = IsolationForest(
                 n_estimators=100,
@@ -40,7 +46,12 @@ class MLEngine:
 
         # Save model after training
         joblib.dump(self.model, self.model_path)
-        print("💾 ML model trained and saved.")
+        try:
+            sign_model(self.model_path, signer="MLEngine.train")
+            print("ML model trained, saved, and signed.")
+        except ModelSignatureError:
+            self.trained = False
+            raise
 
         return True
 

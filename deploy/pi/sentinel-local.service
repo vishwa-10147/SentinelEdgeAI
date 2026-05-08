@@ -1,0 +1,17 @@
+[Unit]
+Description=SentinelEdgeAI Local Dashboard + Sniffer
+After=network.target
+
+[Service]
+User=vishwa
+WorkingDirectory=/home/vishwa/SentinelEdgeAI
+Environment=CAPTURE_IN_PROCESS=1
+Environment=CAPTURE_IFACE=eth0
+Environment=REDACT_SENSITIVE=1
+Environment=REDACT_SALT=replace_with_a_secret
+ExecStart=/home/vishwa/SentinelEdgeAI/.venv/bin/python -u dashboard/dashboard_api.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

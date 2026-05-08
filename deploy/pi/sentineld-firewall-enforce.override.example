@@ -1,0 +1,10 @@
+[Service]
+# Drop-in example to enable real firewall enforcement for the sentineledgeai service.
+# Copy to /etc/systemd/system/sentineledgeai.service.d/enable_enforcement.conf
+# then run: sudo systemctl daemon-reload && sudo systemctl restart sentineledgeai.service
+
+# This environment variable instructs the service to disable dry-run and apply rules.
+Environment="FIREWALL_DRY_RUN=0"
+
+# Optional: set a path to the env file (if your service loads it)
+# EnvironmentFile=/etc/sentinel/firewall-rollback.env

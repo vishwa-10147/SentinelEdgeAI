@@ -1,3 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+/.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+
+# Temporary
+/tmp/
 # Byte-compiled / cache
 __pycache__/
 *.py[cod]
@@ -10,14 +31,23 @@ venv/
 *.egg-info/
 dist/
 build/
+*.tar.gz
 
 # Logs and runtime files
 logs/
 *.log
+alerts.json
+firewall_rules.json
+firewall_policy.json
+live_events.jsonl
 live_stats.json
 health.json
 device_profiles.json
 risk_timeline.json
+flows.csv
+*.pkl.sig
+frontend/dist/
+frontend/node_modules/
 
 # Pytest cache
 .pytest_cache/

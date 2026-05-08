@@ -1,0 +1,13 @@
+.venv
+venv
+__pycache__
+*.pyc
+.git
+node_modules
+frontend/node_modules
+dist
+.env
+.DS_Store
+/tmp
+*.log
+.env.local

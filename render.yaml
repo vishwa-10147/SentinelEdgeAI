@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: sentinel-frontend
+    env: static
+    plan: free
+    buildCommand: cd frontend && npm ci && npm run build
+    startCommand: cd frontend && npm run preview
+    envVars:
+      - key: VITE_API_BASE
+        value: https://sentry-backend.example.com  # replace after deploy with backend URL
+    repo: .
+  - type: web
+    name: sentinel-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn dashboard.dashboard_api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DASHBOARD_API_KEY
+        value: "__SET_IN_RENDER_DASHBOARD__"
+      - key: REDACT_SENSITIVE
+        value: "1"
+      - key: REDACT_SALT
+        value: "__SET_IN_RENDER_DASHBOARD__"

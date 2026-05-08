@@ -1,0 +1,16 @@
+[Unit]
+Description=SentinelEdgeAI Integration Test Runner (example)
+After=network.target
+
+[Service]
+Type=oneshot
+# Adjust User and ExecStart paths to match your installation
+User=vishwa
+WorkingDirectory=/home/vishwa/SentinelEdgeAI
+ExecStart=/home/vishwa/SentinelEdgeAI/deploy/pi/run_integration.sh
+
+[Install]
+WantedBy=multi-user.target
+
+# To install: copy this to /etc/systemd/system/integration_test.service and run
+# sudo systemctl daemon-reload && sudo systemctl enable --now integration_test.service

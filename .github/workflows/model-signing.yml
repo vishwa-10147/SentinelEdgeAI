@@ -1,0 +1,71 @@
+name: Model Signing
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'model/**'
+      - 'security/**'
+      - 'scripts/sign_model.py'
+      - 'detection/ml_engine.py'
+      - '.github/workflows/model-signing.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sign-and-verify-model:
+    runs-on: ubuntu-latest
+    env:
+      MODEL_PATH: model/isolation_forest.pkl
+      SENTINEL_MODEL_SIGNING_KEY: ${{ secrets.SENTINEL_MODEL_SIGNING_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Require model signing secret
+        run: |
+          if [ -z "${SENTINEL_MODEL_SIGNING_KEY:-}" ]; then
+            echo "Missing required GitHub secret: SENTINEL_MODEL_SIGNING_KEY" >&2
+            exit 2
+          fi
+
+      - name: Check model artifact exists
+        run: |
+          test -f "$MODEL_PATH"
+
+      - name: Sign model artifact
+        run: |
+          python scripts/sign_model.py "$MODEL_PATH" \
+            --signer "github-actions:${GITHUB_RUN_ID}:${GITHUB_SHA}" \
+            --quiet
+
+      - name: Verify model signature
+        run: |
+          python scripts/sign_model.py "$MODEL_PATH" --verify --quiet
+
+      - name: Verify tamper detection
+        run: |
+          cp "$MODEL_PATH" /tmp/tampered-model.pkl
+          cp "$MODEL_PATH.sig" /tmp/tampered-model.pkl.sig
+          printf tamper >> /tmp/tampered-model.pkl
+          if python scripts/sign_model.py /tmp/tampered-model.pkl --verify --quiet; then
+            echo "Tampered model verification unexpectedly passed" >&2
+            exit 1
+          fi
+
+      - name: Upload signed model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-isolation-forest-model
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            model/isolation_forest.pkl
+            model/isolation_forest.pkl.sig

@@ -1,0 +1,12 @@
+[Unit]
+# systemd drop-in to grant CAP_NET_RAW to the service
+# Place this file at /etc/systemd/system/sentineledgeai.service.d/override.conf
+
+[Service]
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=false
+
+# NOTE: Granting capabilities to a service allows limited kernel privileges
+# without running the whole service as root. Review security policies before
+# applying in production.

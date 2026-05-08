@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# pre-push hook: verify model signatures for staged artifacts
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+export PYTHONPATH="$ROOT"
+python3 "$ROOT/scripts/pre_push_check_signature.py"

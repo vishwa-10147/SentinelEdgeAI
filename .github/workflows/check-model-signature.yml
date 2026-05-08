@@ -1,0 +1,30 @@
+name: Check model signatures
+
+on:
+  pull_request:
+    paths:
+      - 'model/**'
+      - 'security/**'
+  push:
+    paths:
+      - 'model/**'
+      - 'security/**'
+
+jobs:
+  verify-signatures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+      - name: Verify model signatures
+        env:
+          SENTINEL_MODEL_SIGNING_KEY: ${{ secrets.SENTINEL_MODEL_SIGNING_KEY }}
+        run: |
+          python scripts/ci_check_model_signatures.py

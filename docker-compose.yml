@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  backend:
+    build: .
+    container_name: sentineledge-backend
+    ports:
+      - "9000:9000"
+    environment:
+      - CAPTURE_IN_PROCESS=0
+      - FIREWALL_DRY_RUN=1
+    volumes:
+      - ./logs:/app/logs
+      - ./frontend/dist:/app/frontend/dist:ro
+    restart: unless-stopped

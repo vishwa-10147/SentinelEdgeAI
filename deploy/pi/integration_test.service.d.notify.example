@@ -1,0 +1,2 @@
+[Unit]
+OnFailure=integration_test_failure_notifier.service

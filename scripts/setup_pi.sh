@@ -118,3 +118,12 @@ echo "Reboot or re-login may be required after group changes."
 
 echo "If you prefer not to install the systemd service, run the app manually with:"
 echo "  source $VENV_DIR/bin/activate && python $REPO_DIR/main.py"
+
+# If repo contains an example override for capabilities, install it to the service drop-in
+if [ -f "$REPO_DIR/deploy/pi/override.conf.example" ]; then
+  echo "Installing service override from deploy/pi/override.conf.example"
+  sudo mkdir -p /etc/systemd/system/sentineledgeai.service.d || true
+  sudo cp "$REPO_DIR/deploy/pi/override.conf.example" /etc/systemd/system/sentineledgeai.service.d/override.conf || true
+  sudo systemctl daemon-reload || true
+  echo "Installed override at /etc/systemd/system/sentineledgeai.service.d/override.conf"
+fi

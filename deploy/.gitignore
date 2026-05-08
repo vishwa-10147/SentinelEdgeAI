@@ -1,0 +1,6 @@
+# Ignore runtime JSON outputs when using deploy helpers
+alerts.json
+live_stats.json
+device_profiles.json
+risk_timeline.json
+health.json

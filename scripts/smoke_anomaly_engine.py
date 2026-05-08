@@ -8,6 +8,12 @@ Exit code 0 indicates pass.
 """
 import sys
 import logging
+import os
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 from detection.anomaly_engine import AnomalyEngine
 
 class FakeBaseline:

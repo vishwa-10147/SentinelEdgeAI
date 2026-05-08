@@ -59,10 +59,18 @@ health_monitor = HealthMonitor()
 flow_table = FlowTable(idle_timeout=30)
 feature_extractor = FeatureExtractor()
 
+# optional in-process event publisher (callable)
+event_publisher = None
+
+def set_event_publisher(cb):
+    global event_publisher
+    event_publisher = cb
+
 
 # Live stats file for simple dashboarding / UI
 LIVE_STATS_FILE = "live_stats.json"
 HEALTH_FILE = "health.json"
+LIVE_EVENTS_FILE = "live_events.jsonl"
 
 # ===============================
 # 📊 Performance Metrics
@@ -266,6 +274,33 @@ def process_packet(packet):
                     }
 
                     alert_logger.log(alert)
+
+                # -------------------------------
+                # Write live event (always)
+                # -------------------------------
+                try:
+                    evt = {
+                        "timestamp": time.time(),
+                        "type": "flow",
+                        "src": flow.initiator_ip,
+                        "dst": flow.responder_ip,
+                        "protocol": flow.protocol,
+                        "packets": flow.packet_count if hasattr(flow, 'packet_count') else 1,
+                        "bytes": flow.byte_count if hasattr(flow, 'byte_count') else 0,
+                        "risk": final_risk,
+                        "severity": severity,
+                        "attack_type": attack_type
+                    }
+                    with open(LIVE_EVENTS_FILE, 'a') as le:
+                        le.write(json.dumps(evt) + "\n")
+                    # also publish to in-process subscriber if available
+                    try:
+                        if event_publisher:
+                            event_publisher(evt)
+                    except Exception:
+                        pass
+                except Exception:
+                    logger.debug("Failed to write live event", exc_info=True)
 
                     # Log security events at appropriate level
                     if final_risk >= config.get("risk_thresholds", "critical"):

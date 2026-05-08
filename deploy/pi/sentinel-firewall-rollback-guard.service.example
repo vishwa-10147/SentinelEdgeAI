@@ -1,0 +1,15 @@
+[Unit]
+Description=SentinelEdgeAI firewall rollback guard
+Documentation=file:/home/vishwa/SentinelEdgeAI/README.md
+After=network-online.target sentinel-local.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/sentinel/firewall-rollback.env
+ExecStart=/home/vishwa/SentinelEdgeAI/scripts/firewall_rollback_guard.sh
+
+# Rollback requires the same firewall privileges as real enforcement.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=false

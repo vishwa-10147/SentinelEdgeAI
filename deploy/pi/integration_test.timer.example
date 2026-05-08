@@ -1,0 +1,13 @@
+[Unit]
+Description=Run SentinelEdgeAI integration test every 5 minutes (example)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=integration_test.service
+
+[Install]
+WantedBy=timers.target
+
+# To install: copy this and the corresponding .service to /etc/systemd/system/, then
+# sudo systemctl daemon-reload && sudo systemctl enable --now integration_test.timer

@@ -48,7 +48,7 @@ persistence:
 
 # Logging Configuration
 logging:
-  level: INFO
+  level: WARNING
   log_file: "logs/sentinel.log"
   max_bytes: 5242880     # 5 MB
   backup_count: 5        # Keep last 5 rotated files
@@ -57,3 +57,4 @@ logging:
 app:
   host: 0.0.0.0
   port: 5000
+  metrics_port: 8001

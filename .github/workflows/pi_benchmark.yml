@@ -1,0 +1,27 @@
+name: Pi Benchmark (scheduled)
+
+on:
+  schedule:
+    - cron: '0 3 * * 0' # weekly on Sunday 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  run-benchmark:
+    runs-on: [self-hosted, privileged]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+
+      - name: Run Pi benchmark
+        run: |
+          python scripts/pi_benchmark.py --packets 20000

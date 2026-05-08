@@ -1,0 +1,12 @@
+[Unit]
+Description=Vault Agent (provision sentinel signing key)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/vault agent -config=/etc/vault/agent.hcl
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

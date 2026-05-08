@@ -77,4 +77,29 @@ class FlowTable:
 
         return expired_flows
 
+    def expire_all(self, flow_state="FORCED_EXPIRE"):
+        expired_flows = []
+
+        for key, flow in list(self.flows.items()):
+            duration = (flow["last_seen"] - flow["start_time"]).total_seconds()
+            record = FlowRecord(
+                initiator_ip=flow["initiator_ip"],
+                initiator_port=flow["initiator_port"],
+                responder_ip=flow["responder_ip"],
+                responder_port=flow["responder_port"],
+                protocol=flow["protocol"],
+                start_time=flow["start_time"],
+                end_time=flow["last_seen"],
+                duration=duration,
+                forward_bytes=flow["forward_bytes"],
+                backward_bytes=flow["backward_bytes"],
+                forward_packets=flow["forward_packets"],
+                backward_packets=flow["backward_packets"],
+                flow_state=flow_state,
+            )
+            expired_flows.append(record)
+            del self.flows[key]
+
+        return expired_flows
+
 feature_extractor = FeatureExtractor()
