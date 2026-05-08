@@ -11,18 +11,15 @@ on:
 jobs:
   container-integration:
     name: Run firewall integration in Docker
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, docker]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker on runner
-        uses: docker/setup-docker@v3
-
-      - name: Run integration test inside privileged Docker
+      - name: Run integration test inside privileged Docker (self-hosted)
         run: |
-          # run tests in a disposable Python container with NET_ADMIN
-          sudo docker run --rm \
+          # the self-hosted runner must have Docker installed and allow --cap-add
+          docker run --rm \
             --cap-add=NET_ADMIN \
             --cap-add=SYS_ADMIN \
             -v "${{ github.workspace }}:/workspace" \
