@@ -398,6 +398,31 @@ This repository now contains a full local-first pipeline with detection, live da
   - `POST /api/firewall/unblock` — remove a block (body: `{ip}`)
   - `GET /api/firewall/actions` — recent firewall action audit log
   - `GET/POST /api/firewall/policy` — inspect/update whitelist and TTL policy
+
+  ## Frontend Build & Testing
+
+  The React frontend lives in the `frontend/` directory. Source files are tracked in the branch `restore/frontend-tracked-files` and a PR has been opened: https://github.com/vishwa-10147/SentinelEdgeAI/pull/1
+
+  To build and test the frontend locally (recommended):
+
+  ```bash
+  # from repo root (requires Node.js and npm)
+  cd frontend
+  npm ci            # install deps
+  npm run build     # produce production build in frontend/dist
+  npm run dev       # run dev server for interactive testing
+  ```
+
+  To serve the built production bundle with the backend (static files are ignored in git):
+
+  ```bash
+  # from repo root (venv activated)
+  source venv/bin/activate
+  python -m uvicorn dashboard.dashboard_api:app --reload
+  # the backend will serve static files from frontend/dist when present
+  ```
+
+  I'll wait for your webpage prompt to incorporate into the frontend or update the homepage content.
   - `POST /api/firewall/whitelist` — add/remove a whitelisted IP
   - `POST /api/firewall/expire` — force TTL expiry cleanup
   - `POST /api/firewall/rollback` — remove all active block rules
