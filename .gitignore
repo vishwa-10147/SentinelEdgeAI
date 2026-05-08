@@ -59,3 +59,26 @@ frontend/node_modules/
 
 # Misc
 *.pyc
+
+# Large/binary files to keep locally but not track
+3d_model_specs.pdf
+FINAL COMPLETE PROJECT LIST.pdf
+FINAL COMPLETE PROJECT LIST.docx
+SentinelEdgeAI.docx
+SentinelEdgeAI_Abstract.docx
+
+# Frontend build / dependencies
+frontend/dist/
+frontend/node_modules/
+
+# Distribution and caches
+dist/
+build/
+
+# Local environment markers (keep local venvs out)
+venv/
+.venv/
+
+# Other large/runtime files
+live_events.jsonl
+logs/
