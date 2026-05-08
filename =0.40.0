@@ -1,0 +1,66 @@
+Looking in indexes: https://pypi.org/simple, https://www.piwheels.org/simple
+Requirement already satisfied: GitPython in ./venv/lib/python3.13/site-packages (3.1.46)
+Collecting GitPython
+  Using cached gitpython-3.1.50-py3-none-any.whl (212 kB)
+Requirement already satisfied: pillow in ./venv/lib/python3.13/site-packages (12.1.1)
+Collecting pillow
+  Using cached pillow-12.2.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl.metadata (8.8 kB)
+Requirement already satisfied: requests in ./venv/lib/python3.13/site-packages (2.32.5)
+Collecting requests
+  Using cached requests-2.33.1-py3-none-any.whl (64 kB)
+Requirement already satisfied: tornado in ./venv/lib/python3.13/site-packages (6.5.4)
+Collecting tornado
+  Downloading tornado-6.5.5-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (2.8 kB)
+Requirement already satisfied: fastapi in ./venv/lib/python3.13/site-packages (0.99.1)
+Collecting fastapi
+  Using cached fastapi-0.136.1-py3-none-any.whl (117 kB)
+Requirement already satisfied: starlette in ./venv/lib/python3.13/site-packages (0.27.0)
+Collecting starlette
+  Using cached starlette-1.0.0-py3-none-any.whl (72 kB)
+Requirement already satisfied: gitdb<5,>=4.0.1 in ./venv/lib/python3.13/site-packages (from GitPython) (4.0.12)
+Requirement already satisfied: smmap<6,>=3.0.1 in ./venv/lib/python3.13/site-packages (from gitdb<5,>=4.0.1->GitPython) (5.0.2)
+Requirement already satisfied: charset_normalizer<4,>=2 in ./venv/lib/python3.13/site-packages (from requests) (3.4.4)
+Requirement already satisfied: idna<4,>=2.5 in ./venv/lib/python3.13/site-packages (from requests) (3.11)
+Requirement already satisfied: urllib3<3,>=1.26 in ./venv/lib/python3.13/site-packages (from requests) (2.6.3)
+Requirement already satisfied: certifi>=2023.5.7 in ./venv/lib/python3.13/site-packages (from requests) (2026.1.4)
+Collecting pydantic>=2.9.0 (from fastapi)
+  Using cached pydantic-2.13.4-py3-none-any.whl (472 kB)
+Requirement already satisfied: typing-extensions>=4.8.0 in ./venv/lib/python3.13/site-packages (from fastapi) (4.15.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in ./venv/lib/python3.13/site-packages (from fastapi) (0.4.2)
+Requirement already satisfied: annotated-doc>=0.0.2 in ./venv/lib/python3.13/site-packages (from fastapi) (0.0.4)
+Requirement already satisfied: anyio<5,>=3.6.2 in ./venv/lib/python3.13/site-packages (from starlette) (4.13.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./venv/lib/python3.13/site-packages (from pydantic>=2.9.0->fastapi) (0.7.0)
+Requirement already satisfied: pydantic-core==2.46.4 in ./venv/lib/python3.13/site-packages (from pydantic>=2.9.0->fastapi) (2.46.4)
+Using cached pillow-12.2.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl (6.4 MB)
+Downloading tornado-6.5.5-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (448 kB)
+Installing collected packages: tornado, requests, pillow, starlette, pydantic, GitPython, fastapi
+  Attempting uninstall: tornado
+    Found existing installation: tornado 6.5.4
+    Uninstalling tornado-6.5.4:
+      Successfully uninstalled tornado-6.5.4
+  Attempting uninstall: requests
+    Found existing installation: requests 2.32.5
+    Uninstalling requests-2.32.5:
+      Successfully uninstalled requests-2.32.5
+  Attempting uninstall: pillow
+    Found existing installation: pillow 12.1.1
+    Uninstalling pillow-12.1.1:
+      Successfully uninstalled pillow-12.1.1
+  Attempting uninstall: starlette
+    Found existing installation: starlette 0.27.0
+    Uninstalling starlette-0.27.0:
+      Successfully uninstalled starlette-0.27.0
+  Attempting uninstall: pydantic
+    Found existing installation: pydantic 1.10.26
+    Uninstalling pydantic-1.10.26:
+      Successfully uninstalled pydantic-1.10.26
+  Attempting uninstall: GitPython
+    Found existing installation: GitPython 3.1.46
+    Uninstalling GitPython-3.1.46:
+      Successfully uninstalled GitPython-3.1.46
+  Attempting uninstall: fastapi
+    Found existing installation: fastapi 0.99.1
+    Uninstalling fastapi-0.99.1:
+      Successfully uninstalled fastapi-0.99.1
+
+Successfully installed GitPython-3.1.50 fastapi-0.136.1 pillow-12.2.0 pydantic-2.13.4 requests-2.33.1 starlette-1.0.0 tornado-6.5.5

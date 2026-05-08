@@ -1,0 +1,12 @@
+{
+  "budgets": {
+    "performance": {
+      "first-contentful-paint": 2000,
+      "largest-contentful-paint": 2500,
+      "total-blocking-time": 300,
+      "cumulative-layout-shift": 0.1,
+      "speed-index": 2500
+    }
+  },
+  "notes": "Values are milliseconds or unitless for CLS. Use Lighthouse or PSI to measure and tune."
+}
