@@ -1,249 +1,322 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import CytoscapeComponent from 'react-cytoscapejs'
 
-export default function Topology({devices, flows, alerts, firewallRules = [], onSelectDevice, onMount}){
-  const cyRef = useRef(null)
-  const containerRef = useRef(null)
-  const canvasRef = useRef(null)
-  const [particles, setParticles] = useState([])
-  const [demoPulseAt, setDemoPulseAt] = useState(0)
+const COLORS = {
+  normal: '#22c55e',
+  medium: '#3b82f6',
+  high: '#f59e0b',
+  critical: '#ef4444',
+  blocked: '#991b1b',
+  sensor: '#a855f7',
+  edge: '#ffffff22'
+}
 
-  const elements = []
-  // devices expected as dict or list
-  const devList = Array.isArray(devices) ? devices : (devices && devices.profiles ? devices.profiles : [])
+function severityFromRisk(risk){
+  const score = Number(risk || 0)
+  if(score >= 75) return 'critical'
+  if(score >= 50) return 'high'
+  if(score >= 25) return 'medium'
+  return 'normal'
+}
 
-  devList.forEach((d, idx)=>{
-    const id = d.mac || d.id || ('dev'+idx)
-    const risk = d.risk || d.score || 0
-    const color = risk >= 75 ? '#b00020' : risk >=50 ? '#ff6f00' : risk >=25 ? '#ffd600' : '#4caf50'
-    // if device is blocked, add a distinct border
-    const isBlocked = Array.isArray(firewallRules) && firewallRules.find(r=>r.ip===d.ip||r.ip===d.host||r.ip===d.mac)
-    const style = isBlocked ? { 'background-color': color, 'border-width': 4, 'border-color': '#E74C3C' } : { 'background-color': color }
-    elements.push({ data: { id, label: d.name||d.host||id }, style })
+function iconFor(type){
+  if(type === 'external') return '🌐'
+  if(type === 'gateway') return '◆'
+  if(type === 'sensor') return '◉'
+  if(type === 'server') return '▣'
+  return '●'
+}
+
+function isBlockedDevice(device, rules){
+  return Array.isArray(rules) && rules.some(rule=>{
+    const ip = rule.ip || rule.target
+    return ip && (ip === device.ip || ip === device.id || ip === device.hostname)
   })
+}
 
-  // flows: try to map flows edges
-    if (flows && Array.isArray(flows.flows || flows)){
-    const fs = flows.flows || flows
-    fs.forEach((f, i)=>{
-      const src = f.src_mac || f.src || f.src_ip || f.src_host
-      const dst = f.dst_mac || f.dst || f.dst_ip || f.dst_host
-      if(src && dst){
-        const edgeId = `e${i}`
-        // determine if this flow is blocked or high-risk
-        const isBlocked = (f.risk && f.risk>=75) || (Array.isArray(firewallRules) && firewallRules.find(r=>r.ip===f.src_ip||r.ip===f.dst_ip||r.ip===f.src_mac||r.ip===f.dst_mac))
-        const edgeStyle = isBlocked ? { 'line-color': '#E74C3C', 'line-style':'dashed', 'width': 3, 'opacity': 0.9 } : { 'line-color': '#88C999', 'width': 1.6, 'opacity': 0.7 }
-        elements.push({ data: { id: edgeId, source: src, target: dst, label: f.packets || '' }, style: edgeStyle })
-      }
-    })
-  }
-  useEffect(()=>{
-    if(!cyRef.current) return
-    const cy = cyRef.current
-    cy.layout({ name: 'cose' }).run()
-    cy.fit()
+function isBlockedFlow(flow, rules){
+  return Array.isArray(rules) && rules.some(rule=>{
+    const ip = rule.ip || rule.target
+    return ip && (ip === flow.src || ip === flow.dst)
+  })
+}
 
-    // node click handler -> call onSelectDevice
-    if(typeof onSelectDevice === 'function'){
-      cy.on('tap', 'node', (evt)=>{
-        const node = evt.target
-        const id = node.data('id')
-        onSelectDevice(id)
-      })
-    }
+export default function Topology({ devices = [], flows = [], firewallRules = [], onSelectDevice, onMount }){
+  const cyRef = useRef(null)
+  const wrapRef = useRef(null)
+  const canvasRef = useRef(null)
+  const animationRef = useRef(null)
+  const particlesRef = useRef([])
+  const blockedEdgesRef = useRef([])
 
-    // build particles from flows
-    const ps = []
-    try{
-      const fs = flows && (Array.isArray(flows.flows || flows) ? (flows.flows || flows) : [])
-      fs.forEach((f,i)=>{
-        const srcId = f.src_mac || f.src || f.src_ip || f.src_host
-        const dstId = f.dst_mac || f.dst || f.dst_ip || f.dst_host
-        const srcNode = cy.getElementById(srcId)
-        const dstNode = cy.getElementById(dstId)
-        if(srcNode && dstNode && srcNode.length && dstNode.length){
-          const srcPos = srcNode.renderedPosition()
-          const dstPos = dstNode.renderedPosition()
-          const speed = Math.min(3 + (f.packets||0)/50, 12)
-          const color = (f.risk>=75) ? '#E74C3C' : (f.risk>=50 ? '#F1C40F' : '#27AE60')
-          // spawn a few particles per flow proportional to intensity
-          const count = Math.min(1 + Math.floor((f.packets||0)/80), 8)
-          for(let k=0;k<count;k++){
-            // add slight jitter for natural motion
-            const jitter = (Math.random()-0.5)*6
-            ps.push({ x0: srcPos.x + jitter, y0: srcPos.y + jitter, x1: dstPos.x + jitter, y1: dstPos.y + jitter, t: Math.random(), speed, color })
-          }
-        }
-      })
-    }catch(e){ console.warn('particle build', e) }
-    setParticles(ps)
-
-    // expose helper API
-    if(typeof onMount === 'function'){
-      const api = {
-        zoomToDevice: (id)=>{
-          try{
-            const node = cy.getElementById(id)
-            if(node && node.length){
-              cy.animate({ fit: { eles: node, padding: 40 }, duration: 400 })
-            }
-          }catch(e){}
+  const elements = useMemo(()=>{
+    const nodes = []
+    const nodeIds = new Set()
+    const addNode = (device)=>{
+      if(!device?.id || nodeIds.has(device.id)) return
+      nodeIds.add(device.id)
+      const blocked = isBlockedDevice(device, firewallRules)
+      const severity = blocked ? 'blocked' : severityFromRisk(device.risk)
+      nodes.push({
+        data: {
+          id: device.id,
+          label: `${iconFor(device.type)} ${device.hostname || device.ip || device.id}`,
+          risk: device.risk || 0,
+          type: device.type,
+          severity,
+          blocked
         },
-        exportSnapshot: async ()=>{
-          try{
-            const cyPng = cy.png({ full: true })
-            const overlay = canvasRef.current
-            const w = overlay.width, h = overlay.height
-            const off = document.createElement('canvas')
-            off.width = w; off.height = h
-            const ctx = off.getContext('2d')
-            const base = new Image()
-            base.src = cyPng
-            await new Promise(r=> base.onload = r)
-            ctx.drawImage(base, 0, 0, w, h)
-            const ov = new Image()
-            ov.src = overlay.toDataURL()
-            await new Promise(r=> ov.onload = r)
-            ctx.drawImage(ov, 0, 0, w, h)
-            // draw legend in bottom-right corner to match UI
-            const legendW = 180
-            const legendH = 120
-            const pad = 12
-            ctx.fillStyle = 'rgba(7,16,24,0.95)'
-            ctx.fillRect(w-legendW-pad, pad, legendW, legendH)
-            ctx.fillStyle = '#E6EEF6'
-            ctx.font = '600 14px Inter, Arial'
-            ctx.fillText('Risk Legend', w-legendW+8-pad, 28)
-            const items = [ ['CRITICAL','#FF3B30'], ['HIGH','#FF9500'], ['MEDIUM','#FFD60A'], ['LOW','#34C759'], ['NORMAL','#8E8E93'], ['BLOCKED','#E74C3C'] ]
-            ctx.font = '12px Inter, Arial'
-            items.forEach((it, idx)=>{
-              const y = 48 + idx*18
-              ctx.fillStyle = it[1]
-              ctx.fillRect(w-legendW+8-pad, y-10, 12, 12)
-              ctx.fillStyle = '#C9D6E3'
-              ctx.fillText(it[0], w-legendW+28-pad, y)
-            })
-            return off.toDataURL('image/png')
-          }catch(e){ console.warn('snapshot failed', e); return null }
-        }
-      }
-      try{ onMount(api) }catch(e){}
-    }
-
-    // animation loop
-    let raf = null
-    const canvas = canvasRef.current
-    const ctx = canvas && canvas.getContext && canvas.getContext('2d')
-    const resize = ()=>{
-      if(!containerRef.current || !canvas) return
-      const r = containerRef.current.getBoundingClientRect()
-      canvas.width = r.width
-      canvas.height = r.height
-      canvas.style.width = r.width + 'px'
-      canvas.style.height = r.height + 'px'
-    }
-    resize()
-
-    const blockedEdges = []
-    try{
-      const fs = flows && (Array.isArray(flows.flows || flows) ? (flows.flows || flows) : [])
-      fs.forEach((f,i)=>{
-        const srcId = f.src_mac || f.src || f.src_ip || f.src_host
-        const dstId = f.dst_mac || f.dst || f.dst_ip || f.dst_host
-        const srcNode = cy.getElementById(srcId)
-        const dstNode = cy.getElementById(dstId)
-        if(srcNode && dstNode && srcNode.length && dstNode.length){
-          const srcPos = srcNode.renderedPosition()
-          const dstPos = dstNode.renderedPosition()
-          const speed = Math.min(3 + (f.packets||0)/50, 12)
-          const color = (f.risk>=75) ? '#E74C3C' : (f.risk>=50 ? '#F1C40F' : '#27AE60')
-          const count = Math.min(1 + Math.floor((f.packets||0)/80), 8)
-          for(let k=0;k<count;k++){
-            const jitter = (Math.random()-0.5)*6
-            ps.push({ x0: srcPos.x + jitter, y0: srcPos.y + jitter, x1: dstPos.x + jitter, y1: dstPos.y + jitter, t: Math.random(), speed, color })
-          }
-          // mark blocked/high risk edge for overlay icon drawing
-          const isBlocked = (f.risk && f.risk>=75) || (Array.isArray(firewallRules) && firewallRules.find(r=>r.ip===f.src_ip||r.ip===f.dst_ip||r.ip===f.src_mac||r.ip===f.dst_mac))
-          if(isBlocked){
-            blockedEdges.push({ x0: srcPos.x, y0: srcPos.y, x1: dstPos.x, y1: dstPos.y })
-          }
-        }
+        classes: `${severity} ${device.type || ''} ${blocked ? 'blocked' : ''}`
       })
-    }catch(e){ console.warn('particle build', e) }
-    setParticles(ps)
+    }
 
-    // animation loop
-    const loop = ()=>{
-      if(!ctx) return
-      // draw translucent background for motion blur effect
-      ctx.fillStyle = 'rgba(7,16,24,0.18)'
-      ctx.fillRect(0,0,canvas.width,canvas.height)
-      particles.forEach(p=>{
-        p.t += (p.speed/80)
-        if(p.t>1) p.t = 0
-        const x = p.x0 + (p.x1-p.x0)*p.t
-        const y = p.y0 + (p.y1-p.y0)*p.t
-        // draw particle with trailing effect
-        for(let s=0;s<5;s++){
-          const alpha = 0.28 * (1 - s/5)
+    devices.forEach(addNode)
+    flows.forEach(flow=>{
+      if(flow.src && !nodeIds.has(flow.src)) addNode({ id: flow.src, ip: flow.src, hostname: flow.src, type: flow.src.startsWith?.('192.168.') ? 'workstation' : 'external', risk: flow.risk || 0 })
+      if(flow.dst && !nodeIds.has(flow.dst)) addNode({ id: flow.dst, ip: flow.dst, hostname: flow.dst, type: flow.dst.startsWith?.('192.168.') ? 'workstation' : 'external', risk: Math.max(0, Number(flow.risk || 0) - 10) })
+    })
+
+    const edges = flows.slice(-180).map((flow, i)=>{
+      const blocked = isBlockedFlow(flow, firewallRules)
+      const severity = blocked ? 'blocked' : severityFromRisk(flow.risk)
+      return {
+        data: {
+          id: flow.id || `edge-${i}`,
+          source: flow.src,
+          target: flow.dst,
+          risk: flow.risk || 0,
+          packets: flow.packets || 1,
+          severity,
+          blocked,
+          drift: flow.drift
+        },
+        classes: `${severity} ${blocked ? 'blocked' : ''} ${flow.drift ? 'drift' : ''}`
+      }
+    }).filter(edge=>edge.data.source && edge.data.target && edge.data.source !== edge.data.target)
+
+    return [...nodes, ...edges]
+  }, [devices, flows, firewallRules])
+
+  useEffect(()=>{
+    const cy = cyRef.current
+    if(!cy) return
+
+    cy.removeAllListeners()
+    cy.on('tap', 'node', evt=>onSelectDevice?.(evt.target.id()))
+    cy.on('cxttap', 'node', evt=>onSelectDevice?.(evt.target.id()))
+    cy.on('dbltap', 'edge', evt=>{
+      const edge = evt.target
+      window.dispatchEvent(new CustomEvent('se:toast', { detail: { type: 'info', message: `Flow ${edge.source().id()} -> ${edge.target().id()} · risk ${edge.data('risk') || 0}` } }))
+    })
+
+    const gateway = cy.nodes('[type = "gateway"]')
+    const externals = cy.nodes('[type = "external"]')
+    const sensors = cy.nodes('[type = "sensor"]')
+    try{
+      gateway.positions((node, i)=>({ x: 230, y: 150 + i * 70 }))
+      externals.positions((node, i)=>({ x: 40, y: 90 + i * 90 }))
+      sensors.positions((node, i)=>({ x: 430, y: 90 + i * 100 }))
+      cy.layout({
+        name: 'cose',
+        animate: true,
+        animationDuration: 350,
+        nodeRepulsion: 9000,
+        idealEdgeLength: 120,
+        padding: 30
+      }).run()
+      setTimeout(()=>cy.fit(undefined, 35), 420)
+    }catch(e){}
+
+    const api = {
+      zoomToDevice: (id)=>{
+        const node = cy.getElementById(id)
+        if(node?.length){
+          node.select()
+          cy.animate({ fit: { eles: node, padding: 90 }, duration: 450 })
+        }
+      },
+      fit: ()=>cy.fit(undefined, 35),
+      exportSnapshot: async ()=>cy.png({ full: true, bg: '#0a0e1a', scale: 2 })
+    }
+    onMount?.(api)
+  }, [elements, onMount, onSelectDevice])
+
+  useEffect(()=>{
+    const cy = cyRef.current
+    const canvas = canvasRef.current
+    const wrap = wrapRef.current
+    if(!cy || !canvas || !wrap) return
+    const ctx = canvas.getContext('2d')
+
+    const resize = ()=>{
+      const rect = wrap.getBoundingClientRect()
+      canvas.width = rect.width * window.devicePixelRatio
+      canvas.height = rect.height * window.devicePixelRatio
+      canvas.style.width = `${rect.width}px`
+      canvas.style.height = `${rect.height}px`
+      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0)
+    }
+
+    const rebuildParticles = ()=>{
+      const particles = []
+      const blockedEdges = []
+      cy.edges().forEach((edge)=>{
+        const source = edge.source()
+        const target = edge.target()
+        if(!source.length || !target.length) return
+        const src = source.renderedPosition()
+        const dst = target.renderedPosition()
+        const risk = Number(edge.data('risk') || 0)
+        const severity = edge.data('severity') || severityFromRisk(risk)
+        const color = COLORS[severity] || COLORS.normal
+        const blocked = Boolean(edge.data('blocked'))
+        const count = Math.min(5, Math.max(1, Math.ceil(Number(edge.data('packets') || 1) / 80)))
+        for(let i = 0; i < count; i += 1){
+          particles.push({
+            src,
+            dst,
+            risk,
+            blocked,
+            color,
+            t: Math.random(),
+            speed: 0.004 + Math.min(0.018, risk / 5000)
+          })
+        }
+        if(blocked) blockedEdges.push({ src, dst })
+      })
+      particlesRef.current = particles.slice(0, 260)
+      blockedEdgesRef.current = blockedEdges
+    }
+
+    const draw = ()=>{
+      const rect = wrap.getBoundingClientRect()
+      ctx.clearRect(0, 0, rect.width, rect.height)
+      ctx.fillStyle = 'rgba(10, 14, 26, 0.2)'
+      ctx.fillRect(0, 0, rect.width, rect.height)
+
+      particlesRef.current.forEach(p=>{
+        const maxT = p.blocked ? 0.5 : 1
+        p.t += p.speed
+        if(p.t > maxT) p.t = 0
+        const x = p.src.x + (p.dst.x - p.src.x) * p.t
+        const y = p.src.y + (p.dst.y - p.src.y) * p.t
+        const radius = p.risk >= 75 ? 4.5 : p.risk >= 50 ? 3.5 : 2.4
+        const trail = p.risk >= 50 ? 4 : 2
+        for(let i = trail; i >= 0; i -= 1){
+          const tx = x - (p.dst.x - p.src.x) * 0.012 * i
+          const ty = y - (p.dst.y - p.src.y) * 0.012 * i
+          ctx.globalAlpha = 0.14 + (trail - i) * 0.12
           ctx.beginPath()
           ctx.fillStyle = p.color
-          ctx.globalAlpha = alpha
-          const sx = x - s* (p.x1-p.x0)*0.006
-          const sy = y - s* (p.y1-p.y0)*0.006
-          ctx.arc(sx, sy, 3 - s*0.5, 0, Math.PI*2)
+          ctx.arc(tx, ty, Math.max(1, radius - i * 0.45), 0, Math.PI * 2)
           ctx.fill()
+        }
+        if(p.blocked && p.t > 0.47){
+          ctx.globalAlpha = 0.6
+          ctx.strokeStyle = COLORS.blocked
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(x, y, 10 + Math.sin(Date.now() / 120) * 2, 0, Math.PI * 2)
+          ctx.stroke()
         }
       })
 
-      // draw blocked icons at midpoints
-      blockedEdges.forEach(e=>{
-        const mx = (e.x0+e.x1)/2
-        const my = (e.y0+e.y1)/2
-        // draw stop circle
-        ctx.beginPath()
-        ctx.fillStyle = '#E74C3C'
+      blockedEdgesRef.current.forEach(edge=>{
+        const x = (edge.src.x + edge.dst.x) / 2
+        const y = (edge.src.y + edge.dst.y) / 2
         ctx.globalAlpha = 0.95
-        ctx.arc(mx, my, 10, 0, Math.PI*2)
-        ctx.fill()
-        // draw white bar
+        ctx.fillStyle = COLORS.blocked
         ctx.beginPath()
-        ctx.fillStyle = '#fff'
-        ctx.rect(mx-6, my-3, 12, 6)
+        ctx.arc(x, y, 11, 0, Math.PI * 2)
         ctx.fill()
+        ctx.strokeStyle = '#fee2e2'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(x - 6, y + 6)
+        ctx.lineTo(x + 6, y - 6)
+        ctx.stroke()
       })
 
-      // demo pulse overlay (temporary visual emphasis)
-      const now = Date.now()/1000
-      if(demoPulseAt && now - demoPulseAt < 6){
-        const prog = (now - demoPulseAt) / 6
-        const alpha = 0.9 * (1 - prog)
-        ctx.beginPath()
-        ctx.fillStyle = '#E74C3C'
-        ctx.globalAlpha = alpha * 0.25
-        ctx.fillRect(0,0,canvas.width,canvas.height)
-      }
-
-      raf = requestAnimationFrame(loop)
+      ctx.globalAlpha = 1
+      animationRef.current = requestAnimationFrame(draw)
     }
-    raf = requestAnimationFrame(loop)
 
-    const onDemo = (e)=>{
-      setDemoPulseAt(Date.now()/1000)
-    }
-    window.addEventListener('se:demo-started', onDemo)
+    resize()
+    rebuildParticles()
+    const update = ()=>rebuildParticles()
+    cy.on('position zoom pan render', update)
     window.addEventListener('resize', resize)
-    return ()=>{ if(raf) cancelAnimationFrame(raf); window.removeEventListener('resize', resize) }
-  },[devices,flows,onSelectDevice])
+    animationRef.current = requestAnimationFrame(draw)
+
+    return ()=>{
+      if(animationRef.current) cancelAnimationFrame(animationRef.current)
+      cy.removeListener('position zoom pan render', update)
+      window.removeEventListener('resize', resize)
+    }
+  }, [elements])
+
+  const stylesheet = [
+    {
+      selector: 'node',
+      style: {
+        label: 'data(label)',
+        color: '#dbeafe',
+        'font-size': 10,
+        'text-valign': 'bottom',
+        'text-margin-y': 9,
+        'background-color': '#111827',
+        'border-width': 2,
+        'border-color': '#22c55e',
+        width: 'mapData(risk, 0, 100, 34, 58)',
+        height: 'mapData(risk, 0, 100, 34, 58)',
+        'transition-property': 'background-color, border-color, width, height',
+        'transition-duration': '220ms',
+        'overlay-opacity': 0
+      }
+    },
+    { selector: 'node.normal', style: { 'border-color': COLORS.normal, 'background-color': '#11241c' } },
+    { selector: 'node.medium', style: { 'border-color': COLORS.medium, 'background-color': '#10203d' } },
+    { selector: 'node.high', style: { 'border-color': COLORS.high, 'background-color': '#2d2110' } },
+    { selector: 'node.critical', style: { 'border-color': COLORS.critical, 'background-color': '#301417', 'border-width': 4 } },
+    { selector: 'node.blocked', style: { 'border-color': COLORS.blocked, 'background-color': '#3a1114', 'border-width': 5, 'border-style': 'dashed' } },
+    { selector: 'node.sensor', style: { 'border-color': COLORS.sensor, 'background-color': '#24133d', shape: 'hexagon' } },
+    { selector: 'node.gateway', style: { shape: 'diamond' } },
+    { selector: 'node.external', style: { shape: 'round-rectangle', 'border-color': '#94a3b8', 'background-color': '#1e293b' } },
+    { selector: 'node:selected', style: { 'border-color': '#00d4ff', 'border-width': 6 } },
+    {
+      selector: 'edge',
+      style: {
+        width: 1,
+        'line-color': COLORS.edge,
+        'curve-style': 'bezier',
+        'target-arrow-shape': 'triangle',
+        'target-arrow-color': COLORS.edge,
+        opacity: 0.55,
+        'transition-property': 'line-color, width, opacity',
+        'transition-duration': '220ms'
+      }
+    },
+    { selector: 'edge.medium', style: { 'line-color': COLORS.medium, 'target-arrow-color': COLORS.medium, width: 1.5, opacity: 0.75 } },
+    { selector: 'edge.high', style: { 'line-color': COLORS.high, 'target-arrow-color': COLORS.high, width: 2, opacity: 0.85 } },
+    { selector: 'edge.critical', style: { 'line-color': COLORS.critical, 'target-arrow-color': COLORS.critical, width: 2.5, opacity: 0.95 } },
+    { selector: 'edge.blocked', style: { 'line-color': COLORS.blocked, 'target-arrow-color': COLORS.blocked, width: 3, 'line-style': 'dashed', opacity: 0.95 } },
+    { selector: 'edge.drift', style: { 'line-style': 'dashed' } }
+  ]
 
   return (
-    <div ref={containerRef} style={{position:'relative',height:600, border:'1px solid #eee', borderRadius:6}}>
+    <div className="topology-wrap" ref={wrapRef}>
       <CytoscapeComponent
         elements={elements}
+        stylesheet={stylesheet}
         style={{ width: '100%', height: '100%' }}
-        cy={(cy)=>{ cyRef.current = cy; cy.layout({ name: 'cose' }).run() }}
+        cy={(cy)=>{ cyRef.current = cy }}
+        wheelSensitivity={0.18}
       />
-      <canvas ref={canvasRef} style={{position:'absolute', left:0, top:0, pointerEvents:'none'}} />
+      <canvas ref={canvasRef} className="topology-canvas" />
+      <div className="mini-map">
+        <span>Topology</span>
+        <i />
+      </div>
     </div>
   )
 }

@@ -399,6 +399,51 @@ This repository now contains a full local-first pipeline with detection, live da
   - `GET /api/firewall/actions` — recent firewall action audit log
   - `GET/POST /api/firewall/policy` — inspect/update whitelist and TTL policy
 
+  ## Dashboard Redesign (in progress)
+
+  Goal: implement a modern React SOC dashboard (live topology, alert timeline, device detail, Quarantine/Undo, and analytics) and wire it to the backend WebSocket and REST APIs.
+
+  Current plan and status:
+
+  - Design dashboard layout and components: IN PROGRESS
+  - Implement React layout and styles: NOT STARTED
+  - Wire data endpoints + WebSocket for live events: NOT STARTED
+  - Build frontend and run local smoke test: NOT STARTED
+  - Commit changes and open PR: NOT STARTED
+
+  Quick run & development instructions
+
+  - Start backend (from repo root, with venv activated):
+
+  ```bash
+  source venv/bin/activate
+  uvicorn dashboard.dashboard_api:app --host 0.0.0.0 --port 9000
+  ```
+
+  - Run the frontend in development mode (from `frontend/`):
+
+  ```bash
+  cd frontend
+  npm ci
+  npm run dev
+  ```
+
+  - Build the frontend for production and serve it from the backend static folder:
+
+  ```bash
+  cd frontend
+  npm ci
+  npm run build
+  # backend will serve built files from frontend/dist
+  ```
+
+  Environment notes
+
+  - The frontend reads the API base URL from `VITE_API_BASE` (default `http://localhost:9000`). Set it in `.env` inside `frontend/` when developing against a remote backend.
+  - WebSocket endpoint: `ws(s)://<API_BASE>/ws/packets` — the React UI connects here for live alerts and flows.
+
+  If you want, I can now proceed to implement the React layout changes (step 2). Say "go" and I'll start editing `frontend/src` files and run the local build/test loop.
+
   ## Frontend Build & Testing
 
   The React frontend lives in the `frontend/` directory. Source files are tracked in the branch `restore/frontend-tracked-files` and a PR has been opened: https://github.com/vishwa-10147/SentinelEdgeAI/pull/1
