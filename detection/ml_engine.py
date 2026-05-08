@@ -61,8 +61,9 @@ class MLEngine:
                     self.trained = False
             else:
                 # strict mode: require valid signature to load model
+                # Let ModelSignatureError propagate so callers can handle startup failure
+                verify_model_signature(self.model_path)
                 try:
-                    verify_model_signature(self.model_path)
                     self.model = joblib.load(self.model_path)
                     self.trained = True
                     print("Loaded existing signed ML model.")
@@ -73,22 +74,6 @@ class MLEngine:
                             metrics_utils.ML_SIGNATURE_STATUS.set(1)
                     except Exception:
                         pass
-                except ModelSignatureError as e:
-                    print(f"Model signature verification failed: {e}. Not loading model in strict mode.")
-                    try:
-                        if metrics_utils.ML_MODEL_LOADED is not None:
-                            metrics_utils.ML_MODEL_LOADED.set(0)
-                        if metrics_utils.ML_SIGNATURE_STATUS is not None:
-                            metrics_utils.ML_SIGNATURE_STATUS.set(2)
-                    except Exception:
-                        pass
-                    # fall back to untrained model to avoid crashing the service
-                    self.model = IsolationForest(
-                        n_estimators=100,
-                        contamination=contamination,
-                        random_state=42
-                    )
-                    self.trained = False
                 except Exception as e:
                     print(f"Failed to load existing model file: {e}")
                     self.model = IsolationForest(

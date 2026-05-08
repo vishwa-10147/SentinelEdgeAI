@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Tuple
 from features.feature_extractor import FeatureExtractor
 from flow.flow_record import FlowRecord
@@ -19,7 +19,7 @@ class FlowTable:
             return (dst_ip, dst_port, src_ip, src_port, protocol)
 
     def process_packet(self, src_ip, src_port, dst_ip, dst_port, protocol, size):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         key = self._generate_key(src_ip, src_port, dst_ip, dst_port, protocol)
 
         if key not in self.flows:
@@ -49,7 +49,7 @@ class FlowTable:
                 flow["backward_packets"] += 1
 
     def check_timeouts(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired_flows = []
 
         for key, flow in list(self.flows.items()):

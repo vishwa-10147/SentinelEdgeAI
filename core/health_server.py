@@ -53,6 +53,16 @@ class HealthHTTPServer(HTTPServer):
     def __init__(self, server_address, RequestHandlerClass, monitor):
         super().__init__(server_address, RequestHandlerClass)
         self.monitor = monitor
+    
+    def shutdown(self):
+        """Shutdown the server and ensure the listening socket is closed."""
+        try:
+            super().shutdown()
+        finally:
+            try:
+                self.server_close()
+            except Exception:
+                pass
 
 
 def start_health_server(monitor, host="0.0.0.0", port=8000):
