@@ -1,3 +1,35 @@
+# Frontend (React + Vite)
+
+This folder contains the React-based SOC UI built with Vite.
+
+Quick Commands
+
+Install dependencies:
+
+```bash
+cd frontend
+npm ci
+```
+
+Run dev server:
+
+```bash
+npm run dev
+# open http://127.0.0.1:5173
+```
+
+Build production bundle:
+
+```bash
+npm run build
+# output -> frontend/dist
+```
+
+Notes
+- `frontend/dist/` is intentionally ignored in git; CI builds the artifact and uploads it to the PR.
+- Keep `node_modules/` out of the repo; use `npm ci` to install using `package-lock.json` for reproducible builds.
+
+If you want me to update the homepage content, provide the prompt and I'll edit `frontend/src` accordingly and open a PR update.
 Frontend scaffold (React + Vite)
 
 Quick start (local):
