@@ -110,6 +110,22 @@ python3 scripts/pi_benchmark.py --duration 60 --mode pcap --pcap /path/to/sample
 - Before setting `FIREWALL_DRY_RUN=0` in a production device, run the containerized integration tests and add a system-level rollback guard (systemd or out-of-band management) to avoid accidental lockout.
 - The repo includes `tests/test_firewall_container_integration.py` for privileged validation; it will run only when `SENTINEL_RUN_FIREWALL_CONTAINER_TESTS=1`.
 
+### Recommended Next Steps (best practice)
+
+1. Add the Actions secret `SENTINEL_MODEL_SIGNING_KEY` in the repository settings (Actions Secrets).
+2. Push a small test commit to trigger `model-signing` and `check-model-signature` workflows and confirm both succeed.
+3. On a test Pi, keep `FIREWALL_DRY_RUN=1`, provision the signing key to `/etc/sentinel/model_signing.key`, and verify the signature locally:
+
+```bash
+export SENTINEL_MODEL_SIGNING_KEY_FILE=/etc/sentinel/model_signing.key
+PYTHONPATH=/path/to/SentinelEdgeAI python3 scripts/sign_model.py model/isolation_forest.pkl --verify
+```
+
+4. Confirm the service is stable (`systemctl status sentineledgeai.service`) and logs show no signature errors.
+5. Only after CI is green and device verification passes, remove any `SENTINEL_ALLOW_UNSIGNED_MODELS=1` drop-in and enable enforcement (`FIREWALL_DRY_RUN=0`) with a verified rollback guard in place.
+
+Following this sequence ensures CI, key provisioning, and runtime verification are validated before enabling enforcement.
+
 ## Safe Rollout Checklist & One-Click Helper
 
 Use the helper `scripts/enable_firewall_enforcement.sh` to perform prechecks and generate a local env file you can copy to a Pi.
