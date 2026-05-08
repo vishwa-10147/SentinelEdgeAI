@@ -1,0 +1,38 @@
+{
+  "annotations":{
+    "list":[]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "ML Model Loaded",
+      "id": 1,
+      "targets": [ { "expr": "sentinel_ml_model_loaded", "refId": "A" } ],
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "ML Signature Status",
+      "id": 2,
+      "targets": [ { "expr": "sentinel_ml_signature_status", "refId": "A" } ],
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "type": "graph",
+      "title": "HTTP Requests (rate)",
+      "id": 3,
+      "targets": [ { "expr": "rate(sentinel_http_requests_total[1m])", "refId": "A" } ],
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 4 }
+    },
+    {
+      "type": "graph",
+      "title": "WebSocket Events (rate)",
+      "id": 4,
+      "targets": [ { "expr": "rate(sentinel_ws_events_total[1m])", "refId": "A" } ],
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 10 }
+    }
+  ],
+  "schemaVersion": 16,
+  "title": "SentinelEdgeAI Overview",
+  "version": 1
+}
