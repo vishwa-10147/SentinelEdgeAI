@@ -3,6 +3,7 @@ import numpy as np
 import joblib
 import os
 from security.model_signing import ModelSignatureError, sign_model, verify_model_signature
+from utils import metrics as metrics_utils
 
 
 class MLEngine:
@@ -20,12 +21,82 @@ class MLEngine:
         # Try loading existing model
         if os.path.exists(self.model_path):
             if self.allow_unsigned_models:
-                print("Loaded unsigned ML model because SENTINEL_ALLOW_UNSIGNED_MODELS=1.")
+                # attempt to verify but do not fail startup if verification fails
+                try:
+                    verify_model_signature(self.model_path)
+                    print("Loaded existing signed ML model (allow unsigned fallback enabled).")
+                    try:
+                        if metrics_utils.ML_MODEL_LOADED is not None:
+                            metrics_utils.ML_MODEL_LOADED.set(1)
+                        if metrics_utils.ML_SIGNATURE_STATUS is not None:
+                            metrics_utils.ML_SIGNATURE_STATUS.set(1)
+                    except Exception:
+                        pass
+                except ModelSignatureError as e:
+                    print(f"Warning: model signature verification failed but continuing due to SENTINEL_ALLOW_UNSIGNED_MODELS=1: {e}")
+                    try:
+                        if metrics_utils.ML_MODEL_LOADED is not None:
+                            metrics_utils.ML_MODEL_LOADED.set(1)
+                        if metrics_utils.ML_SIGNATURE_STATUS is not None:
+                            metrics_utils.ML_SIGNATURE_STATUS.set(2)
+                    except Exception:
+                        pass
+                try:
+                    self.model = joblib.load(self.model_path)
+                    self.trained = True
+                    try:
+                        if metrics_utils.ML_MODEL_LOADED is not None:
+                            metrics_utils.ML_MODEL_LOADED.set(1)
+                        if metrics_utils.ML_SIGNATURE_STATUS is not None:
+                            metrics_utils.ML_SIGNATURE_STATUS.set(1)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(f"Failed to load existing model file: {e}")
+                    self.model = IsolationForest(
+                        n_estimators=100,
+                        contamination=contamination,
+                        random_state=42
+                    )
+                    self.trained = False
             else:
-                verify_model_signature(self.model_path)
-                print("Loaded existing signed ML model.")
-            self.model = joblib.load(self.model_path)
-            self.trained = True
+                # strict mode: require valid signature to load model
+                try:
+                    verify_model_signature(self.model_path)
+                    self.model = joblib.load(self.model_path)
+                    self.trained = True
+                    print("Loaded existing signed ML model.")
+                    try:
+                        if metrics_utils.ML_MODEL_LOADED is not None:
+                            metrics_utils.ML_MODEL_LOADED.set(1)
+                        if metrics_utils.ML_SIGNATURE_STATUS is not None:
+                            metrics_utils.ML_SIGNATURE_STATUS.set(1)
+                    except Exception:
+                        pass
+                except ModelSignatureError as e:
+                    print(f"Model signature verification failed: {e}. Not loading model in strict mode.")
+                    try:
+                        if metrics_utils.ML_MODEL_LOADED is not None:
+                            metrics_utils.ML_MODEL_LOADED.set(0)
+                        if metrics_utils.ML_SIGNATURE_STATUS is not None:
+                            metrics_utils.ML_SIGNATURE_STATUS.set(2)
+                    except Exception:
+                        pass
+                    # fall back to untrained model to avoid crashing the service
+                    self.model = IsolationForest(
+                        n_estimators=100,
+                        contamination=contamination,
+                        random_state=42
+                    )
+                    self.trained = False
+                except Exception as e:
+                    print(f"Failed to load existing model file: {e}")
+                    self.model = IsolationForest(
+                        n_estimators=100,
+                        contamination=contamination,
+                        random_state=42
+                    )
+                    self.trained = False
         else:
             self.model = IsolationForest(
                 n_estimators=100,

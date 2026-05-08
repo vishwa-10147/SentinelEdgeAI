@@ -1,7 +1,10 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket, WebSocketDisconnect
 import os, json, time, asyncio
+import logging
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from utils import metrics as metrics_utils
 import subprocess, sys
 from typing import Optional
 import threading
@@ -67,7 +70,36 @@ async def lifespan(app: FastAPI):
             pass
 
 
+# ---------- logging & metrics setup ----------
+logging.basicConfig(level=os.environ.get('SENTINEL_LOG_LEVEL','INFO'))
+logger = logging.getLogger('sentinel')
+
+# initialize centralized metrics
+metrics_utils.init_metrics()
+
+
+
 app = FastAPI(title="SentinelEdgeAI Dashboard API", lifespan=lifespan)
+
+
+# simple request metrics middleware
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    path = request.url.path
+    method = request.method
+    try:
+        resp = await call_next(request)
+        status = str(resp.status_code)
+    except Exception:
+        status = '500'
+        raise
+    finally:
+        try:
+            if metrics_utils.REQUEST_COUNT is not None:
+                metrics_utils.REQUEST_COUNT.labels(method=method, path=path, status=status).inc()
+        except Exception:
+            pass
+    return resp
 
 app.add_middleware(
     CORSMiddleware,
@@ -94,6 +126,20 @@ def read_json_file(name):
             return json.load(f)
         except Exception:
             raise HTTPException(status_code=500, detail=f"failed to parse {name}")
+
+
+@app.get('/metrics')
+def metrics():
+    # expose prometheus metrics from centralized registry
+    try:
+        reg = metrics_utils.REGISTRY
+        if reg is None:
+            metrics_utils.init_metrics()
+            reg = metrics_utils.REGISTRY
+        data = generate_latest(reg)
+        return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+    except Exception:
+        return Response(content=b"", media_type="text/plain")
 
 
 # Redaction / sanitization settings
