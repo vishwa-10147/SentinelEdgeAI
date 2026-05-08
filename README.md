@@ -301,7 +301,7 @@ SentinelEdgeAI uses a layered, dual-hardware architecture that separates packet 
                ┌─────────────────────────▼──────────────────────────┐
                │   LAYER 4 — PERSISTENCE & SECURITY                  │
                │                                                      │
-               │  alerts.json · device_profiles.json                  │
+               │  data/alerts.json · device_profiles.json                  │
                │  risk_timeline.json · live_stats.json · health.json  │
                │  sentinel.log (rotating, 5MB × 5 files)             │
                │  Secure boot · Encrypted storage · RBAC (roadmap)   │
@@ -368,7 +368,7 @@ Step 06  DECISION      Low:      Log to sentinel.log only
 Step 07  MITRE MAP     Threat classified against MITRE ATT&CK framework
                        (tactic, technique ID, technique name appended to alert)
            ↓
-Step 08  PERSIST       alerts.json · device_profiles.json · risk_timeline.json updated
+Step 08  PERSIST       data/alerts.json · device_profiles.json · risk_timeline.json updated
            ↓
 Step 09  DASHBOARD     WebSocket pushes real-time alert to SOC dashboard
 ```
@@ -444,7 +444,7 @@ This repository now contains a full local-first pipeline with detection, live da
 - Dev server: `cd frontend && npm run dev` (Vite default http://127.0.0.1:5173)
 
 6) Demo & tooling
-- `scripts/demo_attack.py` — writes a simulated alert and live event to `alerts.json`/`live_events.jsonl`. Optionally calls the firewall API to request a block (useful for demos).
+- `scripts/demo_attack.py` — writes a simulated alert and live event to `data/alerts.json`/`data/live_events.jsonl`. Optionally calls the firewall API to request a block (useful for demos).
 
 7) Tests & CI
 - `tests/test_firewall.py` — pytest unit test for `core/firewall.py` (dry-run add/remove/list).
@@ -507,7 +507,7 @@ DASHBOARD_API_URL=http://127.0.0.1:9000 DASHBOARD_API_KEY=$DASHBOARD_API_KEY pyt
 
 ## How enforcement works (internals)
 
-- The detection engine runs scoring on flows produced by `capture/sniffer.py`. When a flow crosses thresholds, an alert is generated and written to `alerts.json` and `live_events.jsonl`.
+- The detection engine runs scoring on flows produced by `capture/sniffer.py`. When a flow crosses thresholds, an alert is generated and written to `data/alerts.json` and `data/live_events.jsonl`.
 - The FastAPI backend tails these files and pushes events to connected WebSocket clients (`/ws/packets`). The React UI consumes these events and animates flows on the topology.
 - The decision engine (simple rule in this release) maps score -> action: Low=log, Medium=alert, High=block, Critical=isolate.
 - Blocking is performed by `core/firewall.py`. By default it records the rule and logs the action; when `FIREWALL_DRY_RUN=0` it will attempt to call `nft` or `iptables` to insert/remove rules on the Pi.
@@ -625,13 +625,13 @@ The guard is intentionally opt-in. The example environment file sets `ENABLE_ROL
 Replay a PCAP through flow building and feature extraction without live packet capture:
 
 ```bash
-.venv/bin/python scripts/replay_pcap.py captures/sample.pcap --output-csv /tmp/replay_flows.csv
+.venv/bin/python scripts/replay_pcap.py captures/sample.pcap --output-csv /tmp/replay_data/flows.csv
 ```
 
 Run a quick synthetic benchmark on a Raspberry Pi:
 
 ```bash
-.venv/bin/python scripts/pi_benchmark.py --packets 10000 --output-csv /tmp/pi_benchmark_flows.csv
+.venv/bin/python scripts/pi_benchmark.py --packets 10000 --output-csv /tmp/pi_benchmark_data/flows.csv
 ```
 
 Run a PCAP-backed benchmark:
@@ -958,7 +958,7 @@ sudo journalctl -u sentineledgeai-streamlit.service -f
 ```
 
 Notes:
-- `deploy/pi/validate_pi.sh` will run the smoke test and ensure `alerts.json`, `live_stats.json`, `device_profiles.json`, `risk_timeline.json`, and `health.json` exist.
+- `deploy/pi/validate_pi.sh` will run the smoke test and ensure `data/alerts.json`, `live_stats.json`, `device_profiles.json`, `risk_timeline.json`, and `health.json` exist.
 - Keep `config.yaml` tuned to your network before enabling the systemd service.
 
 Capability note for non-root packet capture:
@@ -1086,7 +1086,7 @@ SentinelEdgeAI/
 │   └── src/                         # React / Vite SOC dashboard
 │
 ├── ./                               # Runtime-generated files in the repo root
-│   ├── alerts.json
+│   ├── data/alerts.json
 │   ├── device_profiles.json
 │   ├── risk_timeline.json
 │   ├── live_stats.json
@@ -1131,7 +1131,7 @@ The engine logs performance data every 100 flows:
 | Backup files retained | 5 |
 | Format | Structured with timestamp, level, context |
 
-### Alert Schema (`alerts.json`)
+### Alert Schema (`data/alerts.json`)
 
 ```json
 {
@@ -1234,9 +1234,9 @@ Inline (full enforcement):
 
 ### SIEM Integration
 
-Alerts written to `alerts.json` are in a standard structured format compatible with:
+Alerts written to `data/alerts.json` are in a standard structured format compatible with:
 
-- **ELK Stack** — use Filebeat to ship `alerts.json`
+- **ELK Stack** — use Filebeat to ship `data/alerts.json`
 - **Splunk** — use Universal Forwarder watching the file
 - **Grafana** — expose via FastAPI endpoint and scrape with Prometheus
 - **Webhooks** — planned in roadmap
