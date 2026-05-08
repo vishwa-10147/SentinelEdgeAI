@@ -40,14 +40,16 @@ class SentinelEngine:
         ml_score = self.ml_engine.predict(features)
 
         # Behavioral fingerprinting
-        self.fingerprint_engine.update(flow, anomaly_score)
-
+        behavior_info = self.fingerprint_engine.detect_deviation(flow)
         drift_info = self.fingerprint_engine.detect_drift(
             flow.initiator_ip
         )
+        self.fingerprint_engine.update(flow, anomaly_score)
 
         drift_flag = drift_info["drift"]
         drift_reason = drift_info.get("reason", "")
+        behavior_score = behavior_info.get("score", 0)
+        behavior_reasons = behavior_info.get("reasons", [])
 
         # Attack type classification
         attack_type = self.attack_classifier.classify(
@@ -60,7 +62,8 @@ class SentinelEngine:
             anomaly_score,
             ml_score,
             drift_flag,
-            attack_type
+            attack_type,
+            behavior_score=behavior_score
         )
 
         # MITRE ATT&CK mapping
@@ -73,6 +76,8 @@ class SentinelEngine:
             "ml_score": ml_score,
             "drift": drift_flag,
             "drift_reason": drift_reason,
+            "behavior_score": behavior_score,
+            "behavior_reasons": behavior_reasons,
             "attack_type": attack_type,
             "final_risk": final_risk,
             "mitre": mitre_info

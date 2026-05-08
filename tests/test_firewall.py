@@ -57,6 +57,17 @@ def test_policy_update_validates_ttl_bounds():
         fw.update_policy({'default_ttl': 500, 'max_ttl': 100})
 
 
+def test_policy_update_supports_response_modes():
+    policy = fw.update_policy({'response_mode': 'auto_block', 'auto_block_min_risk': 80})
+    assert policy['response_mode'] == 'auto_block'
+    assert policy['auto_block_min_risk'] == 80
+
+
+def test_policy_update_rejects_invalid_response_mode():
+    with pytest.raises(ValueError):
+        fw.update_policy({'response_mode': 'destroy'})
+
+
 def test_expire_rules_removes_expired_rule():
     res = fw.add_block('203.0.113.8', ttl=1)
     expired_at = res['expires'] + 1
