@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class AlertLogger:
@@ -23,8 +23,8 @@ class AlertLogger:
         except Exception:
             alerts = []
 
-        # Add internal ID + logged timestamp
-        alert_data["logged_at"] = datetime.utcnow().isoformat()
+        # Add internal ID + logged timestamp (timezone-aware UTC)
+        alert_data["logged_at"] = datetime.now(timezone.utc).isoformat()
 
         alerts.append(alert_data)
 

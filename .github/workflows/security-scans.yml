@@ -43,4 +43,4 @@ jobs:
         run: pip install bandit
 
       - name: Run bandit
-        run: bandit -r . -lll -f text || true
+        run: bandit -r . -lll -f text -x venv,.venv,./venv,./.venv || true

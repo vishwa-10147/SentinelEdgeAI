@@ -1,0 +1,3 @@
+[bandit]
+# Exclude local virtualenv/site-packages directories from project scans
+exclude = venv,.venv,./venv,./.venv
