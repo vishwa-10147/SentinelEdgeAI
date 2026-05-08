@@ -16,10 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Docker on runner
+        uses: docker/setup-docker@v3
+
       - name: Run integration test inside privileged Docker
         run: |
-          sudo apt-get update && sudo apt-get install -y docker.io
-          sudo systemctl start docker || true
           # run tests in a disposable Python container with NET_ADMIN
           sudo docker run --rm \
             --cap-add=NET_ADMIN \
