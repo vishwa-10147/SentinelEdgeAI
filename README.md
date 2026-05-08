@@ -186,6 +186,23 @@ If you'd like, I can now:
 - run the containerized firewall integration tests on this host (requires Docker + privileges), or
 - add a small systemd rollback guard unit and example playbook to `packaging/` so Pi deployments include a recovery path.
 
+## Pi Deployment & Rollback Guard
+
+We've added packaging and tooling to ease deploying the enforcement rollback guard on a Raspberry Pi.
+
+- Installer: `packaging/install_firewall_guard.sh` — dry-run installer; run with `--apply` to copy units and enable timer.
+- Guard script: `packaging/sentinel-firewall-rollback.sh` — checks `/api/health` and calls `/api/firewall/rollback` when health is unhealthy.
+- Example env: `packaging/firewall-rollback.env.example` — copy to `/etc/sentinel/firewall-rollback.env` on target Pi.
+
+To install on a Pi (example):
+
+```bash
+cd /path/to/SentinelEdgeAI
+sudo packaging/install_firewall_guard.sh --env-file packaging/firewall-rollback.env.example --apply
+```
+
+This will install systemd units and enable a timer that periodically runs the rollback guard.
+
 </div>
 
 ---
