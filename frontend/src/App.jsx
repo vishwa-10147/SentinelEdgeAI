@@ -16,6 +16,7 @@ import {
 const Topology = lazy(() => import('./components/Topology'))
 const DeviceDetail = lazy(() => import('./components/DeviceDetail'))
 import PresenterMode from './components/PresenterMode'
+const AnalyticsRow = lazy(() => import('./components/AnalyticsRow'))
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:9000'
 const SEVERITY = {
@@ -820,7 +821,9 @@ export default function App(){
             <IncidentTimeline events={incidentEvents} onSelectDevice={(id)=>{ setSelected(id); topologyApi?.zoomToDevice?.(id) }} />
           </aside>
         </section>
-        <AnalyticsRow timeline={timeline} alerts={alerts} devices={devices} onSeverityFilter={setFilter} onSelectDevice={(id)=>{ setSelected(id); topologyApi?.zoomToDevice?.(id) }} />
+        <Suspense fallback={<div className="panel loading">Loading analytics...</div>}>
+          <AnalyticsRow timeline={timeline} alerts={alerts} devices={devices} onSeverityFilter={setFilter} onSelectDevice={(id)=>{ setSelected(id); topologyApi?.zoomToDevice?.(id) }} />
+        </Suspense>
       </main>
       {selected && (
         <Suspense fallback={<div className="panel loading">Loading device details...</div>}>
