@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import axios from 'axios'
 import {
   Area,
@@ -13,8 +13,8 @@ import {
   XAxis,
   YAxis
 } from 'recharts'
-import Topology from './components/Topology'
-import DeviceDetail from './components/DeviceDetail'
+const Topology = lazy(() => import('./components/Topology'))
+const DeviceDetail = lazy(() => import('./components/DeviceDetail'))
 import PresenterMode from './components/PresenterMode'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:9000'
@@ -802,7 +802,9 @@ export default function App(){
                 }}>Snapshot</button>
               </div>
             </div>
-            <Topology devices={devices} flows={flows} alerts={alerts} firewallRules={firewallRules} onSelectDevice={setSelected} onMount={setTopologyApi} />
+            <Suspense fallback={<div className="panel loading">Loading topology     </div>}>
+              <Topology devices={devices} flows={flows} alerts={alerts} firewallRules={firewallRules} onSelectDevice={setSelected} onMount={setTopologyApi} />
+            </Suspense>
           </section>
           <aside className="right-rail">
             <AlertLog
@@ -820,7 +822,11 @@ export default function App(){
         </section>
         <AnalyticsRow timeline={timeline} alerts={alerts} devices={devices} onSeverityFilter={setFilter} onSelectDevice={(id)=>{ setSelected(id); topologyApi?.zoomToDevice?.(id) }} />
       </main>
-      {selected && <DeviceDetail deviceId={selected} devices={devices} alerts={alerts} flows={flows} onClose={()=>setSelected(null)} topologyApi={topologyApi} onFirewallChanged={loadAll} />}
+      {selected && (
+        <Suspense fallback={<div className="panel loading">Loading device details...</div>}>
+          <DeviceDetail deviceId={selected} devices={devices} alerts={alerts} flows={flows} onClose={()=>setSelected(null)} topologyApi={topologyApi} onFirewallChanged={loadAll} />
+        </Suspense>
+      )}
       <FirewallPolicyModal open={firewallOpen} onClose={()=>setFirewallOpen(false)} rules={firewallRules} onChanged={loadAll} />
       <PresenterMode />
       {toast && <div className={`toast ${toast.type}`}>{toast.message}</div>}
