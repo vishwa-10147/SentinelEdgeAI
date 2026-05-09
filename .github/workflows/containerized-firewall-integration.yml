@@ -24,4 +24,4 @@ jobs:
             --cap-add=SYS_ADMIN \
             -v "${{ github.workspace }}:/workspace" \
             -w /workspace \
-            python:3.11-slim bash -eux -c "pip install -U pip && pip install -r requirements.txt && pytest -q tests/test_firewall.py::test_firewall_container_integration"
+            python:3.11-slim bash -eux -c "pip install -U pip && pip install -r requirements.txt && pytest -q tests/test_firewall_container_integration.py"
