@@ -37,7 +37,7 @@ narwhals==2.16.0
 numpy==2.4.2
 packageurl-python==0.17.6
 packaging==26.0
-pandas==3.0.2
+pandas<3,>=1.4.0
 pillow==12.2.0
 pip-api==0.0.34
 pip-requirements-parser==32.0.1
