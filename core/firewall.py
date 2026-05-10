@@ -36,6 +36,8 @@ def _default_policy():
         'whitelist': ['127.0.0.1'],
         'default_ttl': 300,
         'max_ttl': 86400,
+        'response_mode': 'monitor',
+        'auto_block_min_risk': 75,
     }
 
 def _log_action(action: dict):
@@ -80,6 +82,10 @@ def update_policy(policy_update: dict):
         updated['default_ttl'] = _validate_ttl(policy_update.get('default_ttl'), allow_none=True)
     if 'max_ttl' in policy_update:
         updated['max_ttl'] = _validate_ttl(policy_update.get('max_ttl'), allow_none=False)
+    if 'response_mode' in policy_update:
+        updated['response_mode'] = _validate_response_mode(policy_update.get('response_mode'))
+    if 'auto_block_min_risk' in policy_update:
+        updated['auto_block_min_risk'] = _validate_risk_threshold(policy_update.get('auto_block_min_risk'))
     if updated['default_ttl'] is not None and updated['default_ttl'] > updated['max_ttl']:
         raise ValueError("default_ttl cannot exceed max_ttl")
     _ensure_files()
@@ -133,6 +139,21 @@ def _validate_ttl(ttl, allow_none=True, max_ttl=86400):
     if ttl <= 0 or ttl > max_ttl:
         raise ValueError(f"ttl must be between 1 and {max_ttl} seconds")
     return ttl
+
+def _validate_response_mode(mode):
+    mode = str(mode or 'monitor').lower()
+    if mode not in {'monitor', 'alert', 'auto_block'}:
+        raise ValueError("response_mode must be monitor, alert, or auto_block")
+    return mode
+
+def _validate_risk_threshold(value):
+    try:
+        value = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("auto_block_min_risk must be an integer") from exc
+    if value < 1 or value > 100:
+        raise ValueError("auto_block_min_risk must be between 1 and 100")
+    return value
 
 def _resolve_ttl(ttl, policy):
     if ttl is None:

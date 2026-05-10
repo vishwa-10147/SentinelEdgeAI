@@ -17,6 +17,7 @@ from core.config_loader import Config
 from core.health import HealthMonitor
 from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
+import core.firewall as firewall
 
 # Load configuration
 config = Config()
@@ -71,6 +72,7 @@ def set_event_publisher(cb):
 LIVE_STATS_FILE = "live_stats.json"
 HEALTH_FILE = "health.json"
 LIVE_EVENTS_FILE = "live_events.jsonl"
+FLOWS_HISTORY_FILE = "flows_history.jsonl"
 
 # ===============================
 # 📊 Performance Metrics
@@ -152,6 +154,8 @@ def process_packet(packet):
                 anomaly_score = result["anomaly_score"]
                 ml_score = result["ml_score"]
                 confidence = result["confidence"]
+                behavior_score = result.get("behavior_score", 0)
+                behavior_reasons = result.get("behavior_reasons", [])
 
                 # Update metrics
                 ENGINE_METRICS["flows_processed"] += 1
@@ -268,31 +272,60 @@ def process_packet(packet):
                         "severity": severity,
                         "attack_type": attack_type,
                         "drift": drift_flag,
+                        "behavior_score": behavior_score,
+                        "behavior_reasons": behavior_reasons,
                         "mitre_tactic": mitre_info["tactic"],
                         "mitre_technique_id": mitre_info["technique_id"],
                         "mitre_technique_name": mitre_info["technique_name"]
                     }
 
                     alert_logger.log(alert)
+                    try:
+                        policy = firewall.get_policy()
+                        if (
+                            policy.get("response_mode") == "auto_block"
+                            and final_risk >= int(policy.get("auto_block_min_risk", 75))
+                        ):
+                            firewall.add_block(
+                                flow.initiator_ip,
+                                ttl=policy.get("default_ttl"),
+                                reason=f"auto_response:{attack_type}"
+                            )
+                    except Exception:
+                        logger.debug("Auto-response evaluation failed", exc_info=True)
 
                 # -------------------------------
                 # Write live event (always)
                 # -------------------------------
                 try:
+                    total_packets = flow.forward_packets + flow.backward_packets
+                    total_bytes = flow.forward_bytes + flow.backward_bytes
                     evt = {
                         "timestamp": time.time(),
                         "type": "flow",
                         "src": flow.initiator_ip,
                         "dst": flow.responder_ip,
+                        "src_port": flow.initiator_port,
+                        "dst_port": flow.responder_port,
                         "protocol": flow.protocol,
-                        "packets": flow.packet_count if hasattr(flow, 'packet_count') else 1,
-                        "bytes": flow.byte_count if hasattr(flow, 'byte_count') else 0,
+                        "packets": total_packets,
+                        "bytes": total_bytes,
+                        "duration": flow.duration,
                         "risk": final_risk,
                         "severity": severity,
-                        "attack_type": attack_type
+                        "attack_type": attack_type,
+                        "anomaly_score": anomaly_score,
+                        "ml_score": ml_score,
+                        "drift": drift_flag,
+                        "drift_reason": drift_reason,
+                        "behavior_score": behavior_score,
+                        "behavior_reasons": behavior_reasons,
+                        "features": features
                     }
                     with open(LIVE_EVENTS_FILE, 'a') as le:
                         le.write(json.dumps(evt) + "\n")
+                    with open(FLOWS_HISTORY_FILE, 'a') as history:
+                        history.write(json.dumps(evt) + "\n")
                     # also publish to in-process subscriber if available
                     try:
                         if event_publisher:

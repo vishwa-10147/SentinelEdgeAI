@@ -5,7 +5,8 @@ class RiskEscalationEngine:
         anomaly_score,
         ml_score,
         drift_flag,
-        attack_type
+        attack_type,
+        behavior_score=0
     ):
 
         risk = 0
@@ -19,6 +20,9 @@ class RiskEscalationEngine:
         # Behavioral drift weight
         if drift_flag:
             risk += 25
+
+        # Device behavior profile deviation weight
+        risk += min(max(int(behavior_score or 0), 0), 3) * 10
 
         # Attack classification weight
         if attack_type == "POSSIBLE_DATA_EXFILTRATION":

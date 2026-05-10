@@ -1,0 +1,27 @@
+name: Containerized Firewall Integration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tests/**'
+      - 'core/**'
+      - '.github/workflows/**'
+
+jobs:
+  container-integration:
+    name: Run firewall integration in Docker
+    runs-on: [self-hosted, linux, docker]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run integration test inside privileged Docker (self-hosted)
+        run: |
+          # the self-hosted runner must have Docker installed and allow --cap-add
+          docker run --rm \
+            --cap-add=NET_ADMIN \
+            --cap-add=SYS_ADMIN \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            python:3.11-slim bash -eux -c "pip install -U pip && pip install -r requirements.txt && pytest -q tests/test_firewall_container_integration.py"

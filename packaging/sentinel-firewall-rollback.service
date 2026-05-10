@@ -1,0 +1,12 @@
+[Unit]
+Description=SentinelEdgeAI Firewall Rollback Guard
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/sentinel-firewall-rollback.sh
+User=root
+EnvironmentFile=/etc/sentinel/firewall-rollback.env
+
+[Install]
+WantedBy=multi-user.target

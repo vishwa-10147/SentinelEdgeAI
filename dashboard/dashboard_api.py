@@ -13,6 +13,11 @@ import re
 import ipaddress
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from core.product_intelligence import (
+    build_incident_timeline,
+    build_security_report,
+    explain_alert,
+)
 
 API_KEY = os.environ.get('DASHBOARD_API_KEY')
 
@@ -126,6 +131,34 @@ def read_json_file(name):
             return json.load(f)
         except Exception:
             raise HTTPException(status_code=500, detail=f"failed to parse {name}")
+
+
+def read_json_file_optional(name, default):
+    path = os.path.join(ROOT, name)
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def read_jsonl_optional(name, limit=500):
+    path = os.path.join(ROOT, name)
+    if not os.path.exists(path):
+        return []
+    rows = []
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return rows[-limit:]
 
 
 @app.get('/metrics')
@@ -446,6 +479,49 @@ def device_profiles(api_ok: bool = Depends(require_api_key)):
 @app.get("/api/risk_timeline")
 def risk_timeline(api_ok: bool = Depends(require_api_key)):
     return maybe_sanitize(read_json_file("risk_timeline.json"))
+
+
+@app.get("/api/flows")
+def flows(limit: int = 500, api_ok: bool = Depends(require_api_key)):
+    limit = max(1, min(int(limit or 500), 5000))
+    try:
+        return maybe_sanitize(read_jsonl_optional("flows_history.jsonl", limit=limit))
+    except Exception:
+        raise HTTPException(status_code=500, detail="failed to read flow history")
+
+
+@app.get("/api/incidents/timeline")
+def incident_timeline(limit: int = 100, api_ok: bool = Depends(require_api_key)):
+    limit = max(1, min(int(limit or 100), 1000))
+    alerts_data = read_json_file_optional("alerts.json", [])
+    flows_data = read_jsonl_optional("flows_history.jsonl", limit=limit)
+    actions_data = read_jsonl_optional(os.path.join("logs", "firewall_actions.jsonl"), limit=limit)
+    return maybe_sanitize(build_incident_timeline(alerts_data, flows_data, actions_data, limit=limit))
+
+
+@app.post("/api/alerts/explain")
+def alert_explain(payload: dict, api_ok: bool = Depends(require_api_key)):
+    return maybe_sanitize(explain_alert(payload or {}))
+
+
+@app.get("/api/reports/security")
+def security_report(api_ok: bool = Depends(require_api_key)):
+    alerts_data = read_json_file_optional("alerts.json", [])
+    profiles_data = read_json_file_optional("device_profiles.json", {})
+    actions_data = read_jsonl_optional(os.path.join("logs", "firewall_actions.jsonl"), limit=1000)
+    timeline_data = build_incident_timeline(
+        alerts_data,
+        read_jsonl_optional("flows_history.jsonl", limit=500),
+        actions_data,
+        limit=250,
+    )
+    report = build_security_report(
+        alerts=alerts_data,
+        timeline=timeline_data,
+        firewall_actions=actions_data,
+        profiles=profiles_data,
+    )
+    return maybe_sanitize(report)
 
 
 @app.get("/api/health")

@@ -14,7 +14,7 @@ export default function PresenterMode(){
         try{
           const obj = JSON.parse(ev.data)
           if(obj.type === 'demo_step'){
-            const p = obj.payload || {}
+            const p = (obj.payload && obj.payload.payload) || obj.payload || {}
             setActive(true)
             setStep(p.step)
             setMessage(p.message || '')
@@ -30,10 +30,10 @@ export default function PresenterMode(){
 
   if(!active) return null
   return (
-    <div style={{position:'fixed', left:0, top:0, right:0, bottom:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none'}}>
-      <div style={{pointerEvents:'auto', background:'rgba(0,0,0,0.7)', color:'#fff', padding:20, borderRadius:8, textAlign:'center', minWidth:420}}>
-        <div style={{fontSize:18, fontWeight:700}}>{step || 'Demo'}</div>
-        <div style={{marginTop:8, fontSize:14}}>{message}</div>
+    <div style={{position:'fixed', left:0, top:68, right:0, pointerEvents:'none', zIndex:10002, display:'flex', justifyContent:'center'}}>
+      <div style={{pointerEvents:'auto', background:'rgba(15,23,42,0.94)', color:'#fff', padding:'12px 20px', borderRadius:8, textAlign:'center', minWidth:420, border:'1px solid rgba(0,212,255,0.45)', boxShadow:'0 18px 60px rgba(0,0,0,0.35)'}}>
+        <div style={{fontSize:14, fontWeight:800, color:'#00d4ff'}}>{step || 'Demo'}</div>
+        <div style={{marginTop:4, fontSize:13}}>{message}</div>
       </div>
     </div>
   )
