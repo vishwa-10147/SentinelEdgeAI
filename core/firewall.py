@@ -4,6 +4,7 @@ import subprocess
 import time
 import ipaddress
 import shutil
+import logging
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -215,6 +216,36 @@ def expire_rules(now=None):
     return {'expired': len(expired), 'rules_left': len(active)}
 
 def _run_cmd(cmd):
+    """Run a system command safely.
+
+    Expectations and mitigations for Bandit:
+    - `cmd` must be a sequence (list/tuple) of argument strings.
+    - We validate that no shell meta-characters are present in args.
+    - The executable must exist on PATH (checked with `shutil.which`).
+    This keeps `shell=False` while reducing risk of executing untrusted input.
+    """
+    logger = logging.getLogger("sentinel.firewall")
+
+    # Basic validation: expect non-empty list/tuple of strings
+    if not isinstance(cmd, (list, tuple)) or not cmd:
+        logger.error("Invalid command passed to _run_cmd: not a list/tuple or empty")
+        return False, "invalid command"
+
+    for part in cmd:
+        if not isinstance(part, str):
+            logger.error("Invalid command part type: %r", type(part))
+            return False, "invalid command part"
+        # reject obvious shell metacharacters in any argument
+        if any(ch in part for ch in (';', '&', '|', '>', '<', '$', '`')):
+            logger.error("Unsafe character detected in command argument: %r", part)
+            return False, "unsafe command"
+
+    # Ensure executable exists (prevent accidental shell lookups)
+    prog = shutil.which(cmd[0])
+    if not prog:
+        logger.error("Command not found on PATH: %s", cmd[0])
+        return False, f"command not found: {cmd[0]}"
+
     try:
         subprocess.check_output(cmd, shell=False, stderr=subprocess.STDOUT)
         return True, None

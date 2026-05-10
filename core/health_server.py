@@ -62,10 +62,11 @@ class HealthHTTPServer(HTTPServer):
             try:
                 self.server_close()
             except Exception:
-                pass
+                logger = logging.getLogger("sentinel.health")
+                logger.debug("server_close failed during shutdown", exc_info=True)
 
 
-def start_health_server(monitor, host="0.0.0.0", port=8000):
+def start_health_server(monitor, host="0.0.0.0", port=8000):  # nosec B104
     """Start a simple HTTP health endpoint in a background thread.
 
     Exposes `/health` which returns JSON from `monitor.get_status()`.
