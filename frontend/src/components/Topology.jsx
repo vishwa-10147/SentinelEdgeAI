@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react'
-import CytoscapeComponent from 'react-cytoscapejs'
+import React, { useEffect, useMemo, useRef, lazy, Suspense } from 'react'
+const TopologyCytoscape = lazy(() => import('./TopologyCytoscape'))
 
 const COLORS = {
   normal: '#22c55e',
@@ -305,13 +305,9 @@ export default function Topology({ devices = [], flows = [], firewallRules = [],
 
   return (
     <div className="topology-wrap" ref={wrapRef}>
-      <CytoscapeComponent
-        elements={elements}
-        stylesheet={stylesheet}
-        style={{ width: '100%', height: '100%' }}
-        cy={(cy)=>{ cyRef.current = cy }}
-        wheelSensitivity={0.18}
-      />
+      <Suspense fallback={<div style={{padding:16,color:'#94a3b8'}}>Loading topology core…</div>}>
+        <TopologyCytoscape elements={elements} stylesheet={stylesheet} onReady={(cy)=>{ cyRef.current = cy }} wheelSensitivity={0.18} />
+      </Suspense>
       <canvas ref={canvasRef} className="topology-canvas" />
       <div className="mini-map">
         <span>Topology</span>

@@ -8,6 +8,9 @@ ADMIN_PORTS = {22, 3389, 5900}
 
 def infer_device_type(ip, profile=None):
     profile = profile or {}
+    # The check for loopback and unspecified addresses is application-level
+    # classification, not a server bind. Mark as intentional for static analysis.
+    # nosec: B104
     if profile.get("type"):
         return profile["type"]
     if ip in {"0.0.0.0", "127.0.0.1"}:

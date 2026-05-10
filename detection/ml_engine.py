@@ -2,6 +2,7 @@ from sklearn.ensemble import IsolationForest
 import numpy as np
 import joblib
 import os
+import logging
 from security.model_signing import ModelSignatureError, sign_model, verify_model_signature
 from utils import metrics as metrics_utils
 
@@ -31,7 +32,7 @@ class MLEngine:
                         if metrics_utils.ML_SIGNATURE_STATUS is not None:
                             metrics_utils.ML_SIGNATURE_STATUS.set(1)
                     except Exception:
-                        pass
+                        logging.getLogger("sentinel.ml").debug("failed to update ML metrics (load)", exc_info=True)
                 except ModelSignatureError as e:
                     print(f"Warning: model signature verification failed but continuing due to SENTINEL_ALLOW_UNSIGNED_MODELS=1: {e}")
                     try:
@@ -40,7 +41,7 @@ class MLEngine:
                         if metrics_utils.ML_SIGNATURE_STATUS is not None:
                             metrics_utils.ML_SIGNATURE_STATUS.set(2)
                     except Exception:
-                        pass
+                        logging.getLogger("sentinel.ml").debug("failed to update ML metrics (signature failure)", exc_info=True)
                 try:
                     self.model = joblib.load(self.model_path)
                     self.trained = True
@@ -50,7 +51,7 @@ class MLEngine:
                         if metrics_utils.ML_SIGNATURE_STATUS is not None:
                             metrics_utils.ML_SIGNATURE_STATUS.set(1)
                     except Exception:
-                        pass
+                        logging.getLogger("sentinel.ml").debug("failed to update ML metrics (post-load)", exc_info=True)
                 except Exception as e:
                     print(f"Failed to load existing model file: {e}")
                     self.model = IsolationForest(
@@ -73,7 +74,7 @@ class MLEngine:
                         if metrics_utils.ML_SIGNATURE_STATUS is not None:
                             metrics_utils.ML_SIGNATURE_STATUS.set(1)
                     except Exception:
-                        pass
+                        logging.getLogger("sentinel.ml").debug("failed to update ML metrics (load fallback)", exc_info=True)
                 except Exception as e:
                     print(f"Failed to load existing model file: {e}")
                     self.model = IsolationForest(

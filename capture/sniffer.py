@@ -163,7 +163,7 @@ def process_packet(packet):
                     if FLOWS_COUNTER is not None:
                         FLOWS_COUNTER.inc()
                 except Exception:
-                    pass
+                    logger.debug("FLOWS_COUNTER.inc failed", exc_info=True)
                 ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
                 health_monitor.update_flows()
 
@@ -331,7 +331,7 @@ def process_packet(packet):
                         if event_publisher:
                             event_publisher(evt)
                     except Exception:
-                        pass
+                        logger.debug("event_publisher callback failed", exc_info=True)
                 except Exception:
                     logger.debug("Failed to write live event", exc_info=True)
 
