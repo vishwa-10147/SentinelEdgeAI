@@ -313,6 +313,28 @@ No adaptive response       →   Block / isolate / alert by risk score
 | **Security** | Secure boot + encrypted storage | 🗓 Roadmap |
 | **Updates** | OTA firmware + model versioning | 🗓 Roadmap |
 
+## Project Snapshot
+
+What we're building
+- A self-contained, on-premises edge cybersecurity appliance that performs real-time network capture, behavioral feature extraction, ML-based anomaly detection, and automated enforcement with a lightweight local dashboard and WebSocket streaming.
+
+What we have built (high level)
+- Packet capture & flow aggregation (`capture/sniffer.py`) with an async ingest queue.
+- Feature extraction and detection engines (z-score, isolation forest, behavioral fingerprinting).
+- SQLite-backed persistence (`core/storage_sqlite.py`) and DB-first streaming to the FastAPI/WebSocket backend.
+- Dashboard backend (`dashboard/dashboard_api.py`) with WebSocket `/ws/packets` and REST APIs; frontend scaffolding and Streamlit SOC UI.
+- Model signing verification and CI guards (model signature enforcement, plus `SENTINEL_ALLOW_UNSIGNED_MODELS` for testing).
+- CI smoke checks and helper scripts to validate DB write/read and websocket delivery (added to `.github/workflows/db-smoke.yml`).
+
+Pending / recommended next steps
+- Complete device provisioning for model signing (provision `SENTINEL_MODEL_SIGNING_KEY_FILE` via Vault or systemd drop-in).
+- Finalize removal of legacy file writers once all consumers use the DB API (set `ENABLE_FILE_FALLBACK=0` in device units).
+- Harden WebSocket delivery semantics and add schema-based validation for messages.
+- Add retention/configurable compaction policies (configurable via `config.yaml`) and monitor VACUUM frequency.
+- Address remaining CI/security lints (Bandit config collisions) and add a CI job for the websocket smoke check across Python versions.
+
+If you want, I can add this snapshot as a short `docs/PROJECT_SNAPSHOT.md` file and link it from the README; say "add doc" and I'll create it and push.
+
 ---
 
 ## Table of Contents
