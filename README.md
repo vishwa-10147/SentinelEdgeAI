@@ -119,27 +119,74 @@ python3 scripts/pi_benchmark.py --duration 60 --mode pcap --pcap /path/to/sample
 ```bash
 export SENTINEL_MODEL_SIGNING_KEY_FILE=/etc/sentinel/model_signing.key
 
-## Database-first persistence and legacy file fallback
+## Database-first persistence (recommended)
 
-The system now prefers SQLite persistence for flows, alerts, live events, device profiles, live stats, and risk timelines. To ease upgrades, a legacy file-based fallback can still be enabled, but new installs should disable it.
+SentinelEdgeAI now prefers SQLite persistence (data/sentinel.db) for:
+- flows
+- alerts
+- live events
+- device profiles
+- live stats
+- risk timelines
 
-- To force DB-only behavior set `ENABLE_FILE_FALLBACK=0` in your service unit or environment. The packaged `packaging/sentinel-health-agent.service` and the installer template now include this environment variable by default.
-- A background DB maintenance thread runs periodic retention and `VACUUM` by default; you can disable it with `DISABLE_DB_MAINTENANCE=1` in environments where external maintenance is preferred.
+To ease upgrades we temporarily support a legacy file fallback (JSON/JSONL), but new installs and production deployments should use DB-only streaming.
 
-If you need to re-enable legacy file fallbacks temporarily, set `ENABLE_FILE_FALLBACK=1` in the service environment.
+Configuration
+-
+- `ENABLE_FILE_FALLBACK` — controls whether components fall back to legacy file reads/writes.
+  - Set to `0` for DB-only streaming (recommended for new installs).
+  - Set to `1` to enable legacy file fallback (migration mode).
+  - Example: add to a systemd service drop-in or the service unit environment.
 
-## Configuration: Legacy file fallback (ENABLE_FILE_FALLBACK)
+- `DISABLE_DB_MAINTENANCE` — when set to `1` disables the built-in background DB maintenance thread (retention + VACUUM). Leave unset (default) to allow automatic maintenance.
 
-The dashboard and capture components now prefer SQLite (`data/sentinel.db`) for persistence and streaming of alerts, live events, flows, and device profiles. For backwards compatibility, a legacy file-based fallback is available and controlled by the `ENABLE_FILE_FALLBACK` environment variable.
+Service examples
+-
+Add a systemd drop-in to force DB-only behavior for `sentineledge`-style units:
 
-- Default: `ENABLE_FILE_FALLBACK=1` (file fallback enabled).
-- To disable file fallbacks and run DB-only streaming, set `ENABLE_FILE_FALLBACK=0` in your environment before starting the dashboard API or service.
-
-When disabled, the application will read and stream alerts, `live_stats`, and `live_events` directly from the SQLite database and will not tail or write legacy JSON/JSONL files.
-
-This flag exists to ease upgrades; once you confirm DB persistence is working in your environment, it's recommended to set `ENABLE_FILE_FALLBACK=0`.
-PYTHONPATH=/path/to/SentinelEdgeAI python3 scripts/sign_model.py model/isolation_forest.pkl --verify
+```ini
+[Service]
+Environment=ENABLE_FILE_FALLBACK=0
+Environment=DISABLE_DB_MAINTENANCE=0
 ```
+
+After creating or editing the drop-in, reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart sentineledge.service
+sudo systemctl status sentineledge.service
+```
+
+Quick verification
+-
+- Run unit tests:
+
+```bash
+pytest -q
+```
+
+- Insert a demo alert (writes to DB when DB available):
+
+```bash
+python scripts/send_test_alert.py --use-db
+# or inspect DB directly
+sqlite3 data/sentinel.db "SELECT COUNT(*) FROM alerts;"
+```
+
+- Check recent live events or alerts via the API:
+
+```bash
+curl -sS http://127.0.0.1:9000/api/alerts | jq .
+curl -sS http://127.0.0.1:9000/api/live_stats | jq .
+```
+
+Rollbacks & migration notes
+-
+- If integrations depend on legacy files, enable `ENABLE_FILE_FALLBACK=1` temporarily while you migrate them to the DB API or websocket.
+- To permanently disable the fallback once all clients are migrated, set `ENABLE_FILE_FALLBACK=0` in deployed service units and remove any file-writer cronjobs.
+
+If you'd like, I can add a small `scripts/check_db_streaming.sh` helper that performs the demo write, queries the DB, and validates websocket delivery.
 
 4. Confirm the service is stable (`systemctl status sentineledgeai.service`) and logs show no signature errors.
 5. Only after CI is green and device verification passes, remove any `SENTINEL_ALLOW_UNSIGNED_MODELS=1` drop-in and enable enforcement (`FIREWALL_DRY_RUN=0`) with a verified rollback guard in place.
