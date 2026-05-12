@@ -1,7 +1,0 @@
-Strategic overview: SentinelEdgeAI
-Let me start with the full visual roadmap, then walk you through the advancement strategy and competitive landscape.
-
-The strategic verdict
-Where SentinelEdgeAI wins outright: It is the only approach in this space that combines genuine ML-based zero-day detection, fully local operation with no cloud dependency, and hardware costs under $300. That combination doesn't exist anywhere else. pfSense is local but has no AI. Darktrace has AI but costs $50k+ per year. CrowdStrike is cloud-dependent. The gap SentinelEdgeAI fills is real.
-What to watch as you build: The cold-start problem is your biggest practical obstacle — the Isolation Forest model needs to learn what "normal" looks like for a specific network before it can call anything "anomalous." Plan for a 2-week supervised learning period after deployment before trusting the model's outputs. During that window, run in log-only mode and don't auto-block anything.
-How to make it seriously advanced: The jump from prototype to genuinely impressive happens at three points — (1) adding LSTM sequence modeling so it detects attack chains not just individual anomalous packets, (2) adding JA3/JA3S TLS fingerprinting so it can analyze encrypted traffic without decrypting it, and (3) integrating MITRE ATT&CK technique mapping so every alert is tagged to a known adversary technique. Those three additions put it in the same conversation as commercial tools costing 100x more.
