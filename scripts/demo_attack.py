@@ -15,6 +15,20 @@ ALERTS = os.path.join(ROOT, 'alerts.json')
 LIVE_EVENTS = os.path.join(ROOT, 'live_events.jsonl')
 
 def append_alert(alert):
+    # write to DB if available, otherwise fall back to file
+    try:
+        from core.storage_sqlite import SQLiteStorage
+        s = SQLiteStorage(os.path.join(ROOT, 'data', 'sentinel.db') if os.path.isdir(os.path.join(ROOT, 'data')) else 'data/sentinel.db')
+        s.connect()
+        try:
+            s.create_tables()
+        except Exception:
+            pass
+        s.insert_alert(int(time.time()), alert.get('src_ip'), alert.get('dst_ip'), alert.get('port', 0), 0, alert.get('protocol',''), alert.get('risk_score', alert.get('final_risk_score', 0)), float(alert.get('confidence', 0)), json.dumps(alert))
+        return
+    except Exception:
+        pass
+
     data = []
     if os.path.exists(ALERTS):
         try:
@@ -27,6 +41,16 @@ def append_alert(alert):
         json.dump(data, f, indent=2)
 
 def append_event(evt):
+    # write to DB if available, otherwise append to file
+    try:
+        from core.storage_sqlite import SQLiteStorage
+        s = SQLiteStorage(os.path.join(ROOT, 'data', 'sentinel.db') if os.path.isdir(os.path.join(ROOT, 'data')) else 'data/sentinel.db')
+        s.connect()
+        s.insert_live_event(int(time.time()), evt.get('type','event'), json.dumps(evt))
+        return
+    except Exception:
+        pass
+
     with open(LIVE_EVENTS, 'a') as f:
         f.write(json.dumps(evt) + "\n")
 

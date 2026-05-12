@@ -1,6 +1,6 @@
 import os
 import json
-import subprocess
+import subprocess  # nosec: B404  # subprocess used with validated inputs in _run_cmd
 import time
 import ipaddress
 import shutil
@@ -247,7 +247,11 @@ def _run_cmd(cmd):
         return False, f"command not found: {cmd[0]}"
 
     try:
-        subprocess.check_output(cmd, shell=False, stderr=subprocess.STDOUT)
+        # Inputs are validated above (no shell metachars, args are strings)
+        # and the executable is verified with `shutil.which()`; keep
+        # `shell=False` to avoid shell injection risks. Mark as intentional
+        # for Bandit where appropriate.
+        subprocess.check_output(cmd, shell=False, stderr=subprocess.STDOUT)  # nosec: B603
         return True, None
     except subprocess.CalledProcessError as e:
         return False, e.output.decode('utf-8', errors='ignore')
