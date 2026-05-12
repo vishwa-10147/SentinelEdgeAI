@@ -29,8 +29,14 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
 
-      - name: Run pip-audit
-        run: pip-audit --progress=off || true
+      - name: Run pip-audit (JSON)
+        run: pip-audit --format json --output pip_audit_report.json || true
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip_audit_report.json
 
   bandit:
     name: bandit static analysis
@@ -43,4 +49,10 @@ jobs:
         run: pip install bandit
 
       - name: Run bandit
-        run: bandit -r . -lll -f text -x venv,.venv,./venv,./.venv || true
+        run: bandit -r . -f json -o bandit_report.json -x venv,.venv,./venv,./.venv || true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit_report.json

@@ -69,3 +69,8 @@ After the runner is online
 -------------------------
 1) Re-dispatch the `containerized-firewall-integration.yml` workflow (from the PR UI or CLI) to execute on the self-hosted runner.
 2) I'll monitor the run and fetch logs to triage any test failures.
+
+CI helper notes
+---------------
+- The project now includes a CI security workflow (`.github/workflows/security-scans.yml`) that runs `pip-audit` and `bandit` and uploads JSON reports as artifacts.
+- Some CI steps (e.g. the CI health-server helper `scripts/run_ci_health_server.py`) require the repository root on `PYTHONPATH` when launched under `nohup` or CI environments. The helper script now auto-adds the repo root to `sys.path` when executed directly.
