@@ -23,4 +23,5 @@ jobs:
           pip install -r requirements.txt || true
       - name: Run DB streaming smoke check
         run: |
-          bash scripts/check_db_streaming.sh
+          # run websocket-validated smoke check (starts server if necessary)
+          bash scripts/check_db_streaming_ws.sh
