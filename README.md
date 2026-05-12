@@ -1,148 +1,71 @@
-<div align="center">
+# SentinelEdgeAI
 
-# 🛡️ SentinelEdgeAI
+Lightweight, on-premises, AI-driven edge cybersecurity appliance for real-time network monitoring,
+anomaly detection, and automated response.
 
-### AI-Powered Edge Cyber Defense Box
+<!-- Badges -->
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org)
+[![Status](https://img.shields.io/badge/Status-Active-orange)]()
 
-**Real-time network anomaly detection, behavioral profiling, and adaptive threat response — running fully on-premises, no cloud required.**
+---
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=flat-square&logo=python)](https://python.org)
-[![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Raspberry%20Pi%205%20%2B%20Jetson%20Orin%20Nano-green?style=flat-square)](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/)
-[![Status](https://img.shields.io/badge/Status-Active%20Development-orange?style=flat-square)]()
-[![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Mapped-purple?style=flat-square)](https://attack.mitre.org/)
+## Overview
 
-## Deployment Validation & Firewall Integration Tests
+SentinelEdgeAI captures network traffic at the edge, extracts behavioral features, runs ML-based
+anomaly detection, and exposes a REST + WebSocket API for dashboards and integrations.
 
-Follow these steps to validate deployment, run the containerized firewall integration tests, and exercise rollback/playbook procedures.
+Key points:
+- Runs fully on-premises (Raspberry Pi / Jetson Orin Nano targets supported).
+- DB-first persistence using SQLite (`data/sentinel.db`) with optional legacy file fallback.
+- FastAPI backend with WebSocket streaming for near-real-time alerts.
+- Model signing support and CI smoke checks for safe deployments.
 
-- Run the normal test suite (already run in CI):
+---
+
+## Features
+
+- Real-time packet capture and flow aggregation
+- Behavioral feature extraction and drift-aware detection
+- Isolation Forest + statistical detectors
+- WebSocket streaming and REST APIs for alerts, flows, and metrics
+- SQLite persistence with background maintenance (VACUUM/retention)
+- Enforcement hooks for iptables/nftables and rollback guard
+
+---
+
+## Quick Start
+
+Prerequisites: Python 3.8+, virtualenv or venv, optional Docker for integration tests.
+
+Install and run locally:
 
 ```bash
-# from repo root
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+# run the backend
+uvicorn dashboard.dashboard_api:app --reload --port 9000
+```
+
+Run unit tests:
+
+```bash
 pytest -q
 ```
 
-- Run the privileged containerized firewall integration tests (requires Docker and NET_ADMIN capabilities). Set the guard variable to enable these tests locally:
+For development, see `scripts/` for helpers (PCAP replay, smoke checks, installers).
 
-```bash
-export SENTINEL_RUN_FIREWALL_CONTAINER_TESTS=1
-sudo -E pytest -q tests/test_firewall_container_integration.py
-```
+---
 
-Notes:
-- The container tests build a small privileged container under `tests/firewall_container/` and exercise both `nft` and `iptables` backends. They are skipped by default to avoid requiring root in normal dev runs.
+## Configuration
 
-## Firewall Rollback Playbook (Emergency)
+Key environment variables / settings:
 
-Use the API rollback endpoint to remove all active blocks (safe in dry-run mode; use caution if enforcement is enabled):
+- `ENABLE_FILE_FALLBACK` — 0 to prefer DB-only persistence (recommended), 1 to allow legacy file fallback
+- `DISABLE_DB_MAINTENANCE` — 1 to disable background DB maintenance (vacuum/retention)
+- `SENTINEL_MODEL_SIGNING_KEY_FILE` — path to the model signing public key (recommended for production)
 
-```bash
-# Emergency rollback via API (requires API key if set)
-curl -X POST http://localhost:9000/api/firewall/rollback \
-  -H 'Content-Type: application/json' \
-  -d '{"reason":"emergency_revert"}'
-```
-
-If you prefer a system-level rollback (when running enforcement on a Pi), create a small systemd drop-in that calls the rollback endpoint or runs the included helper script. Example snippet for a one-shot rollback script:
-
-```bash
-#!/bin/sh
-# /usr/local/bin/sentinel_rollback.sh
-curl -sS -X POST http://127.0.0.1:9000/api/firewall/rollback -H 'Content-Type: application/json' -d '{"reason":"system_recovery"}'
-```
-
-Wire this script into a recovery path (serial console, remote management) rather than relying on network-only access.
-
-## Firewall Policy & Whitelist (API)
-
-The new enforcement policy and whitelist endpoints let you manage runtime policy safely:
-
-- Get current policy:
-
-```bash
-curl http://localhost:9000/api/firewall/policy | jq .
-```
-
-- Update policy (example) — default TTL and max TTL are enforced by the backend:
-
-```bash
-curl -X POST http://localhost:9000/api/firewall/policy \
-  -H 'Content-Type: application/json' \
-  -d '{"default_ttl":3600, "max_ttl":86400}'
-```
-
-- Add an IP to the whitelist (this prevents any blocks being applied to that IP):
-
-```bash
-curl -X POST http://localhost:9000/api/firewall/whitelist \
-  -H 'Content-Type: application/json' \
-  -d '{"ip":"192.0.2.55"}'
-```
-
-- Trigger TTL expiry processing immediately (normally runs periodically):
-
-```bash
-curl -X POST http://localhost:9000/api/firewall/expire
-```
-
-## PCAP Replay & Pi Benchmark
-
-Replay a PCAP to exercise the detection pipeline and generate alerts/events:
-
-```bash
-python3 scripts/replay_pcap.py --pcap /path/to/sample.pcap --iface lo
-```
-
-Run the Pi benchmark (synthetic or PCAP-backed) to measure throughput/latency:
-
-```bash
-# synthetic 60s benchmark
-python3 scripts/pi_benchmark.py --duration 60 --mode synthetic
-
-# PCAP-backed benchmark
-python3 scripts/pi_benchmark.py --duration 60 --mode pcap --pcap /path/to/sample.pcap
-```
-
-## Notes & Next Steps
-
-- The enforcement policy manager supports whitelist, default/max TTL, TTL expiry, duplicate replacement, and emergency rollback. The backend chooses `nft` or `iptables` based on `SENTINEL_FIREWALL_BACKEND` environment variable.
-- Before setting `FIREWALL_DRY_RUN=0` in a production device, run the containerized integration tests and add a system-level rollback guard (systemd or out-of-band management) to avoid accidental lockout.
-- The repo includes `tests/test_firewall_container_integration.py` for privileged validation; it will run only when `SENTINEL_RUN_FIREWALL_CONTAINER_TESTS=1`.
-
-### Recommended Next Steps (best practice)
-
-1. Add the Actions secret `SENTINEL_MODEL_SIGNING_KEY` in the repository settings (Actions Secrets).
-2. Push a small test commit to trigger `model-signing` and `check-model-signature` workflows and confirm both succeed.
-3. On a test Pi, keep `FIREWALL_DRY_RUN=1`, provision the signing key to `/etc/sentinel/model_signing.key`, and verify the signature locally:
-
-```bash
-export SENTINEL_MODEL_SIGNING_KEY_FILE=/etc/sentinel/model_signing.key
-
-## Database-first persistence (recommended)
-
-SentinelEdgeAI now prefers SQLite persistence (data/sentinel.db) for:
-- flows
-- alerts
-- live events
-- device profiles
-- live stats
-- risk timelines
-
-To ease upgrades we temporarily support a legacy file fallback (JSON/JSONL), but new installs and production deployments should use DB-only streaming.
-
-Configuration
--
-- `ENABLE_FILE_FALLBACK` — controls whether components fall back to legacy file reads/writes.
-  - Set to `0` for DB-only streaming (recommended for new installs).
-  - Set to `1` to enable legacy file fallback (migration mode).
-  - Example: add to a systemd service drop-in or the service unit environment.
-
-- `DISABLE_DB_MAINTENANCE` — when set to `1` disables the built-in background DB maintenance thread (retention + VACUUM). Leave unset (default) to allow automatic maintenance.
-
-Service examples
--
-Add a systemd drop-in to force DB-only behavior for `sentineledge`-style units:
+Service example (systemd drop-in):
 
 ```ini
 [Service]
@@ -150,254 +73,41 @@ Environment=ENABLE_FILE_FALLBACK=0
 Environment=DISABLE_DB_MAINTENANCE=0
 ```
 
-After creating or editing the drop-in, reload and restart:
+---
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart sentineledge.service
-sudo systemctl status sentineledge.service
-```
+## Project Structure (high level)
 
-Quick verification
--
-- Run unit tests:
-
-```bash
-pytest -q
-```
-
-- Insert a demo alert (writes to DB when DB available):
-
-```bash
-python scripts/send_test_alert.py --use-db
-# or inspect DB directly
-sqlite3 data/sentinel.db "SELECT COUNT(*) FROM alerts;"
-```
-
-- Check recent live events or alerts via the API:
-
-```bash
-curl -sS http://127.0.0.1:9000/api/alerts | jq .
-curl -sS http://127.0.0.1:9000/api/live_stats | jq .
-```
-
-Rollbacks & migration notes
--
-- If integrations depend on legacy files, enable `ENABLE_FILE_FALLBACK=1` temporarily while you migrate them to the DB API or websocket.
-- To permanently disable the fallback once all clients are migrated, set `ENABLE_FILE_FALLBACK=0` in deployed service units and remove any file-writer cronjobs.
-
-If you'd like, I can add a small `scripts/check_db_streaming.sh` helper that performs the demo write, queries the DB, and validates websocket delivery.
-
-4. Confirm the service is stable (`systemctl status sentineledgeai.service`) and logs show no signature errors.
-5. Only after CI is green and device verification passes, remove any `SENTINEL_ALLOW_UNSIGNED_MODELS=1` drop-in and enable enforcement (`FIREWALL_DRY_RUN=0`) with a verified rollback guard in place.
-
-Following this sequence ensures CI, key provisioning, and runtime verification are validated before enabling enforcement.
-
-## Safe Rollout Checklist & One-Click Helper
-
-Use the helper `scripts/enable_firewall_enforcement.sh` to perform prechecks and generate a local env file you can copy to a Pi.
-
-Quick workflow:
-
-- Run prechecks locally (health + privileged container tests):
-
-```bash
-./scripts/enable_firewall_enforcement.sh
-```
-
-- If prechecks pass, run with `--apply` to write `deploy/pi/firewall-rollback.env` (local file):
-
-```bash
-./scripts/enable_firewall_enforcement.sh --apply
-```
-
-- Copy the generated file to the Pi and enable the rollback timer (on the Pi):
-
-```bash
-sudo cp deploy/pi/firewall-rollback.env /etc/sentinel/firewall-rollback.env
-sudo systemctl enable --now sentinel-firewall-rollback-guard.timer
-```
-
-- Once the guard/timer are installed and verified, flip enforcement by setting `FIREWALL_DRY_RUN=0` in your runtime environment (systemd unit drop-in or `/etc/default` file). Keep a recovery path (serial/console) available.
-
-If you'd like, I can (A) add an automated test that runs the new PCAP replay test in CI (requires scapy), (B) expand `deploy/pi/install_pi.sh` to optionally copy the generated env file and enable the timer, or (C) create a small systemd drop-in template that sets `FIREWALL_DRY_RUN=0` for review.
-
-### Self-hosted runner & rollback validation
-
-For privileged firewall integration tests you must use a self-hosted runner with Docker and `NET_ADMIN`. See `deploy/pi/SELF_HOSTED_RUNNER.md` for setup details.
-
-You can validate the rollback guard locally before enabling enforcement on a Pi with the included script:
-
-```bash
-# from repo root (venv activated)
-python scripts/validate_rollback_guard.py
-```
-
-This script will:
-- add a temporary block via `core.firewall.add_block()`;
-- run `scripts/firewall_rollback_guard.sh` repeatedly while simulating failing health checks; and
-- verify the guard calls `rollback_blocks()` and clears the block.
-
-After validation, generate the env file and copy it to the Pi:
-
-```bash
-./scripts/enable_firewall_enforcement.sh --apply
-scp deploy/pi/firewall-rollback.env pi@<pi_ip>:/tmp/
-sudo cp /tmp/firewall-rollback.env /etc/sentinel/firewall-rollback.env
-sudo systemctl enable --now sentinel-firewall-rollback-guard.timer
-```
-
-When the guard is installed and verified, use the interactive installer on the Pi to create the enforcement drop-in or copy the drop-in manually (see `deploy/pi/README_ENFORCEMENT.md`). Keep console access while flipping `FIREWALL_DRY_RUN=0`.
-
-If you'd like, I can now:
-- run the containerized firewall integration tests on this host (requires Docker + privileges), or
-- add a small systemd rollback guard unit and example playbook to `packaging/` so Pi deployments include a recovery path.
-
-## Pi Deployment & Rollback Guard
-
-We've added packaging and tooling to ease deploying the enforcement rollback guard on a Raspberry Pi.
-
-- Installer: `packaging/install_firewall_guard.sh` — dry-run installer; run with `--apply` to copy units and enable timer.
-- Guard script: `packaging/sentinel-firewall-rollback.sh` — checks `/api/health` and calls `/api/firewall/rollback` when health is unhealthy.
-- Example env: `packaging/firewall-rollback.env.example` — copy to `/etc/sentinel/firewall-rollback.env` on target Pi.
-
-To install on a Pi (example):
-
-```bash
-cd /path/to/SentinelEdgeAI
-sudo packaging/install_firewall_guard.sh --env-file packaging/firewall-rollback.env.example --apply
-```
-
-This will install systemd units and enable a timer that periodically runs the rollback guard.
-
-</div>
+- `capture/` — packet sniffer and ingest queue
+- `core/` — storage, engine, DB maintenance, helpers
+- `detection/` — ML models and detection pipeline
+- `dashboard/` — FastAPI REST + WebSocket endpoints
+- `scripts/` — developer and deployment helpers
 
 ---
 
-## What is SentinelEdgeAI?
+## Contributing
 
-SentinelEdgeAI is a plug-and-play, hardware-accelerated cybersecurity appliance designed for small, medium, and scaling enterprise networks. It replaces traditional signature-based firewalls with a multi-layer AI detection engine that understands *behavioral patterns* — catching zero-day attacks, lateral movement, and novel threats that rule-based systems miss entirely.
+Contributions are welcome. Please follow these steps:
 
-The system runs on a dual-hardware architecture: a **Raspberry Pi 5** handles packet capture and network enforcement, while an **NVIDIA Jetson Orin Nano** runs GPU-accelerated AI inference. Everything stays local — no telemetry, no cloud dependency, no subscription.
+1. Fork the repo and create a feature branch
+2. Run tests and linters locally
+3. Open a PR with a clear description and tests where applicable
 
-```
-Traditional Firewalls          SentinelEdgeAI
-─────────────────────          ──────────────────────────────────
-Static rules & signatures  →   Behavioral + anomaly-based AI
-Cannot detect zero-days    →   Zero-day & unknown attack detection
-Cloud dependency common    →   Fully local — air-gap capable
-No adaptive response       →   Block / isolate / alert by risk score
-```
+See `CONTRIBUTING.md` for more details (if present).
 
 ---
 
-## Current Build Status
+## License & Contact
 
-> **v1.0 — Detection Core Complete. Enforcement + Hardware layers in active development.**
+See the `LICENSE` file in the repository root for licensing details.
 
-| Layer | Component | Status |
-|-------|-----------|--------|
-| **Capture** | Scapy packet sniffer | ✅ Working |
-| **Capture** | Zeek / Suricata on Raspberry Pi 5 | 🔧 In progress |
-| **Detection** | Z-score statistical anomaly engine | ✅ Working |
-| **Detection** | Isolation Forest ML classifier | ✅ Working |
-| **Detection** | Behavioral fingerprinting + drift detection | ✅ Working |
-| **Detection** | MITRE ATT&CK tactic/technique mapping | ✅ Working |
-| **Scoring** | Multi-layer risk engine (0–100) | ✅ Working |
-| **Dashboard** | Streamlit SOC interface | ✅ Working |
-| **Dashboard** | React SOC UI + WebSocket alerts | ✅ Working |
-| **Enforcement** | iptables / nftables dynamic rule injection | 🔧 In progress |
-| **Enforcement** | VLAN-based device isolation / quarantine | 🔧 In progress |
-| **Backend** | FastAPI REST + WebSocket backend | ✅ Working |
-| **Hardware** | Jetson Orin Nano GPU inference node | 🗓 Roadmap |
-| **Security** | Secure boot + encrypted storage | 🗓 Roadmap |
-| **Updates** | OTA firmware + model versioning | 🗓 Roadmap |
-
-## Project Snapshot
-
-What we're building
-- A self-contained, on-premises edge cybersecurity appliance that performs real-time network capture, behavioral feature extraction, ML-based anomaly detection, and automated enforcement with a lightweight local dashboard and WebSocket streaming.
-
-What we have built (high level)
-- Packet capture & flow aggregation (`capture/sniffer.py`) with an async ingest queue.
-- Feature extraction and detection engines (z-score, isolation forest, behavioral fingerprinting).
-- SQLite-backed persistence (`core/storage_sqlite.py`) and DB-first streaming to the FastAPI/WebSocket backend.
-- Dashboard backend (`dashboard/dashboard_api.py`) with WebSocket `/ws/packets` and REST APIs; frontend scaffolding and Streamlit SOC UI.
-- Model signing verification and CI guards (model signature enforcement, plus `SENTINEL_ALLOW_UNSIGNED_MODELS` for testing).
-- CI smoke checks and helper scripts to validate DB write/read and websocket delivery (added to `.github/workflows/db-smoke.yml`).
-
-Pending / recommended next steps
-- Complete device provisioning for model signing (provision `SENTINEL_MODEL_SIGNING_KEY_FILE` via Vault or systemd drop-in).
-- Finalize removal of legacy file writers once all consumers use the DB API (set `ENABLE_FILE_FALLBACK=0` in device units).
-- Harden WebSocket delivery semantics and add schema-based validation for messages.
-- Add retention/configurable compaction policies (configurable via `config.yaml`) and monitor VACUUM frequency.
-- Address remaining CI/security lints (Bandit config collisions) and add a CI job for the websocket smoke check across Python versions.
-
-If you want, I can add this snapshot as a short `docs/PROJECT_SNAPSHOT.md` file and link it from the README; say "add doc" and I'll create it and push.
+For questions or support, open an issue or contact the maintainers via the repo's issue tracker.
 
 ---
 
-## Table of Contents
-
-- [Architecture](#architecture)
-- [Hardware Stack](#hardware-stack)
-- [AI Models](#ai-models)
-- [Detection Pipeline](#detection-pipeline)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Components](#components)
-- [Monitoring & Observability](#monitoring--observability)
-- [SOC Dashboard](#soc-dashboard)
-- [Production Deployment](#production-deployment)
-- [Threat Response Actions](#threat-response-actions)
-- [MITRE ATT&CK Coverage](#mitre-attck-coverage)
-- [Evaluation Metrics](#evaluation-metrics)
-- [Future Roadmap](#future-roadmap)
-- [Limitations](#limitations)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-
----
-
-## Architecture
-
-SentinelEdgeAI uses a layered, dual-hardware architecture that separates packet processing from AI inference — enabling high detection throughput without degrading network performance.
-
-```
-                        ┌─────────────────────────────────┐
-                        │      NETWORK TRAFFIC (WAN/LAN)  │
-                        └────────────────┬────────────────┘
-                                         │
-                        ┌────────────────▼────────────────┐
-                        │   LAYER 1 — NETWORK MONITORING  │
-                        │         Raspberry Pi 5           │
-                        │                                  │
-                        │  • Zeek / Suricata / Scapy       │
-                        │  • Flow table (30s idle timeout) │
-                        │  • 24-feature extraction         │
-                        │  • Device fingerprinting         │
-                        │  • DNS monitoring                │
-                        │  • iptables / nftables enforce   │
-                        └────────────────┬────────────────┘
-                                         │  (gRPC / MQTT over TLS)
-                        ┌────────────────▼────────────────┐
-                        │   LAYER 2 — AI INFERENCE        │
-                        │      Jetson Orin Nano (GPU)      │
-                        │                                  │
-                        │  • Isolation Forest (active)     │
-                        │  • Z-score anomaly engine        │
-                        │  • Behavioral fingerprinting     │
-                        │  • Drift detection               │
-                        │  • Attack classifier             │
-                        │  • Risk escalation engine        │
-                        │  • MITRE ATT&CK mapper           │
-                        │  • LSTM sequence model (roadmap) │
-                        └────────────────┬────────────────┘
-                                         │
-                        ┌────────────────▼────────────────┐
-                        │   LAYER 3 — MANAGEMENT          │
-                        │                                  │
+_This README was updated to a concise, professional project overview. If you want additional
+sections (detailed architecture diagrams, deployment playbooks, or a standalone `docs/PROJECT_SNAPSHOT.md`),
+I can add them on request._
                         │  • FastAPI REST backend          │
                         │  • WebSocket real-time alerts    │
                         │  • Streamlit SOC dashboard       │
