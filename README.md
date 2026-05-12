@@ -118,6 +118,26 @@ python3 scripts/pi_benchmark.py --duration 60 --mode pcap --pcap /path/to/sample
 
 ```bash
 export SENTINEL_MODEL_SIGNING_KEY_FILE=/etc/sentinel/model_signing.key
+
+## Database-first persistence and legacy file fallback
+
+The system now prefers SQLite persistence for flows, alerts, live events, device profiles, live stats, and risk timelines. To ease upgrades, a legacy file-based fallback can still be enabled, but new installs should disable it.
+
+- To force DB-only behavior set `ENABLE_FILE_FALLBACK=0` in your service unit or environment. The packaged `packaging/sentinel-health-agent.service` and the installer template now include this environment variable by default.
+- A background DB maintenance thread runs periodic retention and `VACUUM` by default; you can disable it with `DISABLE_DB_MAINTENANCE=1` in environments where external maintenance is preferred.
+
+If you need to re-enable legacy file fallbacks temporarily, set `ENABLE_FILE_FALLBACK=1` in the service environment.
+
+## Configuration: Legacy file fallback (ENABLE_FILE_FALLBACK)
+
+The dashboard and capture components now prefer SQLite (`data/sentinel.db`) for persistence and streaming of alerts, live events, flows, and device profiles. For backwards compatibility, a legacy file-based fallback is available and controlled by the `ENABLE_FILE_FALLBACK` environment variable.
+
+- Default: `ENABLE_FILE_FALLBACK=1` (file fallback enabled).
+- To disable file fallbacks and run DB-only streaming, set `ENABLE_FILE_FALLBACK=0` in your environment before starting the dashboard API or service.
+
+When disabled, the application will read and stream alerts, `live_stats`, and `live_events` directly from the SQLite database and will not tail or write legacy JSON/JSONL files.
+
+This flag exists to ease upgrades; once you confirm DB persistence is working in your environment, it's recommended to set `ENABLE_FILE_FALLBACK=0`.
 PYTHONPATH=/path/to/SentinelEdgeAI python3 scripts/sign_model.py model/isolation_forest.pkl --verify
 ```
 
