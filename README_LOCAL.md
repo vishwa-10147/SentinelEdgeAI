@@ -67,6 +67,28 @@ Notes
 - Use `REDACT_SENSITIVE=1` when capturing screenshots or sharing local UI results.
 If you want, I can create the systemd unit file and enable it for you (requires `sudo`).
 
+Packaging for Raspberry Pi
+--------------------------
+To create a tarball package suitable for installing on a Raspberry Pi or similar device:
+
+```bash
+# from repo root
+tar --exclude='.git' --exclude='venv' --exclude='.venv' --exclude='frontend/node_modules' -czf packaging/pi/sentineledgeai-$(date +%Y%m%d).tar.gz .
+```
+
+Install to a test prefix (safe, does not overwrite `/opt/sentineledgeai`):
+
+```bash
+sudo PREFIX=/opt/sentineledgeai_test bash packaging/pi/install_from_package.sh
+# verify then cleanup
+sudo rm -rf /opt/sentineledgeai_test
+```
+
+CI notes
+--------
+- A GitHub Actions workflow `security-scans.yml` runs `pip-audit` and `bandit` and uploads JSON reports as artifacts on PRs and pushes to `main`/fix branches.
+- The repo includes `scripts/run_ci_health_server.py` to start a local health endpoint for CI/e2e runs; CI must ensure the repo root is on `PYTHONPATH` or use the provided script which now auto-adds the repo root.
+
 Demo and enforcement
 --------------------
 To run a full local demo (build frontend, start backend, generate an alert, and optionally block):
