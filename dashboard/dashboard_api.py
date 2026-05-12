@@ -34,18 +34,12 @@ def require_api_key(
     return True
 
 from contextlib import asynccontextmanager
-from core.db_maintenance import start_background
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # provide an in-memory asyncio queue for live events
     app.state.event_queue = asyncio.Queue()
-    # start optional DB maintenance background thread (vacuum + retention)
-    try:
-        app.state.db_maintenance = start_background()
-    except Exception:
-        app.state.db_maintenance = None
     # if CAPTURE_IN_PROCESS=1, attempt to import and run sniffer in a background thread
     if os.environ.get('CAPTURE_IN_PROCESS', '0') == '1':
         try:
@@ -79,16 +73,6 @@ async def lifespan(app: FastAPI):
                     pass
         except Exception:
             pass
-        # stop DB maintenance thread if running
-        try:
-            m = getattr(app.state, 'db_maintenance', None)
-            if m and hasattr(m, 'stop'):
-                try:
-                    m.stop()
-                except Exception:
-                    pass
-        except Exception:
-            pass
 
 
 # ---------- logging & metrics setup ----------
@@ -101,9 +85,6 @@ metrics_utils.init_metrics()
 
 
 app = FastAPI(title="SentinelEdgeAI Dashboard API", lifespan=lifespan)
-
-# Compatibility: allow disabling legacy file fallbacks via env
-ENABLE_FILE_FALLBACK = os.environ.get('ENABLE_FILE_FALLBACK', '1') == '1'
 
 
 # simple request metrics middleware
@@ -482,91 +463,31 @@ def demo_presenter(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
 
 @app.get("/api/alerts")
 def alerts(api_ok: bool = Depends(require_api_key)):
-    # prefer SQLite alerts table
-    try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
-        s.connect()
-        rows = s.get_alerts(limit=1000)
-        return maybe_sanitize(rows)
-    except Exception:
-        return maybe_sanitize(read_json_file("alerts.json"))
+    return maybe_sanitize(read_json_file("alerts.json"))
 
 
 @app.get("/api/live_stats")
 def live_stats():
-    # prefer SQLite live_stats snapshot
-    try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
-        s.connect()
-        payload = s.get_live_stats()
-        if payload:
-            try:
-                return maybe_sanitize(json.loads(payload))
-            except Exception:
-                return maybe_sanitize(payload)
-    except Exception:
-        pass
     return maybe_sanitize(read_json_file("live_stats.json"))
 
 
 @app.get("/api/device_profiles")
 def device_profiles(api_ok: bool = Depends(require_api_key)):
-    # Try SQLite first for device profiles, fall back to JSON file
-    try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
-        s.connect()
-        profiles = s.get_device_profiles()
-        # payloads may be JSON strings; attempt to decode
-        out = {}
-        for k, v in profiles.items():
-            try:
-                out[k] = json.loads(v)
-            except Exception:
-                out[k] = v
-        return maybe_sanitize(out)
-    except Exception:
-        return maybe_sanitize(read_json_file("device_profiles.json"))
+    return maybe_sanitize(read_json_file("device_profiles.json"))
 
 
 @app.get("/api/risk_timeline")
 def risk_timeline(api_ok: bool = Depends(require_api_key)):
-    # prefer SQLite risk timeline
-    try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
-        s.connect()
-        rows = s.get_risk_timeline(limit=1000)
-        # transform into expected dict per-device
-        out = {}
-        for r in rows:
-            dev = r.get('device_id')
-            if not dev:
-                continue
-            out.setdefault(dev, [])
-            out[dev].append({"timestamp": r.get('timestamp'), "risk": r.get('risk')})
-        return maybe_sanitize(out)
-    except Exception:
-        return maybe_sanitize(read_json_file("risk_timeline.json"))
+    return maybe_sanitize(read_json_file("risk_timeline.json"))
 
 
 @app.get("/api/flows")
 def flows(limit: int = 500, api_ok: bool = Depends(require_api_key)):
     limit = max(1, min(int(limit or 500), 5000))
-    # prefer SQLite flows table if available
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
-        s.connect()
-        rows = s.get_flows(limit=limit)
-        return maybe_sanitize(rows)
+        return maybe_sanitize(read_jsonl_optional("flows_history.jsonl", limit=limit))
     except Exception:
-        try:
-            return maybe_sanitize(read_jsonl_optional("flows_history.jsonl", limit=limit))
-        except Exception:
-            raise HTTPException(status_code=500, detail="failed to read flow history")
+        raise HTTPException(status_code=500, detail="failed to read flow history")
 
 
 @app.get("/api/incidents/timeline")
@@ -646,109 +567,58 @@ async def websocket_packets(ws: WebSocket):
     try:
         while True:
             # alerts
-            # Alerts (from DB preferred)
-            try:
-                from core.storage_sqlite import SQLiteStorage
-                s = SQLiteStorage('data/sentinel.db')
-                s.connect()
-                rows = s.get_alerts(limit=10)
-                for item in reversed(rows):
-                    ts = item.get('timestamp', 0)
-                    if ts > last_alert_mtime:
-                        last_alert_mtime = ts
-                        await ws.send_text(json.dumps({'type':'alert','payload': maybe_sanitize(item)}))
-            except Exception:
-                # fallback to file-based alerts if compatibility mode enabled
-                if ENABLE_FILE_FALLBACK:
-                    a_path = os.path.join(ROOT, 'alerts.json')
-                    if os.path.exists(a_path):
-                        m = os.path.getmtime(a_path)
-                        if m > last_alert_mtime:
-                            last_alert_mtime = m
-                            try:
-                                with open(a_path,'r') as f:
-                                    data = json.load(f)
-                            except Exception:
-                                data = None
-                            if isinstance(data, list):
-                                for item in data[-10:]:
-                                    await ws.send_text(json.dumps({'type':'alert','payload': maybe_sanitize(item)}))
-            # live_stats (DB preferred)
-            try:
-                from core.storage_sqlite import SQLiteStorage
-                s = SQLiteStorage('data/sentinel.db')
-                s.connect()
-                payload = s.get_live_stats()
-                if payload:
-                    payload_str = payload if isinstance(payload, str) else json.dumps(payload)
-                    if payload_str != last_stats_payload:
-                        last_stats_payload = payload_str
-                        try:
-                            data = json.loads(payload_str)
-                        except Exception:
-                            data = payload
-                        if isinstance(data, dict) and 'flows' in data:
-                            for fl in data['flows'][-20:]:
-                                await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
-            except Exception:
-                # fallback to file-based live_stats if compatibility mode enabled
-                if ENABLE_FILE_FALLBACK:
-                    s_path = os.path.join(ROOT, 'live_stats.json')
-                    if os.path.exists(s_path):
-                        m = os.path.getmtime(s_path)
-                        if m > last_stats_mtime:
-                            last_stats_mtime = m
-                            try:
-                                with open(s_path,'r') as f:
-                                    data = json.load(f)
-                            except Exception:
-                                data = None
-                            if isinstance(data, dict) and 'flows' in data:
-                                for fl in data['flows'][-20:]:
-                                    await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
-            # live events (DB preferred)
-            try:
-                from core.storage_sqlite import SQLiteStorage
-                s = SQLiteStorage('data/sentinel.db')
-                s.connect()
-                rows = s.get_live_events(limit=200)
-                for ts, payload in rows:
+            a_path = os.path.join(ROOT, 'alerts.json')
+            if os.path.exists(a_path):
+                m = os.path.getmtime(a_path)
+                if m > last_alert_mtime:
+                    last_alert_mtime = m
                     try:
-                        if ts > last_events_pos:
-                            last_events_pos = ts
-                            try:
-                                obj = json.loads(payload)
-                            except Exception:
-                                obj = payload
-                            await ws.send_text(json.dumps({'type': obj.get('type','event') if isinstance(obj, dict) else 'event', 'payload': maybe_sanitize(obj)}))
+                        with open(a_path,'r') as f:
+                            data = json.load(f)
                     except Exception:
-                        continue
-            except Exception:
-                # fallback to file tailing if compatibility mode enabled
-                if ENABLE_FILE_FALLBACK:
-                    e_path = os.path.join(ROOT, 'live_events.jsonl')
-                    if os.path.exists(e_path):
-                        try:
-                            size = os.path.getsize(e_path)
-                            if size < last_events_pos:
-                                # rotated/truncated file
-                                last_events_pos = 0
-                            if size > last_events_pos:
-                                with open(e_path, 'r') as ef:
-                                    ef.seek(last_events_pos)
-                                    for line in ef:
-                                        line = line.strip()
-                                        if not line:
-                                            continue
-                                        try:
-                                            obj = json.loads(line)
-                                            await ws.send_text(json.dumps({'type': obj.get('type','event'), 'payload': maybe_sanitize(obj)}))
-                                        except Exception:
-                                            # ignore malformed
-                                            continue
-                                    last_events_pos = ef.tell()
-                        except Exception:
-                            pass
+                        data = None
+                    if isinstance(data, list):
+                        for item in data[-10:]:
+                            await ws.send_text(json.dumps({'type':'alert','payload': maybe_sanitize(item)}))
+            # live_stats flows
+            s_path = os.path.join(ROOT, 'live_stats.json')
+            if os.path.exists(s_path):
+                m = os.path.getmtime(s_path)
+                if m > last_stats_mtime:
+                    last_stats_mtime = m
+                    try:
+                        with open(s_path,'r') as f:
+                            data = json.load(f)
+                    except Exception:
+                        data = None
+                    # if data contains flows, stream them
+                    if isinstance(data, dict) and 'flows' in data:
+                        for fl in data['flows'][-20:]:
+                            await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
+            # live events (jsonl) - tail new lines and stream as events
+            e_path = os.path.join(ROOT, 'live_events.jsonl')
+            if os.path.exists(e_path):
+                try:
+                    size = os.path.getsize(e_path)
+                    if size < last_events_pos:
+                        # rotated/truncated file
+                        last_events_pos = 0
+                    if size > last_events_pos:
+                        with open(e_path, 'r') as ef:
+                            ef.seek(last_events_pos)
+                            for line in ef:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                try:
+                                    obj = json.loads(line)
+                                    await ws.send_text(json.dumps({'type': obj.get('type','event'), 'payload': maybe_sanitize(obj)}))
+                                except Exception:
+                                    # ignore malformed
+                                    continue
+                            last_events_pos = ef.tell()
+                except Exception:
+                    pass
             # drain in-process queue if present
             if hasattr(app.state, 'event_queue'):
                 try:

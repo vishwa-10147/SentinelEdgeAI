@@ -10,9 +10,10 @@ def infer_device_type(ip, profile=None):
     profile = profile or {}
     # The check for loopback and unspecified addresses is application-level
     # classification, not a server bind. Mark as intentional for static analysis.
+    # nosec: B104
     if profile.get("type"):
         return profile["type"]
-    if ip in {"0.0.0.0", "127.0.0.1"}:  # nosec: B104
+    if ip in {"0.0.0.0", "127.0.0.1"}:
         return "sensor"
     if str(ip).endswith(".1"):
         return "gateway"

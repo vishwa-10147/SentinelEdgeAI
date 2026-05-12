@@ -109,7 +109,6 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=$PY_VENV/bin/python $PREFIX/dashboard/dashboard_api.py
 Restart=always
 RestartSec=5
-Environment=ENABLE_FILE_FALLBACK=0
 
 [Install]
 WantedBy=multi-user.target

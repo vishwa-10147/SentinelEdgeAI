@@ -1,259 +1,30 @@
-SentinelEdgeAI Upgrade Prompt (Pi-Only Version)
-Objective:
-Analyze the current Raspberry Pi–based SentinelEdgeAI system and upgrade it into a production-ready, high-performance edge intrusion detection & prevention system (IDS/IPS) without relying on GPU or Jetson hardware.
-
-🧩 Current System Context
-The system currently includes:
-
-Packet capture using Scapy / Zeek / Suricata
-
-Flow-based processing (5-tuple, idle timeout)
-
-Feature extraction (24 statistical features)
-
-Detection:
-
-Z-score anomaly detection
-
-Isolation Forest (CPU-based)
-
-Behavioral profiling + drift detection
-
-Risk scoring (0–100)
-
-Firewall enforcement (iptables / nftables, dry-run safe mode)
-
-FastAPI backend + WebSocket streaming
-
-React SOC dashboard with topology + live alerts
-
-JSON-based storage (alerts, profiles, logs)
-
-Constraints:
-
-Runs only on Raspberry Pi (no GPU)
-
-Must remain lightweight, real-time, and offline-capable
-
-Must avoid heavy deep learning models
-
-🎯 Required Upgrades
-🔴 1. Detection Quality Improvement
-Reduce false positives significantly
-
-Add protocol-aware anomaly thresholds (DNS, TCP, HTTP)
-
-Introduce:
-
-Confidence score per alert
-
-Multi-stage validation (avoid instant blocking on weak signals)
-
-🔴 2. Replace JSON Storage
-Migrate to:
-
-SQLite (lightweight) OR PostgreSQL (preferred)
-
-Store:
-
-alerts
-
-flows
-
-device profiles
-
-firewall actions
-
-Add:
-
-Indexing (IP, timestamp)
-
-Retention + auto-cleanup policies
-
-🔴 3. Performance Optimization (CRITICAL)
-Optimize packet processing pipeline:
-
-Batch processing of flows
-
-Reduce Python overhead in hot paths
-
-Use:
-
-Async queues for ingestion → processing → output
-
-Ensure:
-
-Stable performance under continuous traffic
-
-🔴 4. Firewall Safety & Automation
-Enhance enforcement reliability:
-
-Add:
-
-Rule expiry daemon (TTL cleanup)
-
-Conflict detection (duplicate rules)
-
-Safe fallback:
-
-Auto rollback if system health fails
-
-Ensure:
-
-Critical IPs always whitelisted (gateway, admin)
-
-🔴 5. Backend Hardening
-Upgrade FastAPI backend:
-
-Replace deprecated lifecycle events
-
-Add:
-
-JWT authentication
-
-Role-based access control (Analyst / Operator / Admin)
-
-Add:
-
-Rate limiting
-
-Strict request validation
-
-🔴 6. WebSocket Stability
-Implement:
-
-Heartbeat/ping system
-
-Auto-reconnect with state sync
-
-Prevent:
-
-UI overload during high event rates
-
-🔴 7. Network Layer Completion
-Make deployment realistic:
-
-Support:
-
-Passive mode (port mirroring)
-
-Inline mode (bridge WAN ↔ LAN)
-
-Add:
-
-MAC-based device tracking
-
-DHCP / device fingerprinting improvements
-
-🔴 8. Observability & Monitoring
-Add metrics:
-
-flows/sec
-
-detection latency
-
-CPU / memory usage
-
-Expose via:
-
-Prometheus endpoint (optional)
-
-Improve logging:
-
-structured JSON logs
-
-🔴 9. Frontend Optimization
-Optimize:
-
-Cytoscape rendering for larger networks
-
-Particle animations (limit FPS)
-
-Add:
-
-Virtualized alert list
-
-Loading states + error handling
-
-🔴 10. Deployment Readiness
-Create:
-
-One-command installer script
-
-Add:
-
-systemd services (auto-start)
-
-Provide:
-
-config presets (home / office / enterprise)
-
-🔴 11. Model Lifecycle (CPU-friendly)
-Add:
-
-Model versioning system
-
-Allow:
-
-Safe model reload without downtime
-
-Support:
-
-Offline retraining pipeline
-
-🔴 12. Security Hardening
-Add:
-
-TLS for API + WebSocket
-
-Secure API key handling
-
-Remove:
-
-Debug endpoints
-
-Enforce:
-
-Content Security Policy
-
-🔴 13. SIEM Integration (IMPORTANT)
-Enable export to:
-
-ELK Stack
-
-Splunk
-
-Microsoft Sentinel
-
-Formats:
-
-JSON
-
-Syslog
-
-Webhooks
-
-❌ Do NOT Add (for now)
-No deep learning models (LSTM, GNN)
-
-No RAG / MCP servers
-
-No cloud dependency
-
-No AI assistant
-
-✅ Expected Final Outcome
-The upgraded system should be:
-
-Real-time and stable under continuous traffic
-
-Low false positives with reliable detection
-
-Safe automated firewall enforcement
-
-Fully deployable on Raspberry Pi
-
-Enterprise-style dashboard with strong UX
-
-Ready for future Jetson AI integration
-
+run_id=25602057326
+timeout=900
+end=$((SECONDS+timeout))
+while true; do
+  status=$(gh run view "$run_id" --json status --jq '.status' 2>/dev/null || echo unknown)
+  echo "$(date --iso-8601=seconds) status:$status"
+  if [ "$status" = "completed" ]; then
+    echo "--- RUN COMPLETED: Fetching logs ---"
+    gh run view "$run_id" --log || true
+    echo "--- CONCLUSION ---"
+    gh run view "$run_id" --json conclusion --jq '.conclusion' || true
+    break
+  fi
+  if [ $SECONDS -gt $end ]; then
+    echo "TIMEOUT waiting for run to complete"
+    exit 2
+  fi
+  sleep 5
+done
+
+2026-05-09T19:12:25+05:30 status:queued
+2026-05-09T19:12:31+05:30 status:queued
+2026-05-09T19:12:37+05:30 status:queued
+2026-05-09T19:12:43+05:30 status:queued
+2026-05-09T19:12:49+05:30 status:queued
+2026-05-09T19:12:55+05:30 status:queued
+2026-05-09T19:13:01+05:30 status:queued
+2026-05-09T19:13:07+05:30 status:queued
+2026-05-09T19:13:12+05:30 status:queued
+ 

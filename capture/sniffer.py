@@ -18,10 +18,6 @@ from core.health import HealthMonitor
 from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
 import core.firewall as firewall
-import asyncio
-import threading
-from core.async_queue import IngestQueue
-from core.storage_sqlite import SQLiteStorage
 
 # Load configuration
 config = Config()
@@ -136,20 +132,237 @@ def process_packet(packet):
         expired = flow_table.check_timeouts()
 
         for flow in expired:
-            # enqueue expired flow to async ingestion queue for batched processing
+
             try:
-                if ingest_queue and ingest_loop:
-                    # schedule enqueue on background loop
-                    asyncio.run_coroutine_threadsafe(ingest_queue.enqueue(flow), ingest_loop)
-                else:
-                    # fallback: process inline (synchronous)
-                    _process_flow_sync(flow)
-            except Exception:
-                logger.exception("Failed to enqueue flow for processing; falling back to sync")
+                # Measure processing time
+                start_time = time.perf_counter()
+
+                # Extract features
+                features = feature_extractor.extract(flow)
+
+                # Process through all detection layers
+                result = sentinel_engine.process_flow(flow, features)
+
+                end_time = time.perf_counter()
+                processing_time_ms = round((end_time - start_time) * 1000, 3)
+
+                final_risk = result["final_risk"]
+                attack_type = result["attack_type"]
+                drift_flag = result["drift"]
+                drift_reason = result["drift_reason"]
+                mitre_info = result["mitre"]
+                anomaly_score = result["anomaly_score"]
+                ml_score = result["ml_score"]
+                confidence = result["confidence"]
+                behavior_score = result.get("behavior_score", 0)
+                behavior_reasons = result.get("behavior_reasons", [])
+
+                # Update metrics
+                ENGINE_METRICS["flows_processed"] += 1
                 try:
-                    _process_flow_sync(flow)
+                    if FLOWS_COUNTER is not None:
+                        FLOWS_COUNTER.inc()
                 except Exception:
-                    logger.exception("Fallback sync processing also failed")
+                    logger.debug("FLOWS_COUNTER.inc failed", exc_info=True)
+                ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
+                health_monitor.update_flows()
+
+                # Log per-flow processing time at DEBUG level
+                logger.debug(
+                    f"Flow processed in {processing_time_ms} ms | "
+                    f"IP={flow.initiator_ip}"
+                )
+
+                # Log average performance every 100 flows
+                if ENGINE_METRICS["flows_processed"] % 100 == 0:
+                    avg_time = (
+                        ENGINE_METRICS["total_processing_time_ms"] /
+                        ENGINE_METRICS["flows_processed"]
+                    )
+                    logger.info(
+                        f"Performance | Flows={ENGINE_METRICS['flows_processed']} | "
+                        f"AvgProcessingTime={round(avg_time, 3)} ms"
+                    )
+
+                    # Collect system resource metrics
+                    process = psutil.Process()
+                    SYSTEM_METRICS["cpu_usage"] = psutil.cpu_percent(interval=None)
+                    SYSTEM_METRICS["memory_usage_mb"] = round(
+                        process.memory_info().rss / (1024 * 1024), 2
+                    )
+
+                    logger.info(
+                        f"System | CPU={SYSTEM_METRICS['cpu_usage']}% | "
+                        f"Memory={SYSTEM_METRICS['memory_usage_mb']} MB"
+                    )
+
+                # Determine severity based on config thresholds
+                critical_threshold = config.get("risk_thresholds", "critical")
+                high_threshold = config.get("risk_thresholds", "high")
+                medium_threshold = config.get("risk_thresholds", "medium")
+
+                if final_risk >= critical_threshold:
+                    severity = "CRITICAL"
+                elif final_risk >= high_threshold:
+                    severity = "HIGH"
+                elif final_risk >= medium_threshold:
+                    severity = "MEDIUM"
+                elif final_risk > 0:
+                    severity = "LOW"
+                else:
+                    severity = "NORMAL"
+
+                # Log flow analysis
+                logger.info(
+                    f"[{severity}] Risk={final_risk} | "
+                    f"IP={flow.initiator_ip} | "
+                    f"Protocol={flow.protocol}"
+                )
+
+                # Log drift if detected
+                if drift_flag:
+                    logger.warning(
+                        f"BEHAVIORAL DRIFT DETECTED | "
+                        f"IP={flow.initiator_ip} | "
+                        f"Reason={drift_reason}"
+                    )
+
+                # Persist device profiles
+                with open("device_profiles.json", "w") as f:
+                    json.dump(fingerprint_engine.get_all_profiles(), f, indent=4)
+
+                # -------- Store Risk Timeline --------
+                RISK_TIMELINE_FILE = "risk_timeline.json"
+
+                try:
+                    with open(RISK_TIMELINE_FILE, "r") as f:
+                        timeline = json.load(f)
+                except:
+                    timeline = {}
+
+                ip = flow.initiator_ip
+
+                if ip not in timeline:
+                    timeline[ip] = []
+
+                timeline[ip].append({
+                    "timestamp": time.time(),
+                    "risk": final_risk
+                })
+
+                # Keep last N entries per device
+                history_limit = config.get("persistence", "history_limit")
+                timeline[ip] = timeline[ip][-history_limit:]
+
+                with open(RISK_TIMELINE_FILE, "w") as f:
+                    json.dump(timeline, f, indent=4)
+
+                # ===============================
+                # 🚨 Alert Logging (only HIGH+)
+                # ===============================
+
+                alert_threshold = config.get("alerts", "min_risk_score")
+                if final_risk >= alert_threshold:
+                    alert = {
+                        "timestamp": str(flow.end_time),
+                        "initiator_ip": flow.initiator_ip,
+                        "responder_ip": flow.responder_ip,
+                        "protocol": flow.protocol,
+                        "final_risk_score": final_risk,
+                        "severity": severity,
+                        "attack_type": attack_type,
+                        "drift": drift_flag,
+                        "behavior_score": behavior_score,
+                        "behavior_reasons": behavior_reasons,
+                        "mitre_tactic": mitre_info["tactic"],
+                        "mitre_technique_id": mitre_info["technique_id"],
+                        "mitre_technique_name": mitre_info["technique_name"]
+                    }
+
+                    alert_logger.log(alert)
+                    try:
+                        policy = firewall.get_policy()
+                        if (
+                            policy.get("response_mode") == "auto_block"
+                            and final_risk >= int(policy.get("auto_block_min_risk", 75))
+                        ):
+                            firewall.add_block(
+                                flow.initiator_ip,
+                                ttl=policy.get("default_ttl"),
+                                reason=f"auto_response:{attack_type}"
+                            )
+                    except Exception:
+                        logger.debug("Auto-response evaluation failed", exc_info=True)
+
+                # -------------------------------
+                # Write live event (always)
+                # -------------------------------
+                try:
+                    total_packets = flow.forward_packets + flow.backward_packets
+                    total_bytes = flow.forward_bytes + flow.backward_bytes
+                    evt = {
+                        "timestamp": time.time(),
+                        "type": "flow",
+                        "src": flow.initiator_ip,
+                        "dst": flow.responder_ip,
+                        "src_port": flow.initiator_port,
+                        "dst_port": flow.responder_port,
+                        "protocol": flow.protocol,
+                        "packets": total_packets,
+                        "bytes": total_bytes,
+                        "duration": flow.duration,
+                        "risk": final_risk,
+                        "severity": severity,
+                        "attack_type": attack_type,
+                        "anomaly_score": anomaly_score,
+                        "ml_score": ml_score,
+                        "drift": drift_flag,
+                        "drift_reason": drift_reason,
+                        "behavior_score": behavior_score,
+                        "behavior_reasons": behavior_reasons,
+                        "features": features
+                    }
+                    with open(LIVE_EVENTS_FILE, 'a') as le:
+                        le.write(json.dumps(evt) + "\n")
+                    with open(FLOWS_HISTORY_FILE, 'a') as history:
+                        history.write(json.dumps(evt) + "\n")
+                    # also publish to in-process subscriber if available
+                    try:
+                        if event_publisher:
+                            event_publisher(evt)
+                    except Exception:
+                        logger.debug("event_publisher callback failed", exc_info=True)
+                except Exception:
+                    logger.debug("Failed to write live event", exc_info=True)
+
+                    # Log security events at appropriate level
+                    if final_risk >= config.get("risk_thresholds", "critical"):
+                        logger.critical(
+                            f"CRITICAL ALERT | Risk={final_risk} | "
+                            f"IP={flow.initiator_ip} | Attack={attack_type}"
+                        )
+                    elif final_risk >= config.get("risk_thresholds", "high"):
+                        logger.warning(
+                            f"ALERT | Risk={final_risk} | "
+                            f"IP={flow.initiator_ip} | Attack={attack_type}"
+                        )
+
+                # ===============================
+                # 🧠 Adaptive Learning
+                # ===============================
+
+                baseline.update(
+                    features,
+                    flow.initiator_ip,
+                    flow.protocol
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Flow processing failed | IP={flow.initiator_ip} | Error={str(e)}",
+                    exc_info=True
+                )
+                continue
 
             # -------- Update Live Stats --------
             # -------- Update Live Stats --------
@@ -207,204 +420,4 @@ def process_packet(packet):
 
 def start_sniffing(interface=None):
     logger.info("Starting SentinelEdge AI Hybrid Engine...")
-    # ensure ingest loop is running
-    _start_ingest_loop()
     sniff(prn=process_packet, iface=interface, store=False)
-
-
-# ===============================
-# Async ingest queue init and batch processor
-# ===============================
-
-ingest_loop = None
-ingest_queue = None
-
-
-def _start_ingest_loop():
-    global ingest_loop, ingest_queue
-    if ingest_loop is not None:
-        return
-
-    ingest_loop = asyncio.new_event_loop()
-
-    def _run_loop():
-        asyncio.set_event_loop(ingest_loop)
-        ingest_loop.run_forever()
-
-    t = threading.Thread(target=_run_loop, daemon=True)
-    t.start()
-
-    # initialize sqlite storage
-    try:
-        storage = SQLiteStorage("data/sentinel.db")
-        storage.connect()
-        storage.create_tables()
-    except Exception:
-        logger.exception("Failed to initialize SQLite storage")
-        storage = None
-
-    async def _process_batch(batch):
-        for flow in batch:
-            try:
-                start_time = time.perf_counter()
-                features = feature_extractor.extract(flow)
-                result = sentinel_engine.process_flow(flow, features)
-                end_time = time.perf_counter()
-                processing_time_ms = round((end_time - start_time) * 1000, 3)
-
-                final_risk = result.get("final_risk", 0)
-                attack_type = result.get("attack_type")
-                drift_flag = result.get("drift")
-                drift_reason = result.get("drift_reason")
-                mitre_info = result.get("mitre", {})
-                anomaly_score = result.get("anomaly_score")
-                ml_score = result.get("ml_score")
-                confidence = result.get("confidence", 0)
-                behavior_score = result.get("behavior_score", 0)
-                behavior_reasons = result.get("behavior_reasons", [])
-
-                ENGINE_METRICS["flows_processed"] += 1
-                try:
-                    if FLOWS_COUNTER is not None:
-                        FLOWS_COUNTER.inc()
-                except Exception:
-                    logger.debug("FLOWS_COUNTER.inc failed", exc_info=True)
-                ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
-                health_monitor.update_flows()
-
-                # severity
-                critical_threshold = config.get("risk_thresholds", "critical")
-                high_threshold = config.get("risk_thresholds", "high")
-                medium_threshold = config.get("risk_thresholds", "medium")
-
-                if final_risk >= critical_threshold:
-                    severity = "CRITICAL"
-                elif final_risk >= high_threshold:
-                    severity = "HIGH"
-                elif final_risk >= medium_threshold:
-                    severity = "MEDIUM"
-                elif final_risk > 0:
-                    severity = "LOW"
-                else:
-                    severity = "NORMAL"
-
-                logger.info(f"[{severity}] Risk={final_risk} | IP={flow.initiator_ip} | Protocol={flow.protocol}")
-
-                if drift_flag:
-                    logger.warning(f"BEHAVIORAL DRIFT DETECTED | IP={flow.initiator_ip} | Reason={drift_reason}")
-
-                # Persist basic flow record to SQLite
-                try:
-                    if storage:
-                        storage.insert_flow(
-                            int(time.time()),
-                            flow.initiator_ip,
-                            flow.responder_ip,
-                            flow.initiator_port,
-                            flow.responder_port,
-                            flow.protocol,
-                            flow.forward_bytes + flow.backward_bytes,
-                            flow.forward_packets + flow.backward_packets,
-                            int(flow.end_time.timestamp()) if hasattr(flow.end_time, 'timestamp') else int(time.time())
-                        )
-                except Exception:
-                    logger.debug("Failed to persist flow to SQLite", exc_info=True)
-
-                # Alerts and firewall
-                alert_threshold = config.get("alerts", "min_risk_score")
-                if final_risk >= alert_threshold:
-                    alert = {
-                        "timestamp": str(flow.end_time),
-                        "initiator_ip": flow.initiator_ip,
-                        "responder_ip": flow.responder_ip,
-                        "protocol": flow.protocol,
-                        "final_risk_score": final_risk,
-                        "severity": severity,
-                        "attack_type": attack_type,
-                        "drift": drift_flag,
-                        "behavior_score": behavior_score,
-                        "behavior_reasons": behavior_reasons,
-                        "mitre_tactic": mitre_info.get("tactic"),
-                        "mitre_technique_id": mitre_info.get("technique_id"),
-                        "mitre_technique_name": mitre_info.get("technique_name")
-                    }
-                    alert_logger.log(alert)
-                    try:
-                        if storage:
-                            storage.insert_alert(int(time.time()), flow.initiator_ip, flow.responder_ip, flow.initiator_port, flow.responder_port, flow.protocol, final_risk, confidence, str(alert))
-                    except Exception:
-                        logger.debug("Failed to persist alert to SQLite", exc_info=True)
-
-                    try:
-                        policy = firewall.get_policy()
-                        if (
-                            policy.get("response_mode") == "auto_block"
-                            and final_risk >= int(policy.get("auto_block_min_risk", 75))
-                        ):
-                            firewall.add_block(
-                                flow.initiator_ip,
-                                ttl=policy.get("default_ttl"),
-                                reason=f"auto_response:{attack_type}"
-                            )
-                    except Exception:
-                        logger.debug("Auto-response evaluation failed", exc_info=True)
-
-                # Publish event
-                try:
-                    evt = {
-                        "timestamp": time.time(),
-                        "type": "flow",
-                        "src": flow.initiator_ip,
-                        "dst": flow.responder_ip,
-                        "src_port": flow.initiator_port,
-                        "dst_port": flow.responder_port,
-                        "protocol": flow.protocol,
-                        "packets": flow.forward_packets + flow.backward_packets,
-                        "bytes": flow.forward_bytes + flow.backward_bytes,
-                        "duration": flow.duration,
-                        "risk": final_risk,
-                        "severity": severity,
-                        "attack_type": attack_type,
-                        "anomaly_score": anomaly_score,
-                        "ml_score": ml_score,
-                        "drift": drift_flag,
-                        "drift_reason": drift_reason,
-                        "behavior_score": behavior_score,
-                        "behavior_reasons": behavior_reasons,
-                        "features": features
-                    }
-                    try:
-                        if event_publisher:
-                            event_publisher(evt)
-                    except Exception:
-                        logger.debug("event_publisher callback failed", exc_info=True)
-                except Exception:
-                    logger.debug("Failed to build/publish event", exc_info=True)
-
-                # adaptive baseline update
-                try:
-                    baseline.update(features, flow.initiator_ip, flow.protocol)
-                except Exception:
-                    logger.debug("Baseline update failed", exc_info=True)
-
-            except Exception:
-                logger.exception("Error processing flow in batch")
-
-    ingest_queue = IngestQueue(_process_batch, batch_size=32, batch_timeout=0.25)
-    # start ingest queue
-    asyncio.run_coroutine_threadsafe(ingest_queue.start(), ingest_loop)
-
-
-def _process_flow_sync(flow):
-    # fallback synchronous processor (keeps original behavior minimally)
-    try:
-        start_time = time.perf_counter()
-        features = feature_extractor.extract(flow)
-        result = sentinel_engine.process_flow(flow, features)
-        end_time = time.perf_counter()
-        processing_time_ms = round((end_time - start_time) * 1000, 3)
-        ENGINE_METRICS["flows_processed"] += 1
-        ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
-        health_monitor.update_flows()
-    except Exception:
-        logger.exception("Synchronous flow processing failed")

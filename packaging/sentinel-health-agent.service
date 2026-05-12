@@ -10,7 +10,6 @@ ExecStartPre=/bin/chown root:root /run/sentinel
 ExecStartPre=/bin/chmod 700 /run/sentinel
 ExecStart=/usr/local/bin/sentinel-health-agent.sh
 RemainAfterExit=yes
-Environment=ENABLE_FILE_FALLBACK=0
 
 [Install]
 WantedBy=multi-user.target
