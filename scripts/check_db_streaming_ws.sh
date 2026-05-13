@@ -46,12 +46,13 @@ print('websockets ok')
 PY
 
 echo "Running websocket listener and DB marker insertion"
+# use storage factory (Postgres if DATABASE_URL is set)
 $PYTHON - <<'PY'
 import asyncio, json, time
-from core.storage_sqlite import SQLiteStorage
+from core.storage import get_storage
 import websockets
 
-db = SQLiteStorage(path='data/sentinel.db')
+db = get_storage('data/sentinel.db')
 db.create_tables()
 # use a slightly-future timestamp to ensure server sees it as new
 ts = int(time.time()) + 60
@@ -83,9 +84,12 @@ try:
 finally:
     try:
         db.connect()
-        cur = db.conn.cursor()
-        cur.execute('DELETE FROM alerts WHERE details=?', (marker,))
-        db.conn.commit()
+        try:
+            cur = db.conn.cursor()
+            cur.execute('DELETE FROM alerts WHERE details=%s' if hasattr(cur, 'mogrify') else 'DELETE FROM alerts WHERE details=?', (marker,))
+            db.conn.commit()
+        except Exception:
+            pass
     except Exception:
         pass
 

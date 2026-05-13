@@ -21,7 +21,7 @@ import core.firewall as firewall
 import asyncio
 import threading
 from core.async_queue import IngestQueue
-from core.storage_sqlite import SQLiteStorage
+from core.storage import get_storage
 
 # Load configuration
 config = Config()
@@ -234,13 +234,13 @@ def _start_ingest_loop():
     t = threading.Thread(target=_run_loop, daemon=True)
     t.start()
 
-    # initialize sqlite storage
+    # initialize storage (Postgres if DATABASE_URL set, otherwise SQLite)
     try:
-        storage = SQLiteStorage("data/sentinel.db")
+        storage = get_storage("data/sentinel.db")
         storage.connect()
         storage.create_tables()
     except Exception:
-        logger.exception("Failed to initialize SQLite storage")
+        logger.exception("Failed to initialize storage")
         storage = None
 
     async def _process_batch(batch):

@@ -1,7 +1,8 @@
 import json
 import os
+import time
 from datetime import datetime, timezone
-from core.storage_sqlite import SQLiteStorage
+from core.storage import get_storage
 
 
 class AlertLogger:
@@ -34,7 +35,7 @@ class AlertLogger:
 
         # also persist to SQLite if available
         try:
-            storage = SQLiteStorage('data/sentinel.db')
+            storage = get_storage('data/sentinel.db')
             storage.connect()
             try:
                 storage.create_tables()

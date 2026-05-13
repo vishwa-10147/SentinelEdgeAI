@@ -82,3 +82,4 @@ venv/
 # Other large/runtime files
 live_events.jsonl
 logs/
+data/sentinel.db
