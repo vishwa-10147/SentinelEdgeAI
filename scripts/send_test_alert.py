@@ -44,8 +44,8 @@ def main():
     # Update live_stats.json
     # Update live stats in DB if available, otherwise file
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage('data/sentinel.db')
         s.connect()
         try:
             s.create_tables()
@@ -74,14 +74,14 @@ def main():
     # Update risk_timeline.json
     # persist risk timeline to DB if available
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
-        s.connect()
-        try:
-            s.create_tables()
-        except Exception:
-            pass
-        s.insert_risk_timeline(now, alert["initiator_ip"], alert["final_risk_score"], json.dumps({"risk": alert["final_risk_score"]}))
+            from core.storage import get_storage
+            s = get_storage('data/sentinel.db')
+            s.connect()
+            try:
+                s.create_tables()
+            except Exception:
+                pass
+            s.insert_risk_timeline(now, alert["initiator_ip"], alert["final_risk_score"], json.dumps({"risk": alert["final_risk_score"]}))
     except Exception:
         timeline = load_json("risk_timeline.json", {})
         ip = alert["initiator_ip"]

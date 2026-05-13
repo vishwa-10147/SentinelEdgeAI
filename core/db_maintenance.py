@@ -3,7 +3,7 @@ import time
 import os
 from typing import Optional
 
-from .storage_sqlite import SQLiteStorage
+from .storage import get_storage
 
 
 class DBMaintenance:
@@ -16,7 +16,7 @@ class DBMaintenance:
         self._thread: Optional[threading.Thread] = None
 
     def _run(self):
-        storage = SQLiteStorage(self.db_path)
+        storage = get_storage(self.db_path)
         while not self._stop.wait(self.interval):
             try:
                 # purge old alerts (30 days), flows (7 days), events (7 days), risk_timeline (30 days)

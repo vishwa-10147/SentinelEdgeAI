@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Initialize SQLite DB for SentinelEdgeAI"""
 import argparse
-from core.storage_sqlite import SQLiteStorage
+from core.storage import get_storage
 
 
 def main():
@@ -9,7 +9,7 @@ def main():
     p.add_argument("--db", default="data/sentinel.db")
     args = p.parse_args()
 
-    storage = SQLiteStorage(args.db)
+    storage = get_storage(args.db)
     storage.create_tables()
     print(f"Initialized DB at {args.db}")
 

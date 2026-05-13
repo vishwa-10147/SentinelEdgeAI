@@ -482,10 +482,10 @@ def demo_presenter(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
 
 @app.get("/api/alerts")
 def alerts(api_ok: bool = Depends(require_api_key)):
-    # prefer SQLite alerts table
+    # prefer DB-backed alerts table
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage('data/sentinel.db')
         s.connect()
         rows = s.get_alerts(limit=1000)
         return maybe_sanitize(rows)
@@ -495,10 +495,10 @@ def alerts(api_ok: bool = Depends(require_api_key)):
 
 @app.get("/api/live_stats")
 def live_stats():
-    # prefer SQLite live_stats snapshot
+    # prefer DB live_stats snapshot
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage('data/sentinel.db')
         s.connect()
         payload = s.get_live_stats()
         if payload:
@@ -513,10 +513,10 @@ def live_stats():
 
 @app.get("/api/device_profiles")
 def device_profiles(api_ok: bool = Depends(require_api_key)):
-    # Try SQLite first for device profiles, fall back to JSON file
+    # Try DB first for device profiles, fall back to JSON file
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage('data/sentinel.db')
         s.connect()
         profiles = s.get_device_profiles()
         # payloads may be JSON strings; attempt to decode
@@ -533,10 +533,10 @@ def device_profiles(api_ok: bool = Depends(require_api_key)):
 
 @app.get("/api/risk_timeline")
 def risk_timeline(api_ok: bool = Depends(require_api_key)):
-    # prefer SQLite risk timeline
+    # prefer DB risk timeline
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage('data/sentinel.db')
         s.connect()
         rows = s.get_risk_timeline(limit=1000)
         # transform into expected dict per-device
@@ -555,10 +555,10 @@ def risk_timeline(api_ok: bool = Depends(require_api_key)):
 @app.get("/api/flows")
 def flows(limit: int = 500, api_ok: bool = Depends(require_api_key)):
     limit = max(1, min(int(limit or 500), 5000))
-    # prefer SQLite flows table if available
+    # prefer DB flows table if available
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage('data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage('data/sentinel.db')
         s.connect()
         rows = s.get_flows(limit=limit)
         return maybe_sanitize(rows)
@@ -641,6 +641,7 @@ async def websocket_packets(ws: WebSocket):
     await ws.accept()
     last_alert_mtime = 0
     last_stats_mtime = 0
+    last_stats_payload = None
     # tail position for live events file
     last_events_pos = 0
     try:
@@ -648,8 +649,8 @@ async def websocket_packets(ws: WebSocket):
             # alerts
             # Alerts (from DB preferred)
             try:
-                from core.storage_sqlite import SQLiteStorage
-                s = SQLiteStorage('data/sentinel.db')
+                from core.storage import get_storage
+                s = get_storage('data/sentinel.db')
                 s.connect()
                 rows = s.get_alerts(limit=10)
                 for item in reversed(rows):
@@ -675,8 +676,8 @@ async def websocket_packets(ws: WebSocket):
                                     await ws.send_text(json.dumps({'type':'alert','payload': maybe_sanitize(item)}))
             # live_stats (DB preferred)
             try:
-                from core.storage_sqlite import SQLiteStorage
-                s = SQLiteStorage('data/sentinel.db')
+                from core.storage import get_storage
+                s = get_storage('data/sentinel.db')
                 s.connect()
                 payload = s.get_live_stats()
                 if payload:
@@ -708,8 +709,8 @@ async def websocket_packets(ws: WebSocket):
                                     await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
             # live events (DB preferred)
             try:
-                from core.storage_sqlite import SQLiteStorage
-                s = SQLiteStorage('data/sentinel.db')
+                from core.storage import get_storage
+                s = get_storage('data/sentinel.db')
                 s.connect()
                 rows = s.get_live_events(limit=200)
                 for ts, payload in rows:

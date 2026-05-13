@@ -17,8 +17,8 @@ LIVE_EVENTS = os.path.join(ROOT, 'live_events.jsonl')
 def append_alert(alert):
     # write to DB if available, otherwise fall back to file
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage(os.path.join(ROOT, 'data', 'sentinel.db') if os.path.isdir(os.path.join(ROOT, 'data')) else 'data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage(os.path.join(ROOT, 'data', 'sentinel.db') if os.path.isdir(os.path.join(ROOT, 'data')) else 'data/sentinel.db')
         s.connect()
         try:
             s.create_tables()
@@ -43,8 +43,8 @@ def append_alert(alert):
 def append_event(evt):
     # write to DB if available, otherwise append to file
     try:
-        from core.storage_sqlite import SQLiteStorage
-        s = SQLiteStorage(os.path.join(ROOT, 'data', 'sentinel.db') if os.path.isdir(os.path.join(ROOT, 'data')) else 'data/sentinel.db')
+        from core.storage import get_storage
+        s = get_storage(os.path.join(ROOT, 'data', 'sentinel.db') if os.path.isdir(os.path.join(ROOT, 'data')) else 'data/sentinel.db')
         s.connect()
         s.insert_live_event(int(time.time()), evt.get('type','event'), json.dumps(evt))
         return
