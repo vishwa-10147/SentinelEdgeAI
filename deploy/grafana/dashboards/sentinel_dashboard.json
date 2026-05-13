@@ -1,0 +1,50 @@
+{
+  "annotations": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Alerts by Protocol",
+      "type": "table",
+      "datasource": "SentinelPostgres",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT protocol AS protocol, count(*) AS count FROM alerts WHERE $__timeFilter(to_timestamp(ts)) GROUP BY protocol ORDER BY count DESC;"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Top Talkers (Flows)",
+      "type": "table",
+      "datasource": "SentinelPostgres",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT src_ip AS src_ip, count(*) AS flow_count FROM flows WHERE $__timeFilter(to_timestamp(ts)) GROUP BY src_ip ORDER BY flow_count DESC LIMIT 20;"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Flows Over Time",
+      "type": "graph",
+      "datasource": "SentinelPostgres",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeEpoch(to_timestamp(ts)) AS time, count(*) AS value FROM flows WHERE $__timeFilter(to_timestamp(ts)) GROUP BY 1 ORDER BY 1;"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+    }
+  ],
+  "schemaVersion": 27,
+  "version": 1,
+  "title": "SentinelEdgeAI - Starter Dashboard"
+}

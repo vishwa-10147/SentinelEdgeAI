@@ -1,0 +1,14 @@
+apiVersion: 1
+datasources:
+  - name: SentinelPostgres
+    type: postgres
+    access: proxy
+    isDefault: true
+    # Use environment variables for connection details. Set PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PASSWORD when running compose.
+    host: ${PG_HOST}:${PG_PORT}
+    database: ${PG_DB}
+    user: ${PG_USER}
+    jsonData:
+      sslmode: "disable"
+    secureJsonData:
+      password: ${PG_PASSWORD}
