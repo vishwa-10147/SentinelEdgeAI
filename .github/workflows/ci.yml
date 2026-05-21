@@ -43,10 +43,11 @@ jobs:
   deploy_to_render:
     needs: [tests, frontend_build]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != ''
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Render deploy
+        if: ${{ secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != '' }}
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
