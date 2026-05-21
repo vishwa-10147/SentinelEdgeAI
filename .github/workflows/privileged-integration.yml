@@ -7,47 +7,13 @@ on:
       - 'tests/**'
       - 'core/**'
 
-jobs:
-  integration:
-    name: Run privileged integration tests
-    runs-on: [self-hosted, privileged]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt || true
-
-      - name: Run pytest (privileged tests)
-        env:
-          SENTINEL_RUN_FIREWALL_CONTAINER_TESTS: '1'
-        run: |
-          pytest tests/test_firewall_container_integration.py -q
-name: Privileged Integration Tests (self-hosted)
-
-on:
-  workflow_dispatch:
-    inputs:
-      run_rollback_validation:
-        description: 'Run rollback guard validation on the self-hosted runner'
-        required: false
-        default: false
-        type: boolean
-
 permissions:
   contents: read
 
 jobs:
   firewall-integration:
-    # This job is intended to run on a self-hosted runner with Docker
-    # and NET_ADMIN capability. Do NOT run on GitHub-hosted runners.
+    name: Run privileged firewall integration tests
+    # This job is intended to run on a self-hosted runner with Docker and NET_ADMIN capability.
     runs-on: [self-hosted, linux, docker]
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +24,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          pip install -r requirements.txt pytest || true
       - name: Build and run privileged firewall integration tests
         env:
           SENTINEL_RUN_FIREWALL_CONTAINER_TESTS: '1'
@@ -66,7 +32,8 @@ jobs:
           pytest -q tests/test_firewall_container_integration.py
 
   rollback-guard-validation:
-    if: ${{ inputs.run_rollback_validation }}
+    name: Rollback guard validation (optional)
+    if: ${{ github.event.inputs != null && github.event.inputs.run_rollback_validation == 'true' }}
     runs-on: [self-hosted, linux, docker]
     needs: firewall-integration
     steps:
@@ -78,7 +45,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          pip install -r requirements.txt pytest || true
       - name: Validate rollback guard behavior
         env:
           VENV_PYTHON: python
