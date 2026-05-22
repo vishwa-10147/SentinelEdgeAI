@@ -47,10 +47,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Render deploy
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
         run: |
+          # Read secrets at runtime and only use them inside this shell script.
+          RENDER_API_KEY="${{ secrets.RENDER_API_KEY }}"
+          RENDER_SERVICE_ID="${{ secrets.RENDER_SERVICE_ID }}"
           if [ -n "$RENDER_API_KEY" ] && [ -n "$RENDER_SERVICE_ID" ]; then
             echo "Triggering deploy for service $RENDER_SERVICE_ID"
             curl -s -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
