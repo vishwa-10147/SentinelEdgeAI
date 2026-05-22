@@ -1,30 +1,22 @@
-# Render Deployment (optional)
+# Local-only deployment
 
-This project is intended to run locally for security. If you choose to deploy the frontend/backend to Render for remote access, follow these notes.
+This project is intended to run locally and within internal networks for security and privacy. There is no remote hosting or Render integration enabled by default.
 
-Prereqs
-- A Render account and a created Service for the frontend (static) and backend (web service). Note the backend `serviceId`.
-- Repository secrets set in GitHub:
-  - `RENDER_API_KEY` — your Render API key (keep secret)
-  - `RENDER_SERVICE_ID` — the Render service ID to deploy (backend)
+If you change your mind later and want to enable remote deploys (e.g., Render), the previous instructions and auxiliary scripts are preserved in the repository history and `deploy/` notes. You can re-add a deploy job to `.github/workflows/ci.yml` that reads `RENDER_API_KEY` and `RENDER_SERVICE_ID` from a GitHub Environment at runtime.
 
-What the CI does
-- The workflow `.github/workflows/ci.yml` runs unit tests, integration test, builds the frontend, and — if both `RENDER_API_KEY` and `RENDER_SERVICE_ID` are provided in repo secrets and the push is on `main` — triggers a Render deploy via the Render API.
+Key guidance for local use
+- Run the backend locally: `uvicorn dashboard.dashboard_api:app --host 127.0.0.1 --port 8000`
+- Run the frontend locally (development):
 
-How to add secrets
-1. Go to your GitHub repository -> Settings -> Secrets -> Actions.
-2. Add `RENDER_API_KEY` and `RENDER_SERVICE_ID`.
+```bash
+cd frontend
+npm ci --legacy-peer-deps
+npm run dev
+```
 
-Render tips
-- For the backend, set the start command to: `uvicorn dashboard.dashboard_api:app --host 0.0.0.0 --port $PORT`.
-- For the frontend static site, use `npm run build` and `npm run preview` or configure as a static site.
-- Keep capture on the Pi — do not run packet capture on the hosted Render service. Instead, have the Pi push sanitized events to the hosted UI via a secure relay if remote capture is required.
+- Keep packet capture on the Pi or local devices and only surface aggregated telemetry to any other systems.
 
-Security
-- DO NOT store raw capture files or secrets in the repository. Use Vault or Render's environment variables to manage secrets.
-- Use `REDACT_SENSITIVE=1` and `REDACT_SALT` on hosted instances if you must expose any telemetry.
-
-If you want, I can prepare a Render `render.yaml` tailored to your Render service IDs and automate the deploy step fully once you provide `RENDER_SERVICE_ID` and `RENDER_API_KEY`.
+If you want me to remove the auxiliary deploy scripts and docs entirely, say so and I will delete them.
 
 Create a GitHub Environment (recommended)
 ---------------------------------------
