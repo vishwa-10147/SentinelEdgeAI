@@ -1,0 +1,38 @@
+name: Migrate SQLite to Postgres
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run migration script
+        run: |
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "Missing DATABASE_URL secret. Set repository secret DATABASE_URL to the Postgres connection string." >&2
+            exit 2
+          fi
+          PYTHONPATH=. DATABASE_URL="$DATABASE_URL" python scripts/migrate_sqlite_to_postgres.py
+
+      - name: Fix Postgres sequences
+        run: |
+          PYTHONPATH=. DATABASE_URL="$DATABASE_URL" python scripts/fix_postgres_sequences.py
