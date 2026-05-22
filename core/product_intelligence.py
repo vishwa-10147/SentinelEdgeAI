@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import ipaddress
 
 
 IOT_PORTS = {53, 67, 68, 80, 123, 1883, 5353, 5683, 8883}
@@ -12,8 +13,13 @@ def infer_device_type(ip, profile=None):
     # classification, not a server bind. Mark as intentional for static analysis.
     if profile.get("type"):
         return profile["type"]
-    if ip in {"0.0.0.0", "127.0.0.1"}:  # nosec: B104
-        return "sensor"
+    try:
+        addr = ipaddress.ip_address(str(ip))
+        if addr.is_loopback or addr.is_unspecified:
+            return "sensor"
+    except ValueError:
+        # not an IP literal, continue with string checks
+        pass
     if str(ip).endswith(".1"):
         return "gateway"
     ports = _port_set(profile.get("destination_port_counts", {}))
