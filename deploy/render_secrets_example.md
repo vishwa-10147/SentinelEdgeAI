@@ -6,6 +6,10 @@ GitHub repository secrets (Settings → Secrets → Actions)
 - RENDER_API_KEY: your Render API key (personal or service key). Required for the CI deploy job.
 - RENDER_SERVICE_ID: the Render service id of the backend to trigger a deploy (optional if you won't use CI deploy).
 
+GitHub Environments (recommended)
+- Create an Environment (e.g. `render`) and add the `RENDER_API_KEY` and `RENDER_SERVICE_ID` secrets there instead of at repository-level for stricter controls.
+- Environments allow requiring manual approvals and restricting which branches or actors can access the secrets during runs.
+
 Render service environment variables (set in Render Dashboard → Service → Environment)
 - DASHBOARD_API_KEY: a strong API key for your dashboard (keep secret). The backend will enforce it if present.
 - REDACT_SENSITIVE: set to `1` if you want the deployed instance to redact IP/MAC data shown in the UI.
@@ -26,3 +30,7 @@ Example steps
 2. In GitHub, add `RENDER_API_KEY` and `RENDER_SERVICE_ID` secrets.
 3. In the Render backend service, set the environment variables `DASHBOARD_API_KEY` and `REDACT_SALT`.
 4. Push to `main` — CI will run tests and trigger the Render deploy if secrets are present.
+
+Security tips
+- Prefer storing deploy secrets in a GitHub Environment and require approvals for `main` deploys.
+- Rotate the `RENDER_API_KEY` periodically and prefer service-scoped keys. If you use self-hosted runners for deploys, consider running deploy steps on GitHub-hosted runners or ensure runners are isolated and trusted.
