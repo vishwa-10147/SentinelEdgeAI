@@ -44,6 +44,7 @@ jobs:
     needs: [tests, frontend_build]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    environment: render
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Render deploy
