@@ -400,6 +400,22 @@ SENTINEL_RUN_FIREWALL_CONTAINER_TESTS=1 \
   .venv/bin/python -m pytest tests/test_firewall_container_integration.py
 ```
 
+## Security updates
+
+- Updated dependencies to address a reported vulnerability in `starlette` (bumped to `1.0.1`).
+- Recommended developer checks:
+
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+pytest -q
+bandit -r . --exclude .venv,venv,.git -lll
+python -m pip_audit --format=json
+```
+
+If you want, I can open a PR with these changes and run CI checks before merging.
+
+
 The container tests exercise both backends:
 
 - `SENTINEL_FIREWALL_BACKEND=nft`
