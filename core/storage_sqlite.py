@@ -120,6 +120,17 @@ class SQLiteStorage:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_flows_srcdst ON flows(src_ip,dst_ip)")
         self.conn.commit()
 
+    # Allowed tables for cleanup_retention to prevent SQL injection
+    _ALLOWED_TABLES = {
+        "alerts",
+        "flows",
+        "firewall_actions",
+        "live_events",
+        "device_profiles",
+        "live_stats",
+        "risk_timeline",
+    }
+
     def insert_alert(self, ts: int, src_ip: str, dst_ip: str, src_port: int, dst_port: int, proto: str, score: float, confidence: float, details: str):
         self.connect()
         cur = self.conn.cursor()
@@ -266,7 +277,11 @@ class SQLiteStorage:
         self.connect()
         cutoff = int(time.time()) - max_age_seconds
         cur = self.conn.cursor()
-        cur.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff,))
+        # Only allow a fixed set of table names to avoid SQL injection
+        if table not in self._ALLOWED_TABLES:
+            raise ValueError(f"invalid table name: {table}")
+        # table is validated against a whitelist above; suppress Bandit B608
+        cur.execute("DELETE FROM %s WHERE ts < ?" % table, (cutoff,))  # nosec
         self.conn.commit()
 
     def vacuum(self):

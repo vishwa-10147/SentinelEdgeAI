@@ -2,6 +2,7 @@ import threading
 import time
 import os
 import psycopg2
+from psycopg2 import sql
 from psycopg2.extras import execute_values
 from typing import Optional
 
@@ -261,7 +262,9 @@ class PostgresStorage:
         self.connect()
         cutoff = int(time.time()) - max_age_seconds
         cur = self.conn.cursor()
-        cur.execute(f"DELETE FROM {table} WHERE ts < %s", (cutoff,))
+        # Protect against SQL injection by using Identifier for table names
+        # and only formatting the identifier, leaving values parameterized.
+        cur.execute(sql.SQL("DELETE FROM {} WHERE ts < %s").format(sql.Identifier(table)), (cutoff,))
         self.conn.commit()
 
     def vacuum(self):

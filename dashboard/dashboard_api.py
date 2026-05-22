@@ -779,4 +779,7 @@ if os.path.isdir(DIST_DIR):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    # Allow configuring host/port via environment for safer defaults
+    host = os.getenv("SENTINEL_HOST", "127.0.0.1")
+    port = int(os.getenv("SENTINEL_PORT", "9000"))
+    uvicorn.run(app, host=host, port=port)

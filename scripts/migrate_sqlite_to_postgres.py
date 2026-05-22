@@ -14,6 +14,7 @@ if not dsn:
     sys.exit(2)
 
 import psycopg2
+from psycopg2 import sql, extras
 
 SRC = "data/sentinel.db"
 
@@ -31,7 +32,11 @@ TABLES = [
 def copy_table(conn_src: sqlite3.Connection, conn_dst: psycopg2.extensions.connection, table: str):
     cur_src = conn_src.cursor()
     cur_dst = conn_dst.cursor()
-    cur_src.execute(f"SELECT * FROM {table}")
+    # Only allow known table names to avoid SQL injection
+    if table not in TABLES:
+        raise ValueError("invalid table")
+    # For sqlite3 we validate table against whitelist above; suppress Bandit B608
+    cur_src.execute("SELECT * FROM %s" % table)  # nosec B608
     rows = cur_src.fetchall()
     if not rows:
         print(f"{table}: no rows, skipping")
@@ -39,14 +44,16 @@ def copy_table(conn_src: sqlite3.Connection, conn_dst: psycopg2.extensions.conne
     # get column count
     colcount = len(rows[0])
     placeholders = ",".join(["%s"] * colcount)
-    insert_sql = f"INSERT INTO {table} VALUES ({placeholders})"
+    # Use psycopg2.sql to safely format the table identifier for Postgres
+    insert_sql = sql.SQL("INSERT INTO {} VALUES %s").format(sql.Identifier(table))
     print(f"Inserting {len(rows)} rows into {table}...")
     psy_rows = [tuple(r) for r in rows]
     try:
-        psycopg2.extras.execute_values(cur_dst, insert_sql, psy_rows)
+        extras.execute_values(cur_dst, insert_sql, psy_rows)
     except Exception:
         # fallback to executemany
-        cur_dst.executemany(insert_sql, psy_rows)
+        # executemany expects a plain string; use formatted SQL with Identifier
+        cur_dst.executemany(insert_sql.as_string(conn_dst), psy_rows)
     conn_dst.commit()
 
 
