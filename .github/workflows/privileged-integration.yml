@@ -1,3 +1,44 @@
+name: Privileged Integration (self-hosted)
+
+on:
+  workflow_dispatch: {}
+  workflow_call: {}
+  push:
+    branches:
+      - main
+
+jobs:
+  privileged-integration:
+    name: Privileged Integration Tests
+    runs-on: [self-hosted, privileged]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install prerequisites
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start docker-compose
+        run: |
+          docker-compose -f docker-compose.yml up -d --build
+
+      - name: Run integration tests
+        run: |
+          pytest -q
+
+      - name: Tear down services
+        if: always()
+        run: |
+          docker-compose -f docker-compose.yml down --volumes
 name: Privileged Integration Tests
 
 on:

@@ -1,6 +1,6 @@
 import os
 import json
-import subprocess  # nosec: B404  # subprocess used with validated inputs in _run_cmd
+from utils.subprocess_safe import safe_run
 import time
 import ipaddress
 import shutil
@@ -247,14 +247,14 @@ def _run_cmd(cmd):
         return False, f"command not found: {cmd[0]}"
 
     try:
-        # Inputs are validated above (no shell metachars, args are strings)
-        # and the executable is verified with `shutil.which()`; keep
-        # `shell=False` to avoid shell injection risks. Mark as intentional
-        # for Bandit where appropriate.
-        subprocess.check_output(cmd, shell=False, stderr=subprocess.STDOUT)  # nosec: B603
-        return True, None
-    except subprocess.CalledProcessError as e:
-        return False, e.output.decode('utf-8', errors='ignore')
+        # Use the repository-safe wrapper which validates the executable
+        # and arguments before running. It returns a CompletedProcess.
+        cp = safe_run(cmd)
+        if cp.returncode == 0:
+            return True, None
+        return False, (cp.stdout or b'').decode('utf-8', errors='ignore')
+    except Exception as e:
+        return False, str(e)
 
 def add_block(ip: str, ttl: int = None, reason: str = ''):
     """Add a blocking rule for `ip`. If FIREWALL_DRY_RUN is True this only records the action.

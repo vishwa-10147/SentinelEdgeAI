@@ -13,6 +13,12 @@ jobs:
     name: Run firewall integration in Docker
     runs-on: [self-hosted, linux, docker]
     steps:
+      - name: Fix workspace permissions
+        if: runner.os == 'Linux'
+        run: |
+          echo "Fixing workspace ownership to avoid EACCES during checkout"
+          sudo chown -R "$(id -u):$(id -g)" "${{ runner.workspace }}" || true
+
       - name: Checkout
         uses: actions/checkout@v4
 
