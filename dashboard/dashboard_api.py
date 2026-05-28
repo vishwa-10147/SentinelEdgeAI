@@ -2,10 +2,11 @@ from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket, WebSocketDisconnect
 import os, json, time, asyncio
+from utils.subprocess_safe import safe_popen, PIPE, DEVNULL
 import logging
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from utils import metrics as metrics_utils
-import subprocess, sys
+import sys
 from typing import Optional
 import threading
 import hashlib
@@ -22,15 +23,31 @@ from core.product_intelligence import (
 API_KEY = os.environ.get('DASHBOARD_API_KEY')
 
 def require_api_key(
+    request: Request = None,
     x_api_key: Optional[str] = Header(default=None, alias='X-API-Key'),
     authorization: Optional[str] = Header(default=None),
 ):
-    # Allow missing API key in local development; if set, enforce header auth.
+    # If `DASHBOARD_API_KEY` is set, enforce that header or Bearer token matches it.
+    # If not set, allow access only from localhost addresses (local-only mode).
     if API_KEY:
         auth_value = authorization or ''
         bearer = auth_value[7:] if auth_value.lower().startswith('bearer ') else auth_value
         if x_api_key != API_KEY and bearer != API_KEY:
             raise HTTPException(status_code=401, detail='Invalid API key')
+        return True
+
+    # No API key configured: only allow requests originating from localhost
+    client_host = None
+    if request is not None:
+        try:
+            client_host = request.client.host
+        except Exception:
+            client_host = None
+    # if called without a Request (unit tests), allow by default when no API key configured
+    if request is None:
+        return True
+    if client_host not in ('127.0.0.1', '::1', 'localhost'):
+        raise HTTPException(status_code=401, detail='API key required for remote access')
     return True
 
 from contextlib import asynccontextmanager
@@ -56,7 +73,7 @@ async def lifespan(app: FastAPI):
                 try:
                     loop.call_soon_threadsafe(app.state.event_queue.put_nowait, evt)
                 except Exception:
-                    pass
+                    logger.exception('event publish failed')
 
             sniffer.set_event_publisher(pub)
             t = threading.Thread(target=sniffer.start_sniffing, kwargs={'interface': os.environ.get('CAPTURE_IFACE')}, daemon=True)
@@ -65,7 +82,7 @@ async def lifespan(app: FastAPI):
             app.state.sniffer_module = sniffer
             print('started sniffer in-process')
         except Exception as e:
-            print('failed to start sniffer in-process', e)
+            logger.exception('failed to start sniffer in-process')
     try:
         yield
     finally:
@@ -76,9 +93,9 @@ async def lifespan(app: FastAPI):
                 try:
                     sniffer.stop_sniffing()
                 except Exception:
-                    pass
+                    logger.exception('failed to stop sniffer')
         except Exception:
-            pass
+            logger.exception('error during sniffer shutdown')
         # stop DB maintenance thread if running
         try:
             m = getattr(app.state, 'db_maintenance', None)
@@ -86,9 +103,9 @@ async def lifespan(app: FastAPI):
                 try:
                     m.stop()
                 except Exception:
-                    pass
+                    logger.exception('failed to stop db maintenance')
         except Exception:
-            pass
+            logger.exception('error during db maintenance shutdown')
 
 
 # ---------- logging & metrics setup ----------
@@ -100,7 +117,7 @@ metrics_utils.init_metrics()
 
 
 
-app = FastAPI(title="SentinelEdgeAI Dashboard API", lifespan=lifespan)
+app = FastAPI(title="SentinelEdgeAI Dashboard API", lifespan=lifespan, openapi_url=None, docs_url=None, redoc_url=None)
 
 # Compatibility: allow disabling legacy file fallbacks via env
 ENABLE_FILE_FALLBACK = os.environ.get('ENABLE_FILE_FALLBACK', '1') == '1'
@@ -122,7 +139,7 @@ async def prometheus_middleware(request: Request, call_next):
             if metrics_utils.REQUEST_COUNT is not None:
                 metrics_utils.REQUEST_COUNT.labels(method=method, path=path, status=status).inc()
         except Exception:
-            pass
+            logger.exception('metrics update failed')
     return resp
 
 app.add_middleware(
@@ -181,7 +198,7 @@ def read_jsonl_optional(name, limit=500):
 
 
 @app.get('/metrics')
-def metrics():
+def metrics(api_ok: bool = Depends(require_api_key)):
     # expose prometheus metrics from centralized registry
     try:
         reg = metrics_utils.REGISTRY
@@ -192,6 +209,14 @@ def metrics():
         return Response(content=data, media_type=CONTENT_TYPE_LATEST)
     except Exception:
         return Response(content=b"", media_type="text/plain")
+
+
+@app.get('/openapi.json')
+def openapi_spec(api_ok: bool = Depends(require_api_key)):
+    try:
+        return app.openapi()
+    except Exception:
+        raise HTTPException(status_code=500, detail='failed to generate openapi.json')
 
 
 # Redaction / sanitization settings
@@ -307,6 +332,7 @@ def firewall_actions(api_ok: bool = Depends(require_api_key)):
                 try:
                     item = json.loads(line)
                 except Exception:
+                    logger.exception('failed to parse firewall action line')
                     continue
                 # enrich with status when ttl present
                 if item.get('action') == 'block' and 'timestamp' in item:
@@ -318,6 +344,7 @@ def firewall_actions(api_ok: bool = Depends(require_api_key)):
                             # try parsing ISO
                             ts = time.mktime(time.strptime(item.get('timestamp')[0:19], "%Y-%m-%d %H:%M:%S"))
                         except Exception:
+                            logger.exception('failed to parse timestamp in firewall action')
                             ts = None
                     ttl = item.get('ttl')
                     if ts and ttl:
@@ -405,9 +432,11 @@ def demo_run(payload: dict, api_ok: bool = Depends(require_api_key)):
     if ip:
         args += ['--ip', str(ip)]
     try:
-        # spawn in background so API is responsive; we capture pid
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # spawn in background so API is responsive; use safe_popen to validate
+        from utils.subprocess_safe import safe_popen
+        p = safe_popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except Exception as e:
+        logger.exception('failed to start demo process')
         raise HTTPException(status_code=500, detail=f'failed to start demo: {e}')
     # emit a lightweight event to connected websockets so UI updates immediately
     try:
@@ -416,9 +445,9 @@ def demo_run(payload: dict, api_ok: bool = Depends(require_api_key)):
             try:
                 app.state.event_queue.put_nowait(evt)
             except Exception:
-                pass
+                logger.exception('failed to enqueue event')
     except Exception:
-        pass
+        logger.exception('failed to emit demo start event')
     return {'status':'started','pid': p.pid}
 
 
@@ -431,7 +460,10 @@ def demo_presenter(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
     """
     ip = payload.get('ip')
     sim = payload.get('simulate_type','portscan')
-    step_delay = float(payload.get('step_delay', 2.5))
+    try:
+        step_delay = float(payload.get('step_delay', 2.5))
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid step_delay')
     # validate
     allowed = ['portscan','ddos','dns_tunnel','http_flood','slowloris']
     if sim not in allowed:
@@ -454,7 +486,7 @@ def demo_presenter(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
                 if hasattr(app.state, 'event_queue'):
                     app.state.event_queue.put_nowait(evt)
             except Exception:
-                pass
+                logger.exception('failed to enqueue demo step event')
             time.sleep(step_delay)
 
     # start runner thread
@@ -469,9 +501,13 @@ def demo_presenter(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
             args = [sys.executable, script, '--simulate_type', sim]
             if ip:
                 args += ['--ip', str(ip)]
-            subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            from utils.subprocess_safe import safe_popen
+            try:
+                safe_popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                logger.exception('failed to spawn demo presenter script')
     except Exception:
-        pass
+        logger.exception('failed to start demo presenter script')
 
     return {'status':'presenter_started'}
     
@@ -507,7 +543,7 @@ def live_stats():
             except Exception:
                 return maybe_sanitize(payload)
     except Exception:
-        pass
+        logger.exception('failed to load live_stats from DB; falling back to file')
     return maybe_sanitize(read_json_file("live_stats.json"))
 
 
@@ -659,6 +695,7 @@ async def websocket_packets(ws: WebSocket):
                         last_alert_mtime = ts
                         await ws.send_text(json.dumps({'type':'alert','payload': maybe_sanitize(item)}))
             except Exception:
+                logger.exception('failed to stream DB alerts; falling back to file')
                 # fallback to file-based alerts if compatibility mode enabled
                 if ENABLE_FILE_FALLBACK:
                     a_path = os.path.join(ROOT, 'alerts.json')
@@ -670,6 +707,7 @@ async def websocket_packets(ws: WebSocket):
                                 with open(a_path,'r') as f:
                                     data = json.load(f)
                             except Exception:
+                                logger.exception('failed to read alerts.json')
                                 data = None
                             if isinstance(data, list):
                                 for item in data[-10:]:
@@ -680,35 +718,38 @@ async def websocket_packets(ws: WebSocket):
                 s = get_storage('data/sentinel.db')
                 s.connect()
                 payload = s.get_live_stats()
-                if payload:
-                    payload_str = payload if isinstance(payload, str) else json.dumps(payload)
-                    if payload_str != last_stats_payload:
-                        last_stats_payload = payload_str
-                        try:
-                            data = json.loads(payload_str)
-                        except Exception:
-                            data = payload
-                        if isinstance(data, dict) and 'flows' in data:
-                            for fl in data['flows'][-20:]:
-                                await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
-            except Exception:
-                # fallback to file-based live_stats if compatibility mode enabled
-                if ENABLE_FILE_FALLBACK:
-                    s_path = os.path.join(ROOT, 'live_stats.json')
-                    if os.path.exists(s_path):
-                        m = os.path.getmtime(s_path)
-                        if m > last_stats_mtime:
-                            last_stats_mtime = m
+                try:
+                    payload = s.get_live_stats()
+                    if payload:
+                        payload_str = payload if isinstance(payload, str) else json.dumps(payload)
+                        if payload_str != last_stats_payload:
+                            last_stats_payload = payload_str
                             try:
-                                with open(s_path,'r') as f:
-                                    data = json.load(f)
+                                data = json.loads(payload_str)
                             except Exception:
-                                data = None
+                                logger.exception('failed to decode live_stats payload')
+                                data = payload
                             if isinstance(data, dict) and 'flows' in data:
                                 for fl in data['flows'][-20:]:
                                     await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
-            # live events (DB preferred)
-            try:
+                except Exception:
+                    logger.exception('failed to stream DB live_stats; falling back to file')
+                    # fallback to file-based live_stats if compatibility mode enabled
+                    if ENABLE_FILE_FALLBACK:
+                        s_path = os.path.join(ROOT, 'live_stats.json')
+                        if os.path.exists(s_path):
+                            m = os.path.getmtime(s_path)
+                            if m > last_stats_mtime:
+                                last_stats_mtime = m
+                                try:
+                                    with open(s_path,'r') as f:
+                                        data = json.load(f)
+                                except Exception:
+                                    logger.exception('failed to read live_stats.json')
+                                    data = None
+                                if isinstance(data, dict) and 'flows' in data:
+                                    for fl in data['flows'][-20:]:
+                                        await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
                 from core.storage import get_storage
                 s = get_storage('data/sentinel.db')
                 s.connect()
@@ -720,9 +761,11 @@ async def websocket_packets(ws: WebSocket):
                             try:
                                 obj = json.loads(payload)
                             except Exception:
+                                logger.exception('failed to parse live event payload')
                                 obj = payload
                             await ws.send_text(json.dumps({'type': obj.get('type','event') if isinstance(obj, dict) else 'event', 'payload': maybe_sanitize(obj)}))
                     except Exception:
+                        logger.exception('failed to send live event websocket message')
                         continue
             except Exception:
                 # fallback to file tailing if compatibility mode enabled
@@ -745,11 +788,11 @@ async def websocket_packets(ws: WebSocket):
                                             obj = json.loads(line)
                                             await ws.send_text(json.dumps({'type': obj.get('type','event'), 'payload': maybe_sanitize(obj)}))
                                         except Exception:
-                                            # ignore malformed
+                                            logger.exception('malformed live event line')
                                             continue
                                     last_events_pos = ef.tell()
                         except Exception:
-                            pass
+                            logger.exception('failed to tail live events file')
             # drain in-process queue if present
             if hasattr(app.state, 'event_queue'):
                 try:
