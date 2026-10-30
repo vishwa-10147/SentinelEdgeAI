@@ -11,11 +11,15 @@ Accounts live in their own SQLite file (``SENTINEL_AUTH_DB``, default
   are HMAC-signed and checked against the session and user on every request,
   so logout, disabling a user or changing a role take effect immediately.
 * Repeated failed logins lock the account for ``LOCKOUT_SECONDS``.
+* Two-step sign-in with TOTP authenticator apps (RFC 6238) plus single-use
+  recovery codes. Roles listed in ``SENTINEL_MFA_ROLES`` (default operator and
+  admin) must enrol before they can use the console.
 
 Command line (run on the device as root or the service user)::
 
     python -m core.auth create-user --username alice --role operator
     python -m core.auth reset-password --username alice
+    python -m core.auth reset-mfa --username alice
     python -m core.auth list
     python -m core.auth bootstrap-admin --password-file /etc/sentinel/initial-admin-password
 """
@@ -25,15 +29,18 @@ import base64
 import getpass
 import hashlib
 import hmac
+import io
 import os
 import re
 import secrets
 import sqlite3
+import struct
 import sys
 import threading
 import time
 from collections import deque
 
+import segno
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
@@ -49,6 +56,12 @@ MAX_FAILED_LOGINS = 5
 LOCKOUT_SECONDS = 15 * 60
 USERNAME_RE = re.compile(r'^[A-Za-z0-9_.-]{3,32}$')
 
+TOTP_ISSUER = 'SentinelEdgeAI'
+TOTP_DIGITS = 6
+TOTP_PERIOD = 30
+TOTP_WINDOW = 1            # accept one step either side for clock drift
+RECOVERY_CODE_COUNT = 10
+
 _hasher = PasswordHasher()
 # verified against when the username does not exist, so response time does
 # not reveal which usernames are valid
@@ -58,10 +71,11 @@ _DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(16))
 class AuthError(Exception):
     """Login or token problem. `reason` is safe to log, never shown to clients."""
 
-    def __init__(self, reason, status=401):
+    def __init__(self, reason, status=401, code=None):
         super().__init__(reason)
         self.reason = reason
         self.status = status
+        self.code = code
 
 
 def _env_int(name, default):
@@ -111,6 +125,62 @@ def validate_password(password, username=None):
 
 def role_allows(role, minimum):
     return ROLE_RANK.get(role, -1) >= ROLE_RANK[minimum]
+
+
+def mfa_roles():
+    raw = os.environ.get('SENTINEL_MFA_ROLES', 'operator,admin')
+    return {r.strip().lower() for r in raw.split(',') if r.strip().lower() in ROLE_RANK}
+
+
+def mfa_required_for(role):
+    return role in mfa_roles()
+
+
+# ---------- TOTP (RFC 6238: HMAC-SHA1, 6 digits, 30 s steps) ----------
+
+def new_totp_secret():
+    return base64.b32encode(secrets.token_bytes(20)).decode('ascii')
+
+
+def totp_code(secret, step, digits=TOTP_DIGITS):
+    key = base64.b32decode(secret)
+    digest = hmac.new(key, struct.pack('>Q', step), hashlib.sha1).digest()  # nosec B324 - RFC 6238 mandates HMAC-SHA1
+    offset = digest[-1] & 0x0F
+    value = struct.unpack('>I', digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(value % 10 ** digits).zfill(digits)
+
+
+def totp_match(secret, code, after_step=0, now=None):
+    """Return the matching time step, or None. Steps <= after_step are refused (no replay)."""
+    code = re.sub(r'\s', '', str(code or ''))
+    if not re.fullmatch(r'\d{6}', code):
+        return None
+    current = int(now if now is not None else time.time()) // TOTP_PERIOD
+    for step in range(current - TOTP_WINDOW, current + TOTP_WINDOW + 1):
+        if step > after_step and hmac.compare_digest(totp_code(secret, step), code):
+            return step
+    return None
+
+
+def totp_uri(secret, username):
+    label = f'{TOTP_ISSUER}:{username}'
+    return (f'otpauth://totp/{label}?secret={secret}&issuer={TOTP_ISSUER}'
+            f'&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_PERIOD}')
+
+
+def qr_svg(text):
+    out = io.BytesIO()
+    segno.make(text, error='m').save(out, kind='svg', scale=5, border=4, dark='#000000', light='#ffffff')
+    return out.getvalue().decode('utf-8')
+
+
+def _new_recovery_code():
+    raw = secrets.token_hex(5)  # 10 hex characters, shown as xxxxx-xxxxx
+    return f'{raw[:5]}-{raw[5:]}'
+
+
+def _normalise_recovery_code(code):
+    return re.sub(r'[^0-9a-f]', '', str(code or '').lower())
 
 
 def _sha256(value):
@@ -174,6 +244,24 @@ class AuthStore:
                 );
                 """
             )
+            # added in 1.2 (two-step sign-in); older databases are upgraded in place
+            columns = {row['name'] for row in conn.execute('PRAGMA table_info(users)')}
+            for column, ddl in (
+                ('totp_secret', 'TEXT'),
+                ('totp_enabled', 'INTEGER NOT NULL DEFAULT 0'),
+                ('totp_last_step', 'INTEGER NOT NULL DEFAULT 0'),
+            ):
+                if column not in columns:
+                    conn.execute(f'ALTER TABLE users ADD COLUMN {column} {ddl}')  # nosec B608 - fixed names
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS recovery_codes (
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    code_hash TEXT NOT NULL,
+                    used INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
             conn.execute('PRAGMA foreign_keys=ON')
             conn.commit()
             self._conn = conn
@@ -227,6 +315,8 @@ class AuthStore:
             'role': user['role'],
             'disabled': bool(user['disabled']),
             'must_change_password': bool(user['must_change_password']),
+            'mfa_enabled': bool(user.get('totp_enabled')),
+            'mfa_setup_required': mfa_required_for(user['role']) and not user.get('totp_enabled'),
             'locked': int(user.get('locked_until') or 0) > int(time.time()),
             'created': user['created'],
             'last_login': user.get('last_login'),
@@ -316,8 +406,20 @@ class AuthStore:
         except (VerificationError, InvalidHashError):
             return False
 
-    def authenticate(self, username, password):
-        """Return the public user on success; raise AuthError otherwise."""
+    def _record_failure(self, user, now):
+        failures = int(user['failed_logins'] or 0) + 1
+        locked_until = now + LOCKOUT_SECONDS if failures >= MAX_FAILED_LOGINS else 0
+        self._execute(
+            'UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?',
+            (0 if locked_until else failures, locked_until, user['id']),
+        )
+
+    def authenticate(self, username, password, otp=None):
+        """Return the public user on success; raise AuthError otherwise.
+
+        Users with two-step sign-in enabled must also pass `otp`: a current
+        authenticator code or an unused recovery code.
+        """
         now = int(time.time())
         user = self._get(str(username or ''))
         if not user:
@@ -331,15 +433,17 @@ class AuthStore:
         try:
             _hasher.verify(user['password_hash'], str(password or ''))
         except (VerifyMismatchError, VerificationError, InvalidHashError):
-            failures = int(user['failed_logins'] or 0) + 1
-            locked_until = now + LOCKOUT_SECONDS if failures >= MAX_FAILED_LOGINS else 0
-            self._execute(
-                'UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?',
-                (0 if locked_until else failures, locked_until, user['id']),
-            )
+            self._record_failure(user, now)
             raise AuthError('bad password')
         if user['disabled']:
             raise AuthError('account disabled')
+        if user['totp_enabled']:
+            if not otp:
+                # correct password, second step still to come: not a failure
+                raise AuthError('second factor required', code='mfa_required')
+            if not self._check_second_factor(user, otp, now):
+                self._record_failure(user, now)
+                raise AuthError('bad second factor', code='mfa_invalid')
         if _hasher.check_needs_rehash(user['password_hash']):
             self._execute(
                 'UPDATE users SET password_hash = ? WHERE id = ?',
@@ -350,6 +454,89 @@ class AuthStore:
             (now, user['id']),
         )
         return self.get_user(user['username'])
+
+    # ---------- two-step sign-in ----------
+
+    def _check_second_factor(self, user, otp, now):
+        if user['totp_secret']:
+            step = totp_match(user['totp_secret'], otp, int(user['totp_last_step'] or 0), now)
+            if step is not None:
+                self._execute('UPDATE users SET totp_last_step = ? WHERE id = ?', (step, user['id']))
+                return True
+        code = _normalise_recovery_code(otp)
+        if len(code) != 10:
+            return False
+        cur = self._execute(
+            'UPDATE recovery_codes SET used = 1 WHERE user_id = ? AND code_hash = ? AND used = 0',
+            (user['id'], _sha256(code)),
+        )
+        return cur.rowcount == 1
+
+    def begin_mfa_enrolment(self, username):
+        """Store a new, not yet active, authenticator secret for the user."""
+        user = self._get(username)
+        if not user:
+            raise KeyError(username)
+        if user['totp_enabled']:
+            raise ValueError('two-step sign-in is already enabled; an admin must reset it first')
+        secret = new_totp_secret()
+        self._execute(
+            'UPDATE users SET totp_secret = ?, totp_last_step = 0, updated = ? WHERE id = ?',
+            (secret, int(time.time()), user['id']),
+        )
+        uri = totp_uri(secret, user['username'])
+        return {'secret': secret, 'otpauth_uri': uri, 'qr_svg': qr_svg(uri)}
+
+    def enable_mfa(self, username, code, now=None):
+        """Activate the pending secret once the user proves their app works.
+
+        Returns the recovery codes; they are only ever shown this once.
+        """
+        user = self._get(username)
+        if not user:
+            raise KeyError(username)
+        if user['totp_enabled']:
+            raise ValueError('two-step sign-in is already enabled')
+        if not user['totp_secret']:
+            raise ValueError('start enrolment first')
+        step = totp_match(user['totp_secret'], code, 0, now)
+        if step is None:
+            raise ValueError('code does not match; check that the time on your phone is correct and try again')
+        codes = [_new_recovery_code() for _ in range(RECOVERY_CODE_COUNT)]
+        with self._lock:
+            db = self._db()
+            db.execute('DELETE FROM recovery_codes WHERE user_id = ?', (user['id'],))
+            db.executemany(
+                'INSERT INTO recovery_codes(user_id, code_hash) VALUES (?, ?)',
+                [(user['id'], _sha256(_normalise_recovery_code(c))) for c in codes],
+            )
+            db.execute(
+                'UPDATE users SET totp_enabled = 1, totp_last_step = ?, updated = ? WHERE id = ?',
+                (step, int(time.time()), user['id']),
+            )
+            db.commit()
+        return codes
+
+    def reset_mfa(self, username):
+        """Remove the authenticator and recovery codes and sign the user out everywhere."""
+        user = self._get(username)
+        if not user:
+            raise KeyError(username)
+        self._execute(
+            'UPDATE users SET totp_secret = NULL, totp_enabled = 0, totp_last_step = 0, updated = ? '
+            'WHERE id = ?',
+            (int(time.time()), user['id']),
+        )
+        self._execute('DELETE FROM recovery_codes WHERE user_id = ?', (user['id'],))
+        self.revoke_user_sessions(user['username'])
+
+    def recovery_codes_left(self, username):
+        row = self._fetchone(
+            'SELECT COUNT(*) AS n FROM recovery_codes r JOIN users u ON u.id = r.user_id '
+            'WHERE u.username = ? AND r.used = 0',
+            (str(username),),
+        )
+        return row['n']
 
     # ---------- sessions and tokens ----------
 
@@ -433,7 +620,8 @@ class AuthStore:
             return None
         row = self._fetchone(
             'SELECT s.id AS session_id, s.expires, s.revoked, u.username, u.role, u.disabled, '
-            'u.must_change_password FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?',
+            'u.must_change_password, u.totp_enabled FROM sessions s JOIN users u ON u.id = s.user_id '
+            'WHERE s.id = ?',
             (parts[1],),
         )
         if not row or row['revoked'] or row['disabled'] or row['expires'] <= now:
@@ -443,6 +631,8 @@ class AuthStore:
             'username': row['username'],
             'role': row['role'],
             'must_change_password': bool(row['must_change_password']),
+            'mfa_enabled': bool(row['totp_enabled']),
+            'mfa_setup_required': mfa_required_for(row['role']) and not row['totp_enabled'],
             'session_id': row['session_id'],
         }
 
@@ -536,6 +726,9 @@ def main(argv=None):
     p.add_argument('--username', required=True)
     p.add_argument('--role', required=True, choices=ROLES)
 
+    p = sub.add_parser('reset-mfa', help='remove two-step sign-in (lost phone); the user enrols again')
+    p.add_argument('--username', required=True)
+
     p = sub.add_parser('unlock', help='clear a login lockout')
     p.add_argument('--username', required=True)
 
@@ -561,6 +754,9 @@ def main(argv=None):
         elif args.command == 'set-role':
             user = store.update_user(args.username, role=args.role)
             print(f"{user['username']} is now {user['role']}")
+        elif args.command == 'reset-mfa':
+            store.reset_mfa(args.username)
+            print(f'two-step sign-in removed for {args.username}; they enrol again at next sign-in')
         elif args.command == 'unlock':
             if not store.get_user(args.username):
                 raise KeyError(args.username)
@@ -569,7 +765,9 @@ def main(argv=None):
         elif args.command == 'list':
             for u in store.list_users():
                 flags = [f for f, on in (('disabled', u['disabled']), ('locked', u['locked']),
-                                         ('must-change-password', u['must_change_password'])) if on]
+                                         ('must-change-password', u['must_change_password']),
+                                         ('mfa', u['mfa_enabled']),
+                                         ('mfa-setup-required', u['mfa_setup_required'])) if on]
                 print(f"{u['username']:<32} {u['role']:<9} {' '.join(flags)}")
         elif args.command == 'bootstrap-admin':
             if store.user_count():

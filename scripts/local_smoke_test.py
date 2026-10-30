@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import json
 import subprocess
 import sys
 import os
@@ -16,10 +17,17 @@ async def main():
 
     try:
         async with websockets.connect(url, open_timeout=5) as ws:
+            # authenticate first: an access token or the API key; empty works only
+            # on localhost while no console users exist (development mode)
+            token = os.environ.get('SMOKE_TOKEN') or os.environ.get('DASHBOARD_API_KEY') or ''
+            await ws.send(json.dumps({'type': 'auth', 'token': token}))
             print('WS connected, triggering integration test')
             proc = subprocess.Popen([sys.executable, 'scripts/integration_test.py'], cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
             try:
-                msg = await asyncio.wait_for(ws.recv(), timeout=12)
+                while True:
+                    msg = await asyncio.wait_for(ws.recv(), timeout=12)
+                    if json.loads(msg).get('type') != 'auth_ok':
+                        break
                 print('Received message:', msg)
                 proc.wait(timeout=5)
                 print('SMOKE TEST: PASS')

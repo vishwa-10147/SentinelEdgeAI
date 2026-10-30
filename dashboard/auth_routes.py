@@ -82,12 +82,22 @@ def get_principal(
     return principal
 
 
-def require_role(minimum: str, allow_password_change: bool = False):
+def pending_setup(principal: dict):
+    """What a signed-in user must finish before using the console, or None."""
+    if principal.get('must_change_password'):
+        return 'password change required'
+    if principal.get('mfa_setup_required'):
+        return 'two-step sign-in setup required'
+    return None
+
+
+def require_role(minimum: str, allow_pending_setup: bool = False):
     auth.validate_role(minimum)
 
     def dependency(principal: dict = Depends(get_principal)):
-        if principal.get('must_change_password') and not allow_password_change:
-            raise HTTPException(status_code=403, detail='password change required')
+        pending = pending_setup(principal)
+        if pending and not allow_pending_setup:
+            raise HTTPException(status_code=403, detail=pending)
         if not auth.role_allows(principal.get('role'), minimum):
             raise HTTPException(status_code=403, detail=f'{minimum} role required')
         return principal
@@ -99,7 +109,9 @@ require_viewer = require_role('viewer')
 require_analyst = require_role('analyst')
 require_operator = require_role('operator')
 require_admin = require_role('admin')
-require_signed_in = require_role('viewer', allow_password_change=True)
+require_signed_in = require_role('viewer', allow_pending_setup=True)
+
+USER_FIELDS = ('username', 'role', 'must_change_password', 'mfa_enabled', 'mfa_setup_required')
 
 
 # ---------- auth endpoints ----------
@@ -107,6 +119,12 @@ require_signed_in = require_role('viewer', allow_password_change=True)
 class LoginRequest(BaseModel):
     username: str
     password: str
+    # authenticator code or recovery code, for users with two-step sign-in
+    otp: Optional[str] = None
+
+
+class MfaCode(BaseModel):
+    code: str
 
 
 class PasswordChange(BaseModel):
@@ -125,6 +143,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     disabled: Optional[bool] = None
     password: Optional[str] = None
+    reset_mfa: bool = False
 
 
 def _cookie_secure(request: Request):
@@ -146,7 +165,7 @@ def _token_response(tokens: dict, user: dict):
         'access_token': tokens['access_token'],
         'token_type': 'bearer',
         'expires_in': tokens['expires_in'],
-        'user': {k: user[k] for k in ('username', 'role', 'must_change_password')},
+        'user': {k: user.get(k, False) for k in USER_FIELDS},
     }
 
 
@@ -165,6 +184,7 @@ def auth_status(request: Request):
         'accounts_enabled': users > 0,
         'local_dev_mode': users == 0 and not api_key() and _client_host(request) in LOCAL_HOSTS,
         'password_min_length': auth.MIN_PASSWORD_LENGTH,
+        'mfa_roles': sorted(auth.mfa_roles(), key=auth.ROLE_RANK.get),
     }
 
 
@@ -176,11 +196,16 @@ def login(payload: LoginRequest, request: Request, response: Response):
         raise HTTPException(status_code=429, detail='too many login attempts; try again later')
     store = auth.get_store()
     try:
-        user = store.authenticate(payload.username, payload.password)
+        user = store.authenticate(payload.username, payload.password, payload.otp)
     except auth.AuthError as exc:
+        if exc.code == 'mfa_required':
+            # correct password; the console now asks for the authenticator code
+            raise HTTPException(status_code=401, detail='mfa_required')
         logger.warning('login failed for %r from %s: %s', payload.username[:64], client, exc.reason)
         if exc.status == 423:
             raise HTTPException(status_code=423, detail='account temporarily locked after repeated failures')
+        if exc.code == 'mfa_invalid':
+            raise HTTPException(status_code=401, detail='mfa_invalid')
         raise HTTPException(status_code=401, detail='invalid username or password')
     tokens = store.create_session(user['username'], client, request.headers.get('user-agent'))
     _set_refresh_cookie(response, request, tokens)
@@ -217,7 +242,49 @@ def logout(request: Request, response: Response):
 
 @router.get('/api/auth/me')
 def me(principal: dict = Depends(require_signed_in)):
-    return {k: principal.get(k) for k in ('username', 'role', 'kind', 'must_change_password')}
+    out = {k: bool(principal.get(k)) for k in USER_FIELDS[2:]}
+    out.update({k: principal.get(k) for k in ('username', 'role', 'kind')})
+    return out
+
+
+def _console_user(principal: dict):
+    if principal.get('kind') != 'user':
+        raise HTTPException(status_code=400, detail='only console users can use two-step sign-in')
+    return principal['username']
+
+
+@router.get('/api/auth/mfa')
+def mfa_status(principal: dict = Depends(require_signed_in)):
+    username = _console_user(principal)
+    store = auth.get_store()
+    return {
+        'enabled': bool(principal.get('mfa_enabled')),
+        'required': auth.mfa_required_for(principal.get('role')),
+        'recovery_codes_left': store.recovery_codes_left(username),
+    }
+
+
+@router.post('/api/auth/mfa/setup')
+def mfa_setup(principal: dict = Depends(require_signed_in)):
+    username = _console_user(principal)
+    if principal.get('must_change_password'):
+        raise HTTPException(status_code=403, detail='password change required')
+    try:
+        enrolment = auth.get_store().begin_mfa_enrolment(username)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return enrolment
+
+
+@router.post('/api/auth/mfa/enable')
+def mfa_enable(payload: MfaCode, principal: dict = Depends(require_signed_in)):
+    username = _console_user(principal)
+    try:
+        codes = auth.get_store().enable_mfa(username, payload.code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info('two-step sign-in enabled for %s', username)
+    return {'status': 'enabled', 'recovery_codes': codes}
 
 
 @router.post('/api/auth/password')
@@ -270,6 +337,11 @@ def update_user(username: str, payload: UserUpdate, principal: dict = Depends(re
             # admin reset: the user must choose a new password at next sign-in
             store.set_password(username, payload.password, must_change_password=True)
             user = store.get_user(username)
+        if payload.reset_mfa:
+            # lost phone: remove the authenticator; the user enrols again at next sign-in
+            store.reset_mfa(username)
+            user = store.get_user(username)
+            logger.info('%s reset two-step sign-in for %s', principal['username'], username)
     except KeyError:
         raise HTTPException(status_code=404, detail='user not found')
     except ValueError as exc:

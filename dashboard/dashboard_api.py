@@ -27,6 +27,7 @@ from dashboard.auth_routes import (
     require_operator,
     require_admin,
     resolve_principal,
+    pending_setup,
 )
 
 from contextlib import asynccontextmanager
@@ -673,7 +674,7 @@ async def websocket_packets(ws: WebSocket):
         first = None
     client_host = ws.client.host if ws.client else None
     principal = resolve_principal(token, client_host) if first is not None else None
-    if principal is None or principal.get('must_change_password'):
+    if principal is None or pending_setup(principal):
         try:
             await ws.close(code=4401, reason='authentication required')
         except RuntimeError:
