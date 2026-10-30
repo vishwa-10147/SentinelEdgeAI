@@ -57,7 +57,7 @@ The current and previous minor release receive security fixes.
 | | Scoped, expiring API tokens for automation | ✅ |
 | Stolen session token | 15-minute access tokens held in memory; refresh token in an HttpOnly, SameSite=Strict cookie, rotated on every use; reuse of an old refresh token revokes the session | ✅ |
 | Cross-site request forgery | Bearer tokens (not cookies) authorise API calls; the refresh/logout endpoints require a custom header; CORS limited to configured origins | ✅ |
-| Eavesdropping on the console/API | HTTPS with a certificate created at install | 🔜 |
+| Eavesdropping on the console/API | HTTPS by default with a certificate created at install, or the organisation's own; HSTS; secure WebSocket | ✅ |
 | Appliance blocks critical hosts (self-DoS) | Whitelist; `127.0.0.1` always whitelisted | ✅ |
 | | Auto-detect and protect gateway, DNS, management IPs | 🔜 |
 | Bad rules lock the network | Dry-run default, TTL expiry, rollback API, systemd rollback guard | ✅ |
@@ -91,7 +91,8 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 * **API key:** `DASHBOARD_API_KEY` still works (`X-API-Key` or `Authorization: Bearer`) for automation and device health checks, with the role in `SENTINEL_API_KEY_ROLE` (default `admin`). It is compared in constant time. Prefer API tokens for new automation; the shared key remains for device health checks and will be retired.
 * **API tokens:** admins create per-integration tokens (`sak1.<id>.<secret>`) in the Users panel or with `python -m core.auth create-token`. A token has a role no higher than its owner's (capped again at use, so demoting the owner demotes the token), a required expiry of 1–365 days, and stops working when revoked, expired, or when the owner is disabled or deleted. Only a SHA-256 hash of the secret is stored and the token is shown once. Tokens cannot manage tokens, so a leaked token cannot extend its own life. `last_used` is recorded so unused tokens can be found and revoked.
 * **Development mode:** only when no user exists *and* no API key is set, requests from `127.0.0.1` / `::1` act as an Admin. Creating the first user ends this mode.
-* **Security headers:** every response carries a strict Content-Security-Policy (`default-src 'self'`, no inline scripts or styles, `img-src 'self' data:` for the MFA QR code, `object-src 'none'`, `frame-ancestors 'none'`), plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy` and `Cross-Origin-Opener-Policy: same-origin`. `SENTINEL_CSP` replaces the policy if the console is hosted elsewhere. HSTS arrives with HTTPS.
+* **Security headers:** every response carries a strict Content-Security-Policy (`default-src 'self'`, no inline scripts or styles, `img-src 'self' data:` for the MFA QR code, `object-src 'none'`, `frame-ancestors 'none'`), plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy` and `Cross-Origin-Opener-Policy: same-origin`. `SENTINEL_CSP` replaces the policy if the console is hosted elsewhere.
+* **HTTPS:** `sentinelctl` creates a self-signed EC P-256 certificate at install (subject alternative names: hostname, `<hostname>.local`, `localhost`, loopback and the device's addresses; 825 days) in `/etc/sentinel/tls/` (key mode `640`, root:sentinel) and turns HTTPS on in `sentinel.env`. Verify it the first time by comparing the fingerprint from `sentinelctl tls show` with what the browser shows, or replace it with a certificate from your own CA: `sudo sentinelctl tls import cert.pem key.pem`. The API refuses to start rather than falling back to HTTP if TLS is half configured. HTTPS responses carry `Strict-Transport-Security: max-age=31536000` (browsers ignore it while they do not trust the certificate, so a self-signed install cannot lock anyone out). The session cookie gets the `Secure` flag automatically over HTTPS.
 * **CORS** is limited to `SENTINEL_CORS_ORIGINS` (default: the Vite dev server). The console is normally served by the API itself, so production needs no cross-origin access.
 * The API binds to `127.0.0.1` by default (`SENTINEL_HOST`). Interactive API docs (`/docs`, `/redoc`) are disabled and `/openapi.json` requires sign-in.
 * The health endpoint supports Basic auth via `HEALTH_USER` / `HEALTH_PASS`.
@@ -103,7 +104,7 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 | **Operator** | Analyst + block, unblock, whitelist, expire and roll back; run demos |
 | **Admin** | Operator + firewall policy and user management |
 
-Still to come in v1.2: HTTPS by default, scoped API tokens, security headers, and a hash-chained audit log of every sign-in and action.
+Still to come in v1.2: a hash-chained audit log of every sign-in and action, and a first-run setup wizard.
 
 ### Firewall safety model
 1. **Dry-run by default** (`FIREWALL_DRY_RUN=1`). Real enforcement must be turned on explicitly with `deploy/pi/enforcement_ctl.sh enable`.
@@ -166,7 +167,7 @@ The old key no longer verifies any committed model, so a model signed with it wi
 | 2 | ~~iptables removal omitted the comment match used at insert~~ | **Fixed in 1.1.0** | — |
 | 3 | Bridge-level (layer 2) filtering and MAC quarantine not implemented; `INPUT` and `FORWARD` are covered | Devices on the same bridge segment are not isolated | Phase 3 |
 | 4 | ~~Single shared API key, no per-user identity~~ | **Fixed in 1.2.0** — user accounts and roles; the shared key remains for automation until scoped tokens land | Phase 1 |
-| 5 | No TLS on API/WebSocket | Credentials and data readable on the management network | Phase 1 |
+| 5 | ~~No TLS on API/WebSocket~~ | **Fixed** — HTTPS and WSS by default; self-signed until an organisation certificate is imported | — |
 | 6 | ~~No rate limiting on the API~~ | **Fixed** — 600 reads and 60 writes per minute per client on `/api/*` (`SENTINEL_RATE_LIMIT_READ` / `_WRITE`); limits are per address, so clients behind one proxy share them | — |
 | 10 | ~~Live WebSocket stream had no authentication~~ | **Fixed in 1.2.0** — anyone who could reach the port could read alerts and flows | — |
 | 7 | HMAC model signing — every verifier holds the signing key | A compromised device can sign models | Phase 4 |
