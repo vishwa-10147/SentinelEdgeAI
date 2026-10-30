@@ -148,6 +148,9 @@ Earlier commits contained `model_signing.key` at the repository root, and `.ci_t
 | Change any health-check credentials that match the old `.ci_test_health.env` values | ⏳ per device |
 | Optionally purge both files from history (`git filter-repo`) and force-push; everyone must then re-clone | Optional |
 
+### Key moved to the release device (2026-10-30)
+Development moved from a PC to the Raspberry Pi, and the only copy of the signing key was on the PC. The key was rotated again from the Pi: the model was first confirmed byte-identical (SHA-256 `6ce839cb…a5a8`) to the one the v1.2.0 release pipeline verified with the previous key, then re-signed with a new 256-bit key generated on the Pi (`~/.sentinel/model_signing.key`, mode `600`). The GitHub secret was updated to match. The PC key no longer verifies the committed model. Releases from v1.2.1 onwards need this key on the device.
+
 The old key no longer verifies any committed model, so a model signed with it will be rejected by updated devices and CI.
 
 ---
