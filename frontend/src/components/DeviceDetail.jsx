@@ -1,12 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import axios from 'axios'
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:9000'
-
-function headers(){
-  const key = sessionStorage.getItem('sentinel_api_key')
-  return key ? { 'X-API-Key': key } : {}
-}
+import { apiGet, apiPost, errorMessage } from '../api'
 
 function riskClass(risk){
   const score = Number(risk || 0)
@@ -67,9 +60,8 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
 
   useEffect(()=>{
     let mounted = true
-    axios.get(`${API_BASE}/api/device/${encodeURIComponent(deviceId)}/logs`, { headers: headers() })
-      .then(res=>{ if(mounted) setLogs(Array.isArray(res.data) ? res.data : []) })
-      .catch(()=>{})
+    apiGet(`/api/device/${encodeURIComponent(deviceId)}/logs`, [])
+      .then(data=>{ if(mounted) setLogs(Array.isArray(data) ? data : []) })
     return ()=>{ mounted = false }
   }, [deviceId])
 
@@ -90,13 +82,13 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
     if(typed !== 'CONFIRM') return
     setBusy(true)
     try{
-      await axios.post(`${API_BASE}/api/firewall/block`, { ip, ttl: 300, reason: 'operator_quarantine' }, { headers: headers() })
+      await apiPost('/api/firewall/block', { ip, ttl: 300, reason: 'operator_quarantine' })
       // show undo banner for the configured TTL (milliseconds)
       setUndoUntil(Date.now() + 300 * 1000)
       onFirewallChanged?.()
       window.dispatchEvent(new Event('se:firewall-changed'))
     }catch(e){
-      window.dispatchEvent(new CustomEvent('se:toast', { detail: { type: 'error', message: `Quarantine failed for ${ip}` } }))
+      window.dispatchEvent(new CustomEvent('se:toast', { detail: { type: 'error', message: `Quarantine failed for ${ip}: ${errorMessage(e)}` } }))
     }finally{
       setBusy(false)
     }
@@ -106,7 +98,7 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
     const ip = device.ip || device.id
     setBusy(true)
     try{
-      await axios.post(`${API_BASE}/api/firewall/unblock`, { ip }, { headers: headers() })
+      await apiPost('/api/firewall/unblock', { ip })
       setUndoUntil(null)
       onFirewallChanged?.()
       window.dispatchEvent(new Event('se:firewall-changed'))
@@ -121,7 +113,7 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
     if(typed !== 'CONFIRM') return
     setBusy(true)
     try{
-      await axios.post(`${API_BASE}/api/firewall/whitelist`, { ip, action: 'add' }, { headers: headers() })
+      await apiPost('/api/firewall/whitelist', { ip, action: 'add' })
       onFirewallChanged?.()
       window.dispatchEvent(new Event('se:firewall-changed'))
     }finally{

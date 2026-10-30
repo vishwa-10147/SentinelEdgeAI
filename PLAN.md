@@ -110,14 +110,17 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 
 **Goal:** the console and API are safe to expose on a management network.
 
-- Users table (Argon2id hashes), login and logout, short-lived access token plus refresh token in an HttpOnly cookie.
-- Roles: Viewer, Analyst, Operator, Admin; enforce them on every endpoint and in the UI.
-- TOTP MFA (required for Operator and Admin); account lockout and rate limiting on login; API rate limits.
-- Service accounts and API tokens (scoped, expiring) for automation, replacing the single shared key.
-- HTTPS by default: certificate generated at install, with the option to import an organisation's own certificate; HSTS; secure WebSocket (WSS) with token auth.
-- Security headers: CSP, X-Frame-Options, Referrer-Policy; CORS locked to the console's own origin.
-- Hash-chained audit log of every login, policy change and response action, viewable by Admins.
-- First-run setup wizard: create the admin user, set the network role, choose passive or inline mode.
+- [x] Users table (Argon2id hashes), login and logout, short-lived access token plus rotating refresh token in an HttpOnly cookie; console sign-in, forced first-login password change, admin Users panel; `python -m core.auth` CLI; `sentinelctl` creates the first admin.
+- [x] Roles: Viewer, Analyst, Operator, Admin; enforced on every endpoint (with tests) and reflected in the UI.
+- [x] Account lockout and rate limiting on login.
+- [x] WebSocket stream requires authentication (token in the first message).
+- [x] CORS locked to configured origins (`SENTINEL_CORS_ORIGINS`); the console calls its own origin in production.
+- [ ] TOTP MFA (required for Operator and Admin); general API rate limits.
+- [ ] Service accounts and API tokens (scoped, expiring) for automation, replacing the single shared key.
+- [ ] HTTPS by default: certificate generated at install, with the option to import an organisation's own certificate; HSTS; secure WebSocket (WSS).
+- [ ] Security headers: CSP, X-Frame-Options, Referrer-Policy.
+- [ ] Hash-chained audit log of every login, policy change and response action, viewable by Admins.
+- [ ] First-run setup wizard: set the network role, choose passive or inline mode.
 
 **Exit criteria:** every endpoint has a role test; no unauthenticated endpoint except `/healthz`; OWASP ZAP baseline scan clean; login brute force is throttled.
 

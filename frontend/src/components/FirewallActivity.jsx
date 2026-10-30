@@ -1,21 +1,17 @@
 import React, { useEffect, useState } from 'react'
-import axios from 'axios'
+import { apiGet, apiPost } from '../api'
 
 export default function FirewallActivity(){
   const [actions, setActions] = useState([])
-  const base = import.meta.env.VITE_API_BASE || 'http://localhost:9000'
 
   const fetch = async ()=>{
-    try{
-      const res = await axios.get(base + '/api/firewall/actions')
-      setActions(res.data || [])
-    }catch(e){ console.warn('fw actions', e) }
+    setActions(await apiGet('/api/firewall/actions', []))
   }
   useEffect(()=>{ fetch(); const t = setInterval(fetch,5000); const onFw = ()=>fetch(); window.addEventListener('se:firewall-changed', onFw); return ()=>{ clearInterval(t); window.removeEventListener('se:firewall-changed', onFw) } }, [])
 
   const undo = async (ip, id)=>{
     try{
-      await axios.post(base + '/api/firewall/unblock', { ip })
+      await apiPost('/api/firewall/unblock', { ip })
       window.dispatchEvent(new Event('se:firewall-changed'))
       // show toast
       window.dispatchEvent(new CustomEvent('se:toast', { detail: { type:'success', message: `Unblock requested for ${ip}` } }))

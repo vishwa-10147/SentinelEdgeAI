@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { openSocket } from '../api'
 
 export default function PresenterMode(){
   const [active, setActive] = useState(false)
@@ -8,8 +9,7 @@ export default function PresenterMode(){
   useEffect(()=>{
     let ws = null
     try{
-      const base = (import.meta.env.VITE_API_BASE || 'http://localhost:9000').replace('http','ws')
-      ws = new WebSocket(base + '/ws/packets')
+      ws = openSocket('/ws/packets')
       ws.onmessage = (ev)=>{
         try{
           const obj = JSON.parse(ev.data)
