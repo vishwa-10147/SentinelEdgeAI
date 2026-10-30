@@ -109,3 +109,15 @@ class Fusion:
             'explanation': explanation,
             'top_features': [{'feature': n, 'zscore': round(v, 2)} for n, v in top],
         }
+
+
+def alert_explanation(fused):
+    """This flow's own evidence first; findings from earlier flows of the source are labelled as such."""
+    if not fused:
+        return []
+    new = {(f['kind'], f['evidence']) for f in fused.get('new_findings', [])}
+    out = [f['evidence'] for f in fused.get('findings', []) if (f['kind'], f['evidence']) in new]
+    out += [e for e in fused.get('explanation', []) if 'standard deviations' in e]
+    out += [f"earlier finding for this source: {f['evidence']}"
+            for f in fused.get('findings', []) if (f['kind'], f['evidence']) not in new][:2]
+    return out

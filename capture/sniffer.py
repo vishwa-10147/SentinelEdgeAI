@@ -20,6 +20,7 @@ from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
 import core.audit as audit
 from enforcement import identity
+from detection.fusion import alert_explanation
 import core.firewall as firewall
 import asyncio
 import threading
@@ -362,7 +363,7 @@ def _start_ingest_loop():
                         "mitre_technique_name": mitre_info.get("technique_name"),
                         "confidence": result.get("confidence"),
                         "confirmed": bool(fused and fused['confirmed']),
-                        "explanation": _alert_explanation(fused),
+                        "explanation": alert_explanation(fused),
                         "findings": (fused or {}).get('findings', []),
                     }
                     if fused and fused.get('technique') and not alert.get("mitre_technique_id"):
@@ -438,18 +439,6 @@ def _start_ingest_loop():
 
 _brain_buffer = None
 _brain_checked = 0.0
-
-
-def _alert_explanation(fused):
-    """This flow's own evidence first; findings from earlier flows of the source are labelled as such."""
-    if not fused:
-        return []
-    new = {(f['kind'], f['evidence']) for f in fused.get('new_findings', [])}
-    out = [f['evidence'] for f in fused.get('findings', []) if (f['kind'], f['evidence']) in new]
-    out += [e for e in fused.get('explanation', []) if 'standard deviations' in e]
-    out += [f"earlier finding for this source: {f['evidence']}"
-            for f in fused.get('findings', []) if (f['kind'], f['evidence']) not in new][:2]
-    return out
 
 
 def _forward_to_brain(flow, result, features):

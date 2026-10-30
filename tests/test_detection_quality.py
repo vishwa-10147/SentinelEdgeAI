@@ -288,7 +288,7 @@ def test_long_internal_sessions_are_not_suspicious():
 
 
 def test_alert_explanation_labels_only_earlier_findings():
-    from capture.sniffer import _alert_explanation
+    from detection.fusion import alert_explanation as _alert_explanation
     old = {'kind': 'dga', 'evidence': 'random domains'}
     fused = {'findings': [old], 'new_findings': [],
              'explanation': ['random domains', 'bytes is 9.0 standard deviations above the TCP baseline for this hour']}
