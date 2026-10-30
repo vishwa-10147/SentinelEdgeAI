@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import threading
 import time
@@ -14,6 +15,9 @@ class SQLiteStorage:
         with self._lock:
             if self.conn:
                 return
+            # data/ is runtime state and not tracked in git; create it on first use
+            if self.path != ":memory:":
+                os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
             self.conn = sqlite3.connect(self.path, check_same_thread=False)
             self.conn.execute("PRAGMA journal_mode=WAL;")
             self.conn.execute("PRAGMA synchronous=NORMAL;")

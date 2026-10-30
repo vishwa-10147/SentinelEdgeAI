@@ -1,6 +1,7 @@
 import os
 import json
-from utils.subprocess_safe import safe_run
+import subprocess  # nosec B404 - only fixed firewall binaries are run, see _run_cmd
+import tempfile
 import time
 import ipaddress
 import shutil
@@ -161,28 +162,136 @@ def _resolve_ttl(ttl, policy):
         ttl = policy.get('default_ttl')
     return _validate_ttl(ttl, allow_none=True, max_ttl=policy.get('max_ttl', 86400))
 
-def _apply_block_rule(ip):
+RULE_COMMENT = 'SentinelEdgeAI'
+NFT_TABLE = ('inet', 'sentinel')
+NFT_SET = 'blacklist'
+
+# Each chain drops blacklisted sources; FORWARD also drops traffic *to* a
+# blocked host so a device behind the appliance (inline mode) is isolated.
+NFT_CHAINS = {
+    'input': ['ip saddr @blacklist drop'],
+    'forward': ['ip saddr @blacklist drop', 'ip daddr @blacklist drop'],
+}
+
+
+def _use_nft():
     backend = FIREWALL_BACKEND
     if backend not in ('auto', 'nft', 'iptables'):
         raise ValueError("SENTINEL_FIREWALL_BACKEND must be auto, nft, or iptables")
-    if backend in ('auto', 'nft') and shutil.which('nft'):
-        _ensure_nft_blacklist()
-        return _run_cmd(['nft', 'add', 'element', 'inet', 'sentinel', 'blacklist', '{', ip, '}'])
+    if backend == 'iptables':
+        return False
+    if shutil.which('nft'):
+        return True
     if backend == 'nft':
-        return False, 'nft command not found'
-    return _run_cmd(['iptables', '-I', 'INPUT', '-s', ip, '-j', 'DROP', '-m', 'comment', '--comment', 'SentinelEdgeAI'])
+        raise RuntimeError('nft command not found')
+    return False
 
-def _ensure_nft_blacklist():
-    _run_cmd(['nft', 'add', 'table', 'inet', 'sentinel'])
-    _run_cmd(['nft', 'add', 'set', 'inet', 'sentinel', 'blacklist', '{', 'type', 'ipv4_addr', ';', '}'])
+
+def _iptables_specs(ip):
+    """(chain, match) pairs for one blocked IP. Insert, check and delete all use these."""
+    target = ['-j', 'DROP', '-m', 'comment', '--comment', RULE_COMMENT]
+    return [
+        ('INPUT', ['-s', ip] + target),
+        ('FORWARD', ['-s', ip] + target),
+        ('FORWARD', ['-d', ip] + target),
+    ]
+
+
+def _nft_ruleset_script():
+    """nft script that creates whatever part of the sentinel table is missing.
+
+    `add table`/`add set` are idempotent; chains and their rules are only added
+    when the chain does not exist yet, so repeated calls never duplicate rules.
+    """
+    family, table = NFT_TABLE
+    lines = [
+        f'add table {family} {table}',
+        f'add set {family} {table} {NFT_SET} {{ type ipv4_addr ; }}',
+    ]
+    for chain, rules in NFT_CHAINS.items():
+        ok, _ = _run_cmd(['nft', 'list', 'chain', family, table, chain])
+        if ok:
+            continue
+        lines.append(
+            f'add chain {family} {table} {chain} '
+            f'{{ type filter hook {chain} priority -10 ; policy accept ; }}'
+        )
+        lines.extend(f'add rule {family} {table} {chain} {rule}' for rule in rules)
+    return '\n'.join(lines) + '\n'
+
+
+def _ensure_nft_ruleset():
+    script = _nft_ruleset_script()
+    fd, path = tempfile.mkstemp(prefix='sentinel-nft-', suffix='.nft')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(script)
+        return _run_cmd(['nft', '-f', path])
+    finally:
+        os.unlink(path)
+
+
+def _apply_block_rule(ip):
+    try:
+        use_nft = _use_nft()
+    except RuntimeError as exc:
+        return False, str(exc)
+    if use_nft:
+        ok, out = _ensure_nft_ruleset()
+        if not ok:
+            return False, out
+        return _run_cmd(['nft', 'add', 'element', *NFT_TABLE, NFT_SET, '{', ip, '}'])
+    outputs = []
+    for chain, spec in _iptables_specs(ip):
+        exists, _ = _run_cmd(['iptables', '-C', chain] + spec)
+        if exists:
+            continue
+        ok, out = _run_cmd(['iptables', '-I', chain] + spec)
+        if not ok:
+            return False, out
+        outputs.append(out)
+    return True, ''.join(outputs)
+
+
+def _remove_iptables_rule(ip):
+    results = []
+    for chain, spec in _iptables_specs(ip):
+        # also clears duplicates left by older versions that inserted blindly
+        for _ in range(16):
+            exists, _ = _run_cmd(['iptables', '-C', chain] + spec)
+            if not exists:
+                break
+            results.append(_run_cmd(['iptables', '-D', chain] + spec))
+    return results
+
 
 def _remove_block_rule(ip):
     results = []
     backend = FIREWALL_BACKEND
-    if backend in ('auto', 'iptables'):
-        results.append(_run_cmd(['iptables', '-D', 'INPUT', '-s', ip, '-j', 'DROP']))
+    if backend in ('auto', 'iptables') and shutil.which('iptables'):
+        results.extend(_remove_iptables_rule(ip))
     if backend in ('auto', 'nft') and shutil.which('nft'):
-        results.append(_run_cmd(['nft', 'delete', 'element', 'inet', 'sentinel', 'blacklist', '{', ip, '}']))
+        results.append(_run_cmd(['nft', 'delete', 'element', *NFT_TABLE, NFT_SET, '{', ip, '}']))
+    return results
+
+
+def _flush_all_rules():
+    """Remove every kernel rule SentinelEdgeAI owns, even ones missing from the state file."""
+    results = []
+    backend = FIREWALL_BACKEND
+    if backend in ('auto', 'nft') and shutil.which('nft'):
+        ok, _ = _run_cmd(['nft', 'list', 'table', *NFT_TABLE])
+        if ok:
+            results.append(_run_cmd(['nft', 'delete', 'table', *NFT_TABLE]))
+    if backend in ('auto', 'iptables') and shutil.which('iptables'):
+        for chain in ('INPUT', 'FORWARD'):
+            ok, listing = _run_cmd(['iptables', '-S', chain])
+            if not ok:
+                continue
+            for line in listing.splitlines():
+                parts = line.split()
+                if len(parts) > 2 and parts[0] == '-A' and RULE_COMMENT in parts:
+                    results.append(_run_cmd(['iptables', '-D'] + parts[1:]))
     return results
 
 def _is_active(rule, now=None):
@@ -215,13 +324,17 @@ def expire_rules(now=None):
         _log_action({'action': 'expire', 'ip': ip, 'reason': 'ttl_expired', 'dry_run': FIREWALL_DRY_RUN})
     return {'expired': len(expired), 'rules_left': len(active)}
 
+ALLOWED_FIREWALL_COMMANDS = frozenset({'nft', 'iptables'})
+
+
 def _run_cmd(cmd):
-    """Run a system command safely.
+    """Run a firewall command safely and return (ok, output).
 
     Expectations and mitigations for Bandit:
     - `cmd` must be a sequence (list/tuple) of argument strings.
+    - Only the binaries in ALLOWED_FIREWALL_COMMANDS may be executed.
     - We validate that no shell meta-characters are present in args.
-    - The executable must exist on PATH (checked with `shutil.which`).
+    - The executable is resolved to an absolute path with `shutil.which`.
     This keeps `shell=False` while reducing risk of executing untrusted input.
     """
     logger = logging.getLogger("sentinel.firewall")
@@ -240,6 +353,10 @@ def _run_cmd(cmd):
             logger.error("Unsafe character detected in command argument: %r", part)
             return False, "unsafe command"
 
+    if cmd[0] not in ALLOWED_FIREWALL_COMMANDS:
+        logger.error("Refusing to run non-firewall command: %s", cmd[0])
+        return False, f"command not allowed: {cmd[0]}"
+
     # Ensure executable exists (prevent accidental shell lookups)
     prog = shutil.which(cmd[0])
     if not prog:
@@ -247,14 +364,18 @@ def _run_cmd(cmd):
         return False, f"command not found: {cmd[0]}"
 
     try:
-        # Use the repository-safe wrapper which validates the executable
-        # and arguments before running. It returns a CompletedProcess.
-        cp = safe_run(cmd)
-        if cp.returncode == 0:
-            return True, None
-        return False, (cp.stdout or b'').decode('utf-8', errors='ignore')
-    except Exception as e:
+        cp = subprocess.run(  # nosec B603 - allowlisted binary, validated args, no shell
+            [prog] + list(cmd[1:]),
+            shell=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.error("Firewall command failed to run: %s", e)
         return False, str(e)
+    output = (cp.stdout or b'').decode('utf-8', errors='ignore')
+    return cp.returncode == 0, output
 
 def add_block(ip: str, ttl: int = None, reason: str = ''):
     """Add a blocking rule for `ip`. If FIREWALL_DRY_RUN is True this only records the action.
@@ -317,6 +438,9 @@ def rollback_blocks(reason: str = 'operator_rollback'):
         if not FIREWALL_DRY_RUN:
             _remove_block_rule(rule.get('ip'))
         _log_action({'action': 'rollback_unblock', 'ip': rule.get('ip'), 'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
+    if not FIREWALL_DRY_RUN:
+        # catch kernel rules the state file no longer knows about
+        _flush_all_rules()
     _write_rules([r for r in rules if not r.get('blocked')])
     _log_action({'action': 'rollback', 'count': len(active), 'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
     return {'removed': len(active), 'rules_left': 0}
