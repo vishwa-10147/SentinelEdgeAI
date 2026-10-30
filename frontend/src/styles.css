@@ -1188,7 +1188,7 @@ button:disabled {
 
 .users-row {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr 1fr 1.2fr 2fr;
+  grid-template-columns: 1.1fr 0.8fr 1fr 0.8fr 1.1fr 2.4fr;
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
@@ -1232,3 +1232,72 @@ button:disabled {
 .user-chip {
   white-space: nowrap;
 }
+
+/* ---------- two-step sign-in ---------- */
+
+.otp-input {
+  font-size: 20px;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+
+.auth-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mfa-qr {
+  justify-self: center;
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.mfa-manual {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mfa-manual code,
+.recovery-codes code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+}
+
+.mfa-manual code {
+  display: block;
+  margin-top: 8px;
+  word-break: break-all;
+}
+
+.recovery-codes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 12px;
+  background: #0a0e1a;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.auth-row {
+  display: flex;
+  gap: 8px;
+}
+
+.auth-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.mfa-on { color: var(--green); }
+.mfa-pending { color: var(--amber); }
+.mfa-off { color: var(--muted); }

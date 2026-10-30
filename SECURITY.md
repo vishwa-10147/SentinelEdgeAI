@@ -52,7 +52,8 @@ The current and previous minor release receive security fixes.
 |---|---|---|
 | Unauthorised use of the API (block/unblock/policy) | Per-user accounts with Argon2id passwords, four roles enforced on every endpoint, session expiry | ✅ |
 | | Rate limiting per client and account lockout on login | ✅ |
-| | TOTP MFA for Operator and Admin; scoped, expiring API tokens replacing the shared key | 🔜 |
+| | Two-step sign-in (TOTP authenticator apps) required for Operator and Admin, with single-use recovery codes | ✅ |
+| | Scoped, expiring API tokens replacing the shared key | 🔜 |
 | Stolen session token | 15-minute access tokens held in memory; refresh token in an HttpOnly, SameSite=Strict cookie, rotated on every use; reuse of an old refresh token revokes the session | ✅ |
 | Cross-site request forgery | Bearer tokens (not cookies) authorise API calls; the refresh/logout endpoints require a custom header; CORS limited to configured origins | ✅ |
 | Eavesdropping on the console/API | HTTPS with a certificate created at install | 🔜 |
@@ -83,6 +84,7 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 * **First install:** `sentinelctl` creates the user `admin` with a random one-time password in `/etc/sentinel/initial-admin-password` (root only, mode `600`). The console forces a password change at first sign-in; delete the file afterwards. Users can also be managed on the device with `python -m core.auth` (`create-user`, `reset-password`, `set-role`, `unlock`, `list`).
 * **Sessions:** a login returns a 15-minute access token (`SENTINEL_ACCESS_TOKEN_TTL`) that the console keeps in memory only, and sets a refresh token in an `HttpOnly`, `SameSite=Strict` cookie scoped to `/api/auth` (lifetime `SENTINEL_SESSION_TTL`, default 12 h). The refresh token is rotated on every use; presenting an old one revokes the whole session. Access tokens are checked against the session and the user on every request, so sign-out, disabling a user or changing a role apply immediately. Changing a password signs out the user's other sessions.
 * **Brute force:** 10 login attempts per client per 5 minutes, and an account locks for 15 minutes after 5 wrong passwords. Error messages do not reveal whether a username exists.
+* **Two-step sign-in (MFA):** users whose role is listed in `SENTINEL_MFA_ROLES` (default `operator,admin`) must enrol an authenticator app (TOTP, RFC 6238: 6 digits, 30-second steps, ±1 step for clock drift) before they can use the console; until then every endpoint except the setup ones returns 403. Each code works once (a code from the same or an earlier time step is refused). Enrolment issues 10 single-use recovery codes, stored as SHA-256 hashes and shown only once. A wrong code counts toward the account lockout like a wrong password. Secrets live in `auth.db` (mode `600`). Lost phone: an Admin uses **Reset MFA** in the Users panel or `python -m core.auth reset-mfa`, which also signs the user out everywhere.
 * **WebSocket:** the live stream sends nothing until the client authenticates with its first message; unauthenticated sockets are closed with code `4401`.
 * **API key:** `DASHBOARD_API_KEY` still works (`X-API-Key` or `Authorization: Bearer`) for automation and device health checks, with the role in `SENTINEL_API_KEY_ROLE` (default `admin`). It is compared in constant time. Scoped, expiring API tokens replace it later in Phase 1.
 * **Development mode:** only when no user exists *and* no API key is set, requests from `127.0.0.1` / `::1` act as an Admin. Creating the first user ends this mode.
@@ -97,7 +99,7 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 | **Operator** | Analyst + block, unblock, whitelist, expire and roll back; run demos |
 | **Admin** | Operator + firewall policy and user management |
 
-Still to come in v1.2: TOTP MFA (required for Operator and Admin), HTTPS by default, scoped API tokens, and a hash-chained audit log of every sign-in and action.
+Still to come in v1.2: HTTPS by default, scoped API tokens, security headers, and a hash-chained audit log of every sign-in and action.
 
 ### Firewall safety model
 1. **Dry-run by default** (`FIREWALL_DRY_RUN=1`). Real enforcement must be turned on explicitly with `deploy/pi/enforcement_ctl.sh enable`.
