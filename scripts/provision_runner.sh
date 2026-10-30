@@ -27,7 +27,7 @@ sudo -u $USER bash -lc "
 cd ~/actions-runner
 curl -O -L ${URL}
 tar xzf ${ARCHIVE}
-./config.sh --url https://github.com/${REPO} --token ${TOKEN} --labels self-hosted,privileged --unattended
+./config.sh --url https://github.com/${REPO} --token ${TOKEN} --labels self-hosted,linux,docker --unattended
 "
 
 cat <<'EOF' > /etc/systemd/system/actions-runner.service

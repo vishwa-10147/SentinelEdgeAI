@@ -6,13 +6,13 @@ usage(){
 Usage: $0 --url <repo_url> --token <runner_token> [--labels <labels>]
 
 Example:
-  $0 --url https://github.com/owner/repo --token ABCDEF --labels self-hosted,privileged
+  $0 --url https://github.com/owner/repo --token ABCDEF --labels self-hosted,linux,docker
 EOF
 }
 
 REPO_URL=""
 TOKEN=""
-LABELS="self-hosted,privileged"
+LABELS="self-hosted,linux,docker"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
