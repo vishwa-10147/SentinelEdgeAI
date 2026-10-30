@@ -6,7 +6,7 @@ SentinelEdgeAI sits on a network, learns how every device normally behaves, dete
 
 | | |
 |---|---|
-| **Release stage** | `v0.9` — pre-release. Core pipeline works; production hardening in progress (see [PLAN.md](PLAN.md)) |
+| **Current release** | `v1.1.0` — single-node (Raspberry Pi) release. Production hardening continues toward `v2.0` (see [PLAN.md](PLAN.md)) |
 | **Target hardware** | Raspberry Pi 5 (sensor) + NVIDIA Jetson Orin Nano (AI & management) |
 | **Interfaces** | Web console (HTTPS), REST API, WebSocket event stream, Prometheus metrics |
 | **Docs** | [EXPLAIN.md](EXPLAIN.md) — how it works · [SECURITY.md](SECURITY.md) — security model · [PLAN.md](PLAN.md) — roadmap |
@@ -110,8 +110,8 @@ SentinelEdgeAI is **not** a replacement for endpoint protection, email security 
                          └──────────────────────────────────────────────┘
 ```
 
-* **Today (v0.9)** everything runs as a single node — normally the Raspberry Pi — and the Pi ↔ Jetson link does not exist yet.
-* **Target (v1.0)** splits the system as drawn above: the Pi only senses and enforces; the Jetson does all AI work and owns users, data and the console. One Jetson can serve several sensors.
+* **Today (v1.1)** everything runs as a single node — normally the Raspberry Pi — and the Pi ↔ Jetson link does not exist yet.
+* **Target (v2.0)** splits the system as drawn above: the Pi only senses and enforces; the Jetson does all AI work and owns users, data and the console. One Jetson can serve several sensors.
 * The sensor is **fail-safe**: if the brain is offline it keeps basic detection running, buffers data to disk, and never blocks traffic because a link failed.
 
 See [EXPLAIN.md](EXPLAIN.md) for a step-by-step walkthrough.
@@ -187,15 +187,45 @@ Docker (API + console, dry-run): `docker compose up -d --build` then open `http:
 
 ### Raspberry Pi installation
 
+**Supported:** Raspberry Pi 5 (or 4) with 64-bit Raspberry Pi OS Bookworm (Python 3.11). The package contains every Python dependency, so the Pi needs **no internet access** to install.
+
+1. Download `sentineledgeai-pi-<version>.tar.gz` and its `.sha256` from the [GitHub Releases](https://github.com/vishwa-10147/SentinelEdgeAI/releases) page and copy both to the Pi.
+2. First install:
+
+   ```bash
+   sha256sum -c sentineledgeai-pi-1.1.0.tar.gz.sha256
+   tar -xzf sentineledgeai-pi-1.1.0.tar.gz
+   sudo bash sentineledgeai-pi-1.1.0/deploy/pi/provision_key.sh /path/to/model_signing.key
+   sudo bash sentineledgeai-pi-1.1.0/packaging/sentinelctl install sentineledgeai-pi-1.1.0.tar.gz
+   ```
+
+3. Open `http://<pi-address>:9000`. The API key was generated during install and is in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`).
+
+Later versions:
+
 ```bash
-bash scripts/build_pi_package.sh   # on the build machine: builds the console, packages committed files → dist/*.tar.gz (+ .sha256)
-# copy the tarball to the Pi, extract it, then:
-sudo bash packaging/pi/install_from_package.sh
-sudo bash /opt/sentineledgeai/deploy/pi/install_pi.sh --install-rollback
-sudo bash /opt/sentineledgeai/deploy/pi/enforcement_ctl.sh status   # stays in dry-run until you enable it
+sudo sentinelctl upgrade sentineledgeai-pi-1.2.0.tar.gz   # health-checked; rolls back automatically on failure
+sudo sentinelctl rollback                                  # return to the previous version
+sentinelctl status                                         # active version and service state
 ```
 
-Detailed deployment notes: [deploy/pi/README.md](deploy/pi/README.md), [deploy/pi/README_ENFORCEMENT.md](deploy/pi/README_ENFORCEMENT.md).
+**Where things live on the device**
+
+| Path | Contents | Touched by upgrades? |
+|---|---|---|
+| `/opt/sentineledgeai/releases/<version>/` | Code and its own Python environment | Added; old ones pruned (last 3 kept) |
+| `/opt/sentineledgeai/current` → `releases/<version>` | The active version | Switched atomically |
+| `/etc/sentinel/` | `sentinel.env` (settings, API key), `config.yaml`, `model_signing.key` | Never |
+| `/var/lib/sentinel/` | Database, firewall rules/policy, alerts, device profiles | Never |
+| `/var/log/sentinel/` | Logs and the firewall action log | Never |
+
+Services: `sentineledgeai-engine` (capture and detection), `sentineledgeai-api` (API and console), and the `sentineledgeai-rollback-guard` timer. They run as the unprivileged `sentinel` user with only `CAP_NET_RAW`/`CAP_NET_ADMIN`.
+
+**Enabling real blocking:** after reviewing alerts in dry-run mode, set `FIREWALL_DRY_RUN=0` and `ENABLE_ROLLBACK_GUARD=1` in `/etc/sentinel/sentinel.env`, then `sudo systemctl restart sentineledgeai-engine sentineledgeai-api`. See [SECURITY.md](SECURITY.md) §6 first.
+
+**Building a package yourself:** `bash scripts/build_pi_package.sh` (needs Node.js 20.19+ and Python with pip) writes `dist/sentineledgeai-pi-<version>.tar.gz` and its checksum. Releases are normally built by CI when a `vX.Y.Z` tag is pushed.
+
+The older installers (`packaging/pi/install_from_package.sh`, `deploy/pi/install_pi.sh`, `scripts/setup_pi.sh`) are kept for existing devices; see [deploy/pi/README.md](deploy/pi/README.md).
 
 ---
 
@@ -260,12 +290,12 @@ docs/         additional documentation and archived material
 
 ---
 
-## Known issues (v0.9)
+## Known issues (v1.1)
 
 1. **Single shared API key, no TLS.** Do not expose the API beyond a trusted management network until user accounts and HTTPS land (see [SECURITY.md](SECURITY.md)).
 2. **No inline bridge mode yet.** Blocks cover traffic to the appliance and traffic it routes (`FORWARD`), but bridge-level filtering and MAC quarantine are Phase 3.
 
-Fixed in `v0.9.1`: firewall commands were rejected by the subprocess wrapper so no rule was ever applied; the nftables backend never attached its blacklist set to a chain; iptables unblock did not match the inserted rule; rules only covered `INPUT`.
+Fixed in `v1.1.0`: firewall commands were rejected by the subprocess wrapper so no rule was ever applied; the nftables backend never attached its blacklist set to a chain; iptables unblock did not match the inserted rule; rules only covered `INPUT`.
 
 ---
 

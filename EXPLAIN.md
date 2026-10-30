@@ -31,7 +31,7 @@ All of this happens inside the building. Nothing is sent to the cloud.
 | Why this device | Cheap, low-power, good network I/O | Has a GPU for fast AI |
 | If the other one fails | Keeps basic detection running, saves data to disk, never blocks the network by mistake | Shows the sensor as offline and raises an alert |
 
-> **Today (v0.9)** the whole system runs on one device (normally the Pi), and the Jetson link is still being built. The "Lite" profile — one Pi only — will remain available for small sites.
+> **Today (v1.1)** the whole system runs on one device (normally the Pi), and the Jetson link is still being built. The "Lite" profile — one Pi only — will remain available for small sites.
 
 **What gets installed?**
 * On the **Pi:** the sensor and enforcer software (Python services managed by systemd that start on boot).
@@ -193,7 +193,7 @@ Alerts, flows, device profiles and firewall actions are saved to a database — 
 
 **Does it need the internet?** No. Internet access is only needed if you choose to download updates or threat-intelligence feeds.
 
-**Will it slow down my network?** In passive mode, not at all. In inline mode the Pi forwards traffic; published throughput numbers will come with v1.0.
+**Will it slow down my network?** In passive mode, not at all. In inline mode the Pi forwards traffic; published throughput numbers will come with v2.0.
 
 **What if it blocks the wrong device?** Blocks expire automatically, can be undone with one click, and whitelisted machines are never blocked. Start in dry-run and monitor mode to tune it first.
 

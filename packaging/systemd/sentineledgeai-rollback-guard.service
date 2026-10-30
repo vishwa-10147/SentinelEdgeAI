@@ -1,0 +1,25 @@
+[Unit]
+Description=SentinelEdgeAI firewall rollback guard
+Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
+After=sentineledgeai-api.service
+
+[Service]
+Type=oneshot
+User=sentinel
+Group=sentinel
+EnvironmentFile=/etc/sentinel/sentinel.env
+Environment=REPO_DIR=/opt/sentineledgeai/current
+Environment=VENV_PYTHON=/opt/sentineledgeai/current/.venv/bin/python
+Environment=STATE_DIR=/run/sentinel-guard
+RuntimeDirectory=sentinel-guard
+RuntimeDirectoryPreserve=yes
+ExecStart=/bin/bash /opt/sentineledgeai/current/scripts/firewall_rollback_guard.sh
+
+# Rollback needs the same firewall privileges as enforcement.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel

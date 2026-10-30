@@ -21,10 +21,10 @@ Please give us up to **90 days** to ship a fix before public disclosure. Do not 
 
 | Version | Security fixes |
 |---|---|
-| `main` / latest `0.9.x` | ✅ |
-| older pre-releases | ❌ — upgrade to the latest |
+| `main` / latest `1.1.x` | ✅ |
+| `1.0.x` and older | ❌ — upgrade to the latest |
 
-From `v1.0` onward, the current and previous minor release will receive security fixes.
+The current and previous minor release receive security fixes.
 
 ---
 
@@ -81,7 +81,7 @@ From `v1.0` onward, the current and previous minor release will receive security
 * Interactive API docs (`/docs`, `/redoc`) are disabled.
 * The health endpoint supports Basic auth via `HEALTH_USER` / `HEALTH_PASS`.
 
-### Authentication and access (target, v1.0)
+### Authentication and access (target, v1.2)
 Accounts are stored on the Jetson with Argon2id password hashes. TOTP MFA is required for Operator and Admin. Short-lived access tokens plus refresh tokens. Every action is written to a hash-chained audit log.
 
 | Role | Can |
@@ -141,12 +141,12 @@ The old key no longer verifies any committed model, so a model signed with it wi
 
 ---
 
-## 5. Known security issues (v0.9)
+## 5. Known security issues (v1.1)
 
 | # | Issue | Impact | Tracked in |
 |---|---|---|---|
-| 1 | ~~Firewall commands rejected by the subprocess wrapper; nftables set never attached to a chain~~ | **Fixed in 0.9.1** — blocks had no effect | — |
-| 2 | ~~iptables removal omitted the comment match used at insert~~ | **Fixed in 0.9.1** | — |
+| 1 | ~~Firewall commands rejected by the subprocess wrapper; nftables set never attached to a chain~~ | **Fixed in 1.1.0** — blocks had no effect | — |
+| 2 | ~~iptables removal omitted the comment match used at insert~~ | **Fixed in 1.1.0** | — |
 | 3 | Bridge-level (layer 2) filtering and MAC quarantine not implemented; `INPUT` and `FORWARD` are covered | Devices on the same bridge segment are not isolated | Phase 3 |
 | 4 | Single shared API key, no per-user identity | No accountability; key compromise grants full control | Phase 1 |
 | 5 | No TLS on API/WebSocket | Credentials and data readable on the management network | Phase 1 |

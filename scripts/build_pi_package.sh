@@ -5,13 +5,20 @@ set -euo pipefail
 #
 # Package contents come from `git archive HEAD` (committed files only), so
 # untracked keys, .env files, virtualenvs and runtime data can never end up in
-# a release. The built web console (frontend/dist) is added on top.
+# a release. The built web console (frontend/dist) and a wheelhouse of every
+# runtime dependency for the Pi (linux aarch64, CPython 3.11) are added on top,
+# so devices install with no internet access.
 #
-#   VERSION=1.0.0 bash scripts/build_pi_package.sh
-#   SKIP_FRONTEND_BUILD=1 bash scripts/build_pi_package.sh   # reuse frontend/dist
+#   bash scripts/build_pi_package.sh                       # version from VERSION file
+#   VERSION=1.1.0-rc1 bash scripts/build_pi_package.sh     # override the version
+#   SKIP_FRONTEND_BUILD=1 bash scripts/build_pi_package.sh # reuse frontend/dist
+#   INCLUDE_WHEELS=0 bash scripts/build_pi_package.sh      # no wheelhouse (online install)
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-$(git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null || date +%Y%m%d%H%M%S)}"
+VERSION="${VERSION:-$(tr -d '[:space:]' < "$REPO_DIR/VERSION")}"
+PYTHON="${PYTHON:-python3}"
+WHEEL_PYTHON_VERSION="${WHEEL_PYTHON_VERSION:-3.11}"
+WHEEL_PLATFORMS="${WHEEL_PLATFORMS:-manylinux2014_aarch64 manylinux_2_17_aarch64 manylinux_2_28_aarch64 manylinux_2_34_aarch64 linux_aarch64}"
 DIST_DIR="$REPO_DIR/dist"
 STAGE_DIR="$(mktemp -d)"
 PKG_NAME="sentineledgeai-pi-$VERSION"
@@ -34,8 +41,30 @@ if [ ! -f "$REPO_DIR/frontend/dist/index.html" ]; then
 fi
 
 git -C "$REPO_DIR" archive --format=tar --prefix="$PKG_NAME/" HEAD | tar -x -C "$STAGE_DIR"
+printf '%s\n' "$VERSION" > "$PKG_ROOT/VERSION"
 mkdir -p "$PKG_ROOT/frontend"
 cp -R "$REPO_DIR/frontend/dist" "$PKG_ROOT/frontend/dist"
+
+if [ "${INCLUDE_WHEELS:-1}" = "1" ]; then
+  echo "Downloading runtime wheels for Python $WHEEL_PYTHON_VERSION on: $WHEEL_PLATFORMS"
+  PLATFORM_ARGS=()
+  for p in $WHEEL_PLATFORMS; do PLATFORM_ARGS+=(--platform "$p"); done
+  "$PYTHON" -m pip download --quiet --only-binary=:all: \
+    --python-version "$WHEEL_PYTHON_VERSION" --implementation cp "${PLATFORM_ARGS[@]}" \
+    -r "$PKG_ROOT/requirements.txt" -d "$PKG_ROOT/wheels"
+  # pip evaluates environment markers on the build host, so make sure every
+  # top-level requirement really has a wheel for the target.
+  MISSING=""
+  while read -r name; do
+    norm="$(echo "$name" | tr 'A-Z-.' 'a-z__')"
+    ls "$PKG_ROOT/wheels" | tr 'A-Z-.' 'a-z__' | grep -q "^${norm}_" || MISSING="$MISSING $name"
+  done < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$PKG_ROOT/requirements.txt" | grep -v '^$' | sed -E 's/[=<>!~;\[].*//')
+  if [ -n "$MISSING" ]; then
+    echo "No wheel bundled for:$MISSING" >&2
+    exit 1
+  fi
+  echo "Bundled $(ls "$PKG_ROOT/wheels" | wc -l | tr -d ' ') wheels"
+fi
 
 # Defence in depth: never ship anything that looks like a secret.
 SECRETS="$(find "$PKG_ROOT" -type f \( -name '*.key' -o -name '*.pem' -o -name '*.env' \))"
@@ -51,9 +80,16 @@ Version: $VERSION
 Commit: $(git -C "$REPO_DIR" rev-parse HEAD)
 Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-Install:
-  sudo bash packaging/pi/install_from_package.sh
-  sudo bash /opt/sentineledgeai/deploy/pi/install_pi.sh --install-rollback
+Install (first time):
+  sha256sum -c $PKG_NAME.tar.gz.sha256
+  tar -xzf $PKG_NAME.tar.gz
+  sudo bash $PKG_NAME/deploy/pi/provision_key.sh /path/to/model_signing.key
+  sudo bash $PKG_NAME/packaging/sentinelctl install $PKG_NAME.tar.gz
+
+Upgrade:
+  sudo sentinelctl upgrade $PKG_NAME.tar.gz
+Roll back:
+  sudo sentinelctl rollback
 EOF
 
 TARBALL="$DIST_DIR/$PKG_NAME.tar.gz"
