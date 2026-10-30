@@ -119,7 +119,7 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 - [ ] General API rate limits.
 - [ ] Service accounts and API tokens (scoped, expiring) for automation, replacing the single shared key.
 - [ ] HTTPS by default: certificate generated at install, with the option to import an organisation's own certificate; HSTS; secure WebSocket (WSS).
-- [ ] Security headers: CSP, X-Frame-Options, Referrer-Policy.
+- [x] Security headers: CSP, X-Frame-Options, Referrer-Policy (plus nosniff, Permissions-Policy, COOP); HSTS follows with HTTPS.
 - [ ] Hash-chained audit log of every login, policy change and response action, viewable by Admins.
 - [ ] First-run setup wizard: set the network role, choose passive or inline mode.
 
