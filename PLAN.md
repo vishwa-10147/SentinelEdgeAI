@@ -120,7 +120,7 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 - [x] API tokens (scoped, expiring) for automation: role capped at the owner's, 1–365 day expiry, hashed at rest, Users panel + API + CLI. The shared key remains for health checks until it is retired.
 - [x] HTTPS by default: certificate generated at install, with the option to import an organisation's own certificate; HSTS; secure WebSocket (WSS).
 - [x] Security headers: CSP, X-Frame-Options, Referrer-Policy (plus nosniff, Permissions-Policy, COOP); HSTS follows with HTTPS.
-- [ ] Hash-chained audit log of every login, policy change and response action, viewable by Admins.
+- [x] Hash-chained audit log of every login, policy change and response action, viewable by Admins (console panel with integrity check, API, CLI; copy in the system journal).
 - [ ] First-run setup wizard: set the network role, choose passive or inline mode.
 
 **Exit criteria:** every endpoint has a role test; no unauthenticated endpoint except `/healthz`; OWASP ZAP baseline scan clean; login brute force is throttled.

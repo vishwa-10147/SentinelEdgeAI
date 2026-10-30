@@ -72,7 +72,7 @@ The current and previous minor release receive security fixes.
 | | Separate runtime, dev and Streamlit requirement files; devices install runtime only | ✅ |
 | | Dependabot, SBOM per release | 🔜 |
 | Evidence tampering | Append-only firewall action log | 🟡 |
-| | Tamper-evident (hash-chained) audit log for all user actions | 🔜 |
+| | Tamper-evident (hash-chained) audit log for all user actions, with a copy in the system journal | ✅ |
 
 ---
 
@@ -92,6 +92,7 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 * **API tokens:** admins create per-integration tokens (`sak1.<id>.<secret>`) in the Users panel or with `python -m core.auth create-token`. A token has a role no higher than its owner's (capped again at use, so demoting the owner demotes the token), a required expiry of 1–365 days, and stops working when revoked, expired, or when the owner is disabled or deleted. Only a SHA-256 hash of the secret is stored and the token is shown once. Tokens cannot manage tokens, so a leaked token cannot extend its own life. `last_used` is recorded so unused tokens can be found and revoked.
 * **Development mode:** only when no user exists *and* no API key is set, requests from `127.0.0.1` / `::1` act as an Admin. Creating the first user ends this mode.
 * **Security headers:** every response carries a strict Content-Security-Policy (`default-src 'self'`, no inline scripts or styles, `img-src 'self' data:` for the MFA QR code, `object-src 'none'`, `frame-ancestors 'none'`), plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy` and `Cross-Origin-Opener-Policy: same-origin`. `SENTINEL_CSP` replaces the policy if the console is hosted elsewhere.
+* **Audit log:** a hash-chained log in `data/audit.db` (mode `600`, `SENTINEL_AUDIT_DB`) records sign-ins (success, failure, lockout, throttled), sign-outs, password and MFA changes, user and API-token management, every firewall action through the API, demos, and the engine's automatic blocks, with actor, kind, role, client address, target, outcome and details. Each entry includes the SHA-256 of the previous one; `python -m core.audit verify`, `GET /api/audit/verify` and the console's **Audit log** panel report the first entry that was modified, deleted or reordered. Someone with write access to the file could rebuild the whole chain, so every entry and its hash are also written to the `sentinel.audit` logger (the systemd journal on a device); compare the current head hash with the journal, or ship the journal off the device, to detect that. Secrets such as passwords and API tokens are never written to it. A failure to write an audit entry is logged but never blocks a response action.
 * **HTTPS:** `sentinelctl` creates a self-signed EC P-256 certificate at install (subject alternative names: hostname, `<hostname>.local`, `localhost`, loopback and the device's addresses; 825 days) in `/etc/sentinel/tls/` (key mode `640`, root:sentinel) and turns HTTPS on in `sentinel.env`. Verify it the first time by comparing the fingerprint from `sentinelctl tls show` with what the browser shows, or replace it with a certificate from your own CA: `sudo sentinelctl tls import cert.pem key.pem`. The API refuses to start rather than falling back to HTTP if TLS is half configured. HTTPS responses carry `Strict-Transport-Security: max-age=31536000` (browsers ignore it while they do not trust the certificate, so a self-signed install cannot lock anyone out). The session cookie gets the `Secure` flag automatically over HTTPS.
 * **CORS** is limited to `SENTINEL_CORS_ORIGINS` (default: the Vite dev server). The console is normally served by the API itself, so production needs no cross-origin access.
 * The API binds to `127.0.0.1` by default (`SENTINEL_HOST`). Interactive API docs (`/docs`, `/redoc`) are disabled and `/openapi.json` requires sign-in.
@@ -104,7 +105,7 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 | **Operator** | Analyst + block, unblock, whitelist, expire and roll back; run demos |
 | **Admin** | Operator + firewall policy and user management |
 
-Still to come in v1.2: a hash-chained audit log of every sign-in and action, and a first-run setup wizard.
+Still to come in v1.2: a first-run setup wizard.
 
 ### Firewall safety model
 1. **Dry-run by default** (`FIREWALL_DRY_RUN=1`). Real enforcement must be turned on explicitly with `deploy/pi/enforcement_ctl.sh enable`.

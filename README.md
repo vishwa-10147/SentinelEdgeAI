@@ -52,7 +52,7 @@ SentinelEdgeAI fills that gap: **behavioural detection and automated response on
 
 ```text
 Phase 0  Correctness, hygiene, release pipeline   v1.1   ████████████████████  done
-Phase 1  Secure management plane                  v1.2   ██████████░░░░░░░░░░  in progress
+Phase 1  Secure management plane                  v1.2   ██████████████████░░  in progress
 Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ░░░░░░░░░░░░░░░░░░░░
 Phase 3  Enforcement you can trust                v1.4   ░░░░░░░░░░░░░░░░░░░░
 Phase 4  Detection quality                        v1.5   ░░░░░░░░░░░░░░░░░░░░
@@ -66,7 +66,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░�
 | Phase | Release | Goal | Status |
 |---|---|---|---|
 | 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: privileged-runner CI proof |
-| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🟡 In progress: accounts, roles, login protection and MFA done; HTTPS, API tokens, audit log next |
+| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🟡 In progress: accounts, roles, MFA, rate limits, security headers, API tokens, HTTPS and audit log done; setup wizard next |
 | 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🔜 |
 | 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🔜 |
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🔜 |
@@ -137,7 +137,7 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | Release pipeline: tests, signature check, dependency audit, SBOM, provenance attestation | ✅ |
 | User accounts with Argon2id passwords, four roles, rotating sessions, login lockout | ✅ |
 | Two-step sign-in (TOTP) for Operators and Admins, with recovery codes | ✅ |
-| HTTPS, scoped API tokens, audit log | 🔜 |
+| HTTPS by default, scoped API tokens, hash-chained audit log, API rate limits, security headers | ✅ |
 | SIEM export (syslog/CEF, webhooks, JSON for Splunk, ELK and Microsoft Sentinel) | 🔜 |
 | Model registry with shadow testing and hot reload | 🔜 |
 | Multi-sensor and multi-site fleet management | 🔜 |
@@ -234,6 +234,8 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
    sudo -u sentinel .venv/bin/python -m core.auth reset-mfa --username alice   # lost phone
    sudo -u sentinel .venv/bin/python -m core.auth create-token --owner admin --name grafana --role viewer --days 90
    sudo -u sentinel .venv/bin/python -m core.auth list-tokens
+   sudo -u sentinel .venv/bin/python -m core.audit verify          # audit log integrity
+   sudo -u sentinel .venv/bin/python -m core.audit tail -n 20
    ```
 
 **Upgrades and rollback**
@@ -300,6 +302,7 @@ Detection tuning lives in [config.yaml](config.yaml) (risk thresholds, baseline 
 | `DASHBOARD_API_KEY` | unset | Shared key for automation (`X-API-Key` or `Bearer`). With no key and no users, only localhost is accepted |
 | `SENTINEL_API_KEY_ROLE` | `admin` | Role granted to the API key |
 | `SENTINEL_AUTH_DB` | `data/auth.db` | User accounts and sessions |
+| `SENTINEL_AUDIT_DB` | `data/audit.db` | Hash-chained audit log |
 | `SENTINEL_ACCESS_TOKEN_TTL` / `SENTINEL_SESSION_TTL` | `900` / `43200` | Access-token and session lifetime in seconds |
 | `SENTINEL_CORS_ORIGINS` | Vite dev server | Comma-separated origins allowed to call the API from another site |
 | `SENTINEL_CSP` | strict same-origin policy | Replaces the Content-Security-Policy header (only needed if the console is hosted on another origin) |
@@ -341,6 +344,7 @@ Operators and Admins must set up two-step sign-in (an authenticator app) at thei
 | `GET /api/auth/mfa`, `POST /api/auth/mfa/setup`, `/mfa/enable` | Two-step sign-in status and enrolment |
 | `GET/POST /api/users`, `PATCH/DELETE /api/users/{username}` | User management (Admin) |
 | `GET/POST /api/tokens`, `DELETE /api/tokens/{id}` | API tokens (signed-in Admin) |
+| `GET /api/audit?limit=&before=&action=&actor=`, `GET /api/audit/verify` | Hash-chained audit log and integrity check (Admin) |
 | `GET /api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/risk_timeline`, `/api/live_stats` | Detection data |
 | `GET /api/incidents/timeline`, `/api/reports/security`, `POST /api/alerts/explain` | Investigation and reporting |
 | `GET /api/device/{id}/logs` | Per-device history |

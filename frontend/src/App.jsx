@@ -17,6 +17,7 @@ const DeviceDetail = lazy(() => import('./components/DeviceDetail'))
 const PresenterMode = lazy(() => import('./components/PresenterMode'))
 const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'))
 const UsersModal = lazy(() => import('./components/UsersModal'))
+const AuditModal = lazy(() => import('./components/AuditModal'))
 import { apiGet, apiPost, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
 import { ChangePasswordScreen, LoginScreen, MfaSetupScreen } from './components/AuthScreens'
 
@@ -218,7 +219,7 @@ function Sparkline({ values = [] }){
   )
 }
 
-function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onChangePassword, onLogout }){
+function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onChangePassword, onLogout }){
   const utc = useUtcClock()
   return (
     <header className={`top-nav ${criticalPulse ? 'critical-pulse' : ''}`}>
@@ -241,6 +242,7 @@ function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter
         <button className={`mode-badge ${enforcementMode === 'ENFORCING' ? 'enforcing' : ''}`} onClick={onOpenFirewall}>{enforcementMode}</button>
         {hasRole(user, 'operator') && <button className="primary-button" onClick={onPresenter}>Start Presenter Demo</button>}
         {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onUsers}>Users</button>}
+        {hasRole(user, 'admin') && <button className="ghost-button" onClick={onAudit}>Audit log</button>}
         <div className="user-chip" title={`Signed in as ${user?.username} (${user?.role})`}>
           <span>{user?.username}</span><em>{user?.role}</em>
         </div>
@@ -532,6 +534,7 @@ function Dashboard({ user, onLogout, onChangePassword }){
   const [search, setSearch] = useState('')
   const [firewallOpen, setFirewallOpen] = useState(false)
   const [usersOpen, setUsersOpen] = useState(false)
+  const [auditOpen, setAuditOpen] = useState(false)
   const [connected, setConnected] = useState(false)
   const [criticalPulse, setCriticalPulse] = useState(false)
   const [toast, setToast] = useState(null)
@@ -684,6 +687,7 @@ function Dashboard({ user, onLogout, onChangePassword }){
         onOpenFirewall={()=>setFirewallOpen(true)}
         user={user}
         onUsers={()=>setUsersOpen(true)}
+        onAudit={()=>setAuditOpen(true)}
         onChangePassword={onChangePassword}
         onLogout={onLogout}
       />
@@ -742,6 +746,11 @@ function Dashboard({ user, onLogout, onChangePassword }){
       {usersOpen && (
         <Suspense fallback={null}>
           <UsersModal open={usersOpen} onClose={()=>setUsersOpen(false)} currentUser={user} />
+        </Suspense>
+      )}
+      {auditOpen && (
+        <Suspense fallback={null}>
+          <AuditModal open={auditOpen} onClose={()=>setAuditOpen(false)} />
         </Suspense>
       )}
       <FirewallPolicyModal open={firewallOpen} onClose={()=>setFirewallOpen(false)} rules={firewallRules} onChanged={loadAll} />

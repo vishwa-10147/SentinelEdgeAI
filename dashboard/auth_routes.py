@@ -3,10 +3,10 @@
 Every request resolves to a *principal* (who is calling and with which role):
 
 1. ``Authorization: Bearer sat1....`` access token from a console login.
-2. The legacy shared ``DASHBOARD_API_KEY`` (``X-API-Key`` or Bearer), kept for
-   automation and device health checks. Its role is ``SENTINEL_API_KEY_ROLE``
-   (default ``admin``); scoped API tokens replace it later in Phase 1.
-3. Development mode: when no users exist and no API key is set, requests from
+2. ``sak1....`` scoped, expiring API token for automation (Bearer or ``X-API-Key``).
+3. The legacy shared ``DASHBOARD_API_KEY`` (``X-API-Key`` or Bearer), kept for
+   device health checks. Its role is ``SENTINEL_API_KEY_ROLE`` (default ``admin``).
+4. Development mode: when no users exist and no API key is set, requests from
    localhost act as ``admin``; everything else is refused.
 
 Endpoints declare the minimum role with ``Depends(require_role('operator'))``.
@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from core import auth
+from core import audit, auth
 
 logger = logging.getLogger('sentinel.auth')
 
@@ -82,7 +82,23 @@ def get_principal(
     if principal is None:
         raise HTTPException(status_code=401, detail='authentication required',
                             headers={'WWW-Authenticate': 'Bearer'})
-    return principal
+    return {**principal, 'client_ip': _client_host(request)}
+
+
+def audit_event(principal: Optional[dict], action: str, target=None, outcome='success', details=None,
+                client_ip=None, actor=None):
+    """Append to the hash-chained audit log on behalf of `principal`."""
+    principal = principal or {}
+    audit.record(
+        action,
+        actor=actor or principal.get('username') or 'anonymous',
+        actor_kind=principal.get('kind') or 'anonymous',
+        role=principal.get('role'),
+        client_ip=client_ip or principal.get('client_ip'),
+        target=target,
+        outcome=outcome,
+        details=details,
+    )
 
 
 def pending_setup(principal: dict):
@@ -202,6 +218,8 @@ def login(payload: LoginRequest, request: Request, response: Response):
     client = _client_host(request) or 'unknown'
     if not login_throttle.allow(client):
         logger.warning('login throttled for %s', client)
+        audit_event(None, 'login', target=payload.username[:64], outcome='throttled', client_ip=client,
+                    actor=payload.username[:64])
         raise HTTPException(status_code=429, detail='too many login attempts; try again later')
     store = auth.get_store()
     try:
@@ -211,6 +229,9 @@ def login(payload: LoginRequest, request: Request, response: Response):
             # correct password; the console now asks for the authenticator code
             raise HTTPException(status_code=401, detail='mfa_required')
         logger.warning('login failed for %r from %s: %s', payload.username[:64], client, exc.reason)
+        outcome = 'locked' if exc.status == 423 else 'mfa_invalid' if exc.code == 'mfa_invalid' else 'failure'
+        audit_event(None, 'login', target=payload.username[:64], outcome=outcome, client_ip=client,
+                    actor=payload.username[:64], details={'reason': exc.reason})
         if exc.status == 423:
             raise HTTPException(status_code=423, detail='account temporarily locked after repeated failures')
         if exc.code == 'mfa_invalid':
@@ -219,6 +240,7 @@ def login(payload: LoginRequest, request: Request, response: Response):
     tokens = store.create_session(user['username'], client, request.headers.get('user-agent'))
     _set_refresh_cookie(response, request, tokens)
     logger.info('login %s (%s) from %s', user['username'], user['role'], client)
+    audit_event({'kind': 'user', **user}, 'login', target=user['username'], client_ip=client)
     return _token_response(tokens, user)
 
 
@@ -245,6 +267,7 @@ def logout(request: Request, response: Response):
         session_id = principal['session_id']
     if session_id:
         store.revoke_session(session_id)
+        audit_event(principal, 'logout', target=(principal or {}).get('username'), client_ip=_client_host(request))
     response.delete_cookie(REFRESH_COOKIE, path='/api/auth')
     return {'status': 'signed_out'}
 
@@ -293,6 +316,7 @@ def mfa_enable(payload: MfaCode, principal: dict = Depends(require_signed_in)):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     logger.info('two-step sign-in enabled for %s', username)
+    audit_event(principal, 'mfa_enable', target=username)
     return {'status': 'enabled', 'recovery_codes': codes}
 
 
@@ -310,6 +334,7 @@ def change_password(payload: PasswordChange, principal: dict = Depends(require_s
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     logger.info('password changed for %s', principal['username'])
+    audit_event(principal, 'password_change', target=principal['username'])
     return {'status': 'password_changed'}
 
 
@@ -328,6 +353,7 @@ def create_user(payload: NewUser, principal: dict = Depends(require_admin)):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     logger.info('%s created user %s (%s)', principal['username'], user['username'], user['role'])
+    audit_event(principal, 'user_create', target=user['username'], details={'role': user['role']})
     return user
 
 
@@ -351,11 +377,16 @@ def update_user(username: str, payload: UserUpdate, principal: dict = Depends(re
             store.reset_mfa(username)
             user = store.get_user(username)
             logger.info('%s reset two-step sign-in for %s', principal['username'], username)
+            audit_event(principal, 'mfa_reset', target=username)
     except KeyError:
         raise HTTPException(status_code=404, detail='user not found')
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     logger.info('%s updated user %s', principal['username'], username)
+    changes = {k: v for k, v in (('role', payload.role), ('disabled', payload.disabled)) if v is not None}
+    if payload.password is not None:
+        changes['password_reset'] = True
+    audit_event(principal, 'user_update', target=username, details=changes)
     return user
 
 
@@ -370,6 +401,7 @@ def delete_user(username: str, principal: dict = Depends(require_admin)):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     logger.info('%s deleted user %s', principal['username'], username)
+    audit_event(principal, 'user_delete', target=username)
     return {'status': 'deleted'}
 
 
@@ -396,6 +428,8 @@ def create_api_token(payload: NewApiToken, principal: dict = Depends(_token_mana
         raise HTTPException(status_code=400, detail=str(exc))
     logger.info('%s created API token %s (%s, %s) expiring %s', principal['username'],
                 token['id'], token['name'], token['role'], token['expires'])
+    audit_event(principal, 'token_create', target=token['id'],
+                details={'name': token['name'], 'role': token['role'], 'expires': token['expires']})
     return token
 
 
@@ -406,4 +440,5 @@ def revoke_api_token(token_id: str, principal: dict = Depends(_token_manager)):
     except KeyError:
         raise HTTPException(status_code=404, detail='token not found')
     logger.info('%s revoked API token %s', principal['username'], token_id)
+    audit_event(principal, 'token_revoke', target=token_id)
     return {'status': 'revoked'}

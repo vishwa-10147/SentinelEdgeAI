@@ -17,6 +17,7 @@ from core.config_loader import Config
 from core.health import HealthMonitor
 from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
+import core.audit as audit
 import core.firewall as firewall
 import asyncio
 import threading
@@ -341,10 +342,16 @@ def _start_ingest_loop():
                             policy.get("response_mode") == "auto_block"
                             and final_risk >= int(policy.get("auto_block_min_risk", 75))
                         ):
-                            firewall.add_block(
+                            rule = firewall.add_block(
                                 flow.initiator_ip,
                                 ttl=policy.get("default_ttl"),
                                 reason=f"auto_response:{attack_type}"
+                            )
+                            audit.record(
+                                "firewall_block", actor="engine", actor_kind="engine",
+                                target=flow.initiator_ip,
+                                details={"reason": f"auto_response:{attack_type}", "risk": final_risk,
+                                         "dry_run": rule.get("dry_run")},
                             )
                     except Exception:
                         logger.debug("Auto-response evaluation failed", exc_info=True)

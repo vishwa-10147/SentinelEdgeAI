@@ -14,6 +14,7 @@ import re
 import ipaddress
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+import core.audit as audit_core
 import core.auth as auth_core
 from core.product_intelligence import (
     build_incident_timeline,
@@ -28,6 +29,7 @@ from dashboard.auth_routes import (
     require_operator,
     require_admin,
     resolve_principal,
+    audit_event,
     pending_setup,
 )
 
@@ -355,9 +357,12 @@ def firewall_block(payload: dict, principal: dict = Depends(require_operator)):
         raise HTTPException(status_code=400, detail='missing ip')
     try:
         res = firewall.add_block(ip, ttl=ttl, reason=reason)
-        return maybe_sanitize(res)
     except ValueError as exc:
+        audit_event(principal, 'firewall_block', target=ip, outcome='rejected', details={'error': str(exc)})
         raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'firewall_block', target=res.get('ip'),
+                details={'ttl': ttl, 'reason': reason, 'dry_run': res.get('dry_run')})
+    return maybe_sanitize(res)
 
 
 @app.post('/api/firewall/unblock')
@@ -369,9 +374,11 @@ def firewall_unblock(payload: dict, principal: dict = Depends(require_operator))
         raise HTTPException(status_code=400, detail='missing ip')
     try:
         res = firewall.remove_block(ip)
-        return maybe_sanitize(res)
     except ValueError as exc:
+        audit_event(principal, 'firewall_unblock', target=ip, outcome='rejected', details={'error': str(exc)})
         raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'firewall_unblock', target=ip, details={'removed': res.get('removed')})
+    return maybe_sanitize(res)
 
 
 @app.get('/api/firewall/actions')
@@ -432,9 +439,13 @@ def firewall_policy_update(payload: dict, principal: dict = Depends(require_admi
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     try:
-        return maybe_sanitize(firewall.update_policy(payload or {}))
+        policy = firewall.update_policy(payload or {})
     except ValueError as exc:
+        audit_event(principal, 'firewall_policy', outcome='rejected', details={'error': str(exc)})
         raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'firewall_policy', details={'changed': sorted((payload or {}).keys()),
+                                                        'response_mode': policy.get('response_mode')})
+    return maybe_sanitize(policy)
 
 
 @app.post('/api/firewall/whitelist')
@@ -445,21 +456,24 @@ def firewall_whitelist(payload: dict, principal: dict = Depends(require_operator
     action = payload.get('action', 'add')
     if not ip:
         raise HTTPException(status_code=400, detail='missing ip')
-    try:
-        if action == 'add':
-            return maybe_sanitize(firewall.add_whitelist(ip))
-        if action == 'remove':
-            return maybe_sanitize(firewall.remove_whitelist(ip))
+    if action not in ('add', 'remove'):
         raise HTTPException(status_code=400, detail='invalid whitelist action')
+    try:
+        res = firewall.add_whitelist(ip) if action == 'add' else firewall.remove_whitelist(ip)
     except ValueError as exc:
+        audit_event(principal, f'whitelist_{action}', target=ip, outcome='rejected', details={'error': str(exc)})
         raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, f'whitelist_{action}', target=ip)
+    return maybe_sanitize(res)
 
 
 @app.post('/api/firewall/expire')
 def firewall_expire(principal: dict = Depends(require_operator)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
-    return maybe_sanitize(firewall.expire_rules())
+    res = firewall.expire_rules()
+    audit_event(principal, 'firewall_expire', details={'result': res})
+    return maybe_sanitize(res)
 
 
 @app.post('/api/firewall/rollback')
@@ -467,8 +481,21 @@ def firewall_rollback(payload: dict = {}, principal: dict = Depends(require_oper
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     reason = (payload or {}).get('reason', 'operator_rollback')
-    return maybe_sanitize(firewall.rollback_blocks(reason=reason))
+    res = firewall.rollback_blocks(reason=reason)
+    audit_event(principal, 'firewall_rollback', details={'reason': reason, 'removed': res.get('removed')})
+    return maybe_sanitize(res)
 
+
+
+@app.get('/api/audit')
+def audit_entries(limit: int = 100, before: Optional[int] = None, action: Optional[str] = None,
+                  actor: Optional[str] = None, principal: dict = Depends(require_admin)):
+    return audit_core.get_log().entries(limit=limit, before=before, action=action, actor=actor)
+
+
+@app.get('/api/audit/verify')
+def audit_verify(principal: dict = Depends(require_admin)):
+    return audit_core.get_log().verify()
 
 
 @app.post('/api/demo/run')
@@ -506,6 +533,7 @@ def demo_run(payload: dict, principal: dict = Depends(require_operator)):
                 logger.exception('failed to enqueue event')
     except Exception:
         logger.exception('failed to emit demo start event')
+    audit_event(principal, 'demo_run', target=ip, details={'simulate_type': sim, 'pid': p.pid})
     return {'status':'started','pid': p.pid}
 
 
@@ -567,6 +595,7 @@ def demo_presenter(payload: dict = {}, principal: dict = Depends(require_operato
     except Exception:
         logger.exception('failed to start demo presenter script')
 
+    audit_event(principal, 'demo_presenter')
     return {'status':'presenter_started'}
     
 

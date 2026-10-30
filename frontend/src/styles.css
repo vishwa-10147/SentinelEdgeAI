@@ -1122,7 +1122,8 @@ button:disabled {
 .auth-form input,
 .users-create input,
 .users-create select,
-.users-row select {
+.users-row select,
+.audit-toolbar select {
   min-height: 36px;
   padding: 0 10px;
   color: var(--text);
@@ -1246,6 +1247,42 @@ button:disabled {
 .token-reveal code {
   word-break: break-all;
   user-select: all;
+}
+
+.audit-row {
+  grid-template-columns: 0.4fr 1.2fr 0.9fr 1fr 1fr 0.7fr 2fr;
+}
+
+.audit-details {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.audit-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.audit-integrity {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 0 0 10px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.audit-ok {
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.audit-broken {
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .nav-actions button,
