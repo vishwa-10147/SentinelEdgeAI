@@ -653,10 +653,10 @@ class AuthStore:
         )
 
 
-class LoginThrottle:
-    """Per-client sliding window limit on login attempts (in memory)."""
+class SlidingWindowLimiter:
+    """Per-client sliding window request limit (in memory)."""
 
-    def __init__(self, max_attempts=10, window_seconds=300):
+    def __init__(self, max_attempts, window_seconds):
         self.max_attempts = max_attempts
         self.window = window_seconds
         self._attempts = {}
@@ -677,9 +677,25 @@ class LoginThrottle:
                     del self._attempts[k]
             return True
 
+    def retry_after(self, key, now=None):
+        """Seconds until the client may try again (0 if it may now)."""
+        now = now or time.monotonic()
+        with self._lock:
+            q = self._attempts.get(key)
+            if not q or len(q) < self.max_attempts:
+                return 0
+            return max(1, int(q[0] + self.window - now + 0.999))
+
     def reset(self, key):
         with self._lock:
             self._attempts.pop(key, None)
+
+
+class LoginThrottle(SlidingWindowLimiter):
+    """Per-client limit on login attempts."""
+
+    def __init__(self, max_attempts=10, window_seconds=300):
+        super().__init__(max_attempts, window_seconds)
 
 
 _default_store = None

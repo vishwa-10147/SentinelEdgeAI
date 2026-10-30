@@ -297,7 +297,7 @@ Detection tuning lives in [config.yaml](config.yaml) (risk thresholds, baseline 
 | `SENTINEL_AUTH_DB` | `data/auth.db` | User accounts and sessions |
 | `SENTINEL_ACCESS_TOKEN_TTL` / `SENTINEL_SESSION_TTL` | `900` / `43200` | Access-token and session lifetime in seconds |
 | `SENTINEL_CORS_ORIGINS` | Vite dev server | Comma-separated origins allowed to call the API from another site |
-| `SENTINEL_CSP` | strict same-origin policy | Replaces the Content-Security-Policy header (only needed if the console is hosted on another origin) |
+| `SENTINEL_RATE_LIMIT_READ` / `_WRITE` | `600` / `60` | API requests per client per minute (reads / writes); `0` turns a limit off |
 | `SENTINEL_MFA_ROLES` | `operator,admin` | Roles that must use two-step sign-in (empty to turn the requirement off) |
 | `SENTINEL_COOKIE_SECURE` | auto | `1` forces the `Secure` flag on the session cookie (set it behind an HTTPS proxy) |
 | `SENTINEL_HOST` / `SENTINEL_PORT` | `127.0.0.1` / `9000` | API bind address and port |

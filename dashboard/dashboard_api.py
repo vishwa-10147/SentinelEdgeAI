@@ -13,7 +13,8 @@ import hashlib
 import re
 import ipaddress
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+import core.auth as auth_core
 from core.product_intelligence import (
     build_incident_timeline,
     build_security_report,
@@ -122,38 +123,34 @@ async def prometheus_middleware(request: Request, call_next):
             logger.exception('metrics update failed')
     return resp
 
-# Browser hardening headers on every response. The built console loads only
-# same-origin scripts and styles; the TOTP QR code is a data: image. 'self' in
-# connect-src covers the same-origin WebSocket. Override the CSP with
-# SENTINEL_CSP if the console is hosted elsewhere.
-DEFAULT_CSP = (
-    "default-src 'self'; "
-    "script-src 'self'; "
-    "style-src 'self'; "
-    "img-src 'self' data:; "
-    "font-src 'self'; "
-    "connect-src 'self'; "
-    "object-src 'none'; "
-    "base-uri 'none'; "
-    "form-action 'self'; "
-    "frame-ancestors 'none'"
-)
-SECURITY_HEADERS = {
-    'Content-Security-Policy': os.environ.get('SENTINEL_CSP', DEFAULT_CSP),
-    'X-Frame-Options': 'DENY',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
-    'Cross-Origin-Opener-Policy': 'same-origin',
-}
+# General API rate limits per client address, on top of the stricter login
+# throttle. One open console polls about 80 requests a minute. 0 disables.
+RATE_LIMIT_READ = int(os.environ.get('SENTINEL_RATE_LIMIT_READ', '600'))
+RATE_LIMIT_WRITE = int(os.environ.get('SENTINEL_RATE_LIMIT_WRITE', '60'))
+RATE_LIMIT_WINDOW = 60
+WRITE_METHODS = ('POST', 'PUT', 'PATCH', 'DELETE')
+read_limiter = auth_core.SlidingWindowLimiter(RATE_LIMIT_READ, RATE_LIMIT_WINDOW)
+write_limiter = auth_core.SlidingWindowLimiter(RATE_LIMIT_WRITE, RATE_LIMIT_WINDOW)
 
 
 @app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    resp = await call_next(request)
-    for name, value in SECURITY_HEADERS.items():
-        resp.headers.setdefault(name, value)
-    return resp
+async def rate_limit_middleware(request: Request, call_next):
+    path = request.url.path
+    if not path.startswith('/api/') or request.method == 'OPTIONS':
+        return await call_next(request)
+    if request.method in WRITE_METHODS:
+        limiter, limit = write_limiter, RATE_LIMIT_WRITE
+    else:
+        limiter, limit = read_limiter, RATE_LIMIT_READ
+    client = request.client.host if request.client else 'unknown'
+    if limit > 0 and not limiter.allow(client):
+        logger.warning('rate limit exceeded for %s on %s %s', client, request.method, path)
+        return JSONResponse(
+            {'detail': 'rate limit exceeded; try again later'},
+            status_code=429,
+            headers={'Retry-After': str(limiter.retry_after(client))},
+        )
+    return await call_next(request)
 
 # The console is normally served by this API (same origin). Cross-origin
 # access is only for the Vite dev server or a separately hosted console.
