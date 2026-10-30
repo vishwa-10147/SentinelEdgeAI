@@ -148,6 +148,23 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 
 **Exit criteria:** unplugging the Jetson for an hour loses no flow data and causes no network impact; a forged or replayed command is rejected; one Jetson handles 3 sensors at the target load.
 
+**Status (2026-10-31): built and tested in simulation; hardware validation pending.**
+- [x] `common/`, `brain/`, `sensor/` packages with their own systemd services (`sentineledgeai-brain`, `sentineledgeai-sensor`), started by `.path` units once the device has the role.
+- [x] Link protocol: JSON over mutual-TLS HTTPS instead of gRPC/protobuf (same authentication and integrity, no code-generation toolchain). Built-in CA (EC P-256) on the brain; one-time enrolment codes; the sensor pins the brain CA by fingerprint; the sensor id is the certificate CN chosen by the brain; revocation is immediate (fingerprint check).
+- [x] Ed25519-signed commands with per-sensor sequence numbers (persisted on the sensor) and 5-minute expiry; the enforcer re-checks the local whitelist.
+- [x] Sensor disk buffer (SQLite WAL, 2 M records) with acknowledged delivery and replay; degraded mode keeps local detection and never auto-blocks on its own.
+- [x] Lite profile unchanged (Standalone role); Sensor and Brain roles in the setup wizard and console API (`/api/brain/*`, `/api/sensor/*`).
+- [x] Jetson installer (`deploy/jetson/install_brain.sh`): private uv-managed CPython 3.11, offline wheels; `sentinelctl` takes the interpreter from `/etc/sentinel/python`. **Not yet run on a Jetson.**
+- [ ] Event bus in the brain replacing file polling; WebSocket heartbeat and resync cursor.
+- [ ] PostgreSQL for the brain's flow store (the brain uses SQLite today; the engine's PostgreSQL backend exists).
+- [ ] Brain distributes sensor upgrades.
+- [ ] Console panel for sensors (the API and CLI exist).
+
+Exit criteria evidence so far:
+- Outage: `tests/test_brain_link.py` stops the brain while 1,500 flows queue and gets all 1,600 back in order with no duplicates; on the Pi (brain and sensor on one device) a 2-minute brain outage buffered 103 real flows, replayed them and stored 0 duplicates. **The one-hour Jetson unplug is pending hardware.**
+- Forged and replayed commands: rejected in unit tests and over the live link (also after a sensor restart).
+- 3 sensors: 9,000 flows from 3 concurrent sensors stored correctly on the Pi (~26,000 flows/s). **Target load on a Jetson pending hardware.**
+
 ---
 
 ## Phase 3 — Enforcement you can trust (v1.4)

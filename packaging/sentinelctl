@@ -31,6 +31,8 @@ SERVICES=(sentineledgeai-engine.service sentineledgeai-api.service)
 ROLE_PATHS=(sentineledgeai-brain.path sentineledgeai-sensor.path)
 ROLE_SERVICES=(sentineledgeai-brain.service sentineledgeai-sensor.service)
 MIN_PYTHON="3.11"
+# interpreter for the release venv; the Jetson installer points this at a uv-managed CPython 3.11
+PYTHON_BIN="${SENTINEL_PYTHON:-$(cat "$ETC_DIR/python" 2>/dev/null || echo python3)}"
 
 # Runtime files the application writes relative to its working directory.
 # Each becomes a symlink from the release directory into STATE_DIR.
@@ -49,10 +51,10 @@ usage() {
 }
 
 check_python() {
-  command -v python3 >/dev/null || die "python3 not found (apt install python3 python3-venv)"
-  python3 -c "import sys; sys.exit(0 if sys.version_info >= tuple(map(int, '$MIN_PYTHON'.split('.'))) else 1)" \
-    || die "Python >= $MIN_PYTHON required, found $(python3 -V 2>&1)"
-  python3 -c "import venv, ensurepip" 2>/dev/null || die "python3-venv missing (apt install python3-venv)"
+  command -v "$PYTHON_BIN" >/dev/null || die "$PYTHON_BIN not found (apt install python3 python3-venv, or set SENTINEL_PYTHON)"
+  "$PYTHON_BIN" -c "import sys; sys.exit(0 if sys.version_info >= tuple(map(int, '$MIN_PYTHON'.split('.'))) else 1)" \
+    || die "Python >= $MIN_PYTHON required, found $("$PYTHON_BIN" -V 2>&1) (set SENTINEL_PYTHON to a newer interpreter)"
+  "$PYTHON_BIN" -c "import venv, ensurepip" 2>/dev/null || die "venv/ensurepip missing for $PYTHON_BIN (apt install python3-venv)"
 }
 
 verify_checksum() {
@@ -82,7 +84,7 @@ ensure_config() {
   local release="$1" env_file="$ETC_DIR/sentinel.env"
   if [ ! -f "$env_file" ]; then
     local api_key
-    api_key="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    api_key="$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_hex(32))')"
     local old_umask
     old_umask="$(umask)"
     umask 027
@@ -217,7 +219,7 @@ ensure_admin_user() {
 
 build_venv() {
   local release="$1"
-  python3 -m venv "$release/.venv"
+  "$PYTHON_BIN" -m venv "$release/.venv"
   if [ -d "$release/wheels" ]; then
     "$release/.venv/bin/pip" install --quiet --no-index --find-links "$release/wheels" -r "$release/requirements.txt"
   elif [ "${SENTINEL_ALLOW_ONLINE_INSTALL:-0}" = "1" ]; then
