@@ -21,6 +21,9 @@ def test_security_headers_on_every_response(path):
     assert r.headers['referrer-policy'] == 'no-referrer'
     assert r.headers['cross-origin-opener-policy'] == 'same-origin'
     assert 'camera=()' in r.headers['permissions-policy']
+    assert r.headers['cross-origin-embedder-policy'] == 'require-corp'
+    assert r.headers['cross-origin-resource-policy'] == 'same-origin'
+    assert r.headers['cache-control'] == 'no-store'
 
 
 def test_csp_is_strict():
@@ -33,3 +36,15 @@ def test_csp_is_strict():
     # the TOTP enrolment QR code is rendered from a data: URI
     assert directives['img-src'] == "'self' data:"
     assert 'unsafe-inline' not in csp and 'unsafe-eval' not in csp
+
+
+def test_fingerprinted_assets_are_cacheable(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+    (tmp_path / 'index-abc123.js').write_text('console.log(1)')
+    sub = FastAPI()
+    sub.mount('/assets', StaticFiles(directory=str(tmp_path)))
+    sub.middleware('http')(api.security_headers_middleware)
+    c = TestClient(sub)
+    assert c.get('/assets/index-abc123.js').headers['cache-control'] == api.ASSET_CACHE
+    assert c.get('/assets/missing.js').headers['cache-control'] == 'no-store'

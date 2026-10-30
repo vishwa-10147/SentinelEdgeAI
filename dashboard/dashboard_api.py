@@ -179,7 +179,12 @@ SECURITY_HEADERS = {
     'Referrer-Policy': 'no-referrer',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
     'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': 'require-corp',
+    'Cross-Origin-Resource-Policy': 'same-origin',
 }
+# fingerprinted build output (assets/index-<hash>.js) never changes; everything
+# else, API responses above all, must not be stored by browsers or proxies
+ASSET_CACHE = 'public, max-age=31536000, immutable'
 HSTS = f"max-age={int(os.environ.get('SENTINEL_HSTS_MAX_AGE', '31536000'))}"
 
 
@@ -188,6 +193,10 @@ async def security_headers_middleware(request: Request, call_next):
     resp = await call_next(request)
     for name, value in SECURITY_HEADERS.items():
         resp.headers.setdefault(name, value)
+    if request.url.path.startswith('/assets/') and resp.status_code == 200:
+        resp.headers['Cache-Control'] = ASSET_CACHE
+    else:
+        resp.headers.setdefault('Cache-Control', 'no-store')
     if request.url.scheme == 'https':
         # browsers ignore HSTS from a certificate they do not trust, so the
         # self-signed install certificate cannot lock anyone out
