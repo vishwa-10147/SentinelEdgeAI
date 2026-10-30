@@ -32,7 +32,7 @@ SentinelEdgeAI is a network appliance that learns how every device on a network 
 
 | | |
 |---|---|
-| **Current release** | [`v1.1.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v1.1.0): single-node deployment on a Raspberry Pi |
+| **Current release** | [`v1.2.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v1.2.0): single-node deployment on a Raspberry Pi, with user accounts and two-step sign-in |
 | **Target hardware** | Raspberry Pi 5 (sensor) and NVIDIA Jetson Orin Nano (AI and management) |
 | **Interfaces** | Web console, REST API, WebSocket event stream, Prometheus metrics |
 | **Supply chain** | Signed ML model, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
@@ -51,7 +51,7 @@ SentinelEdgeAI fills that gap: **behavioural detection and automated response on
 ## Roadmap and progress
 
 ```text
-Phase 0  Correctness, hygiene, release pipeline   v1.1   ███████████████████░  done, 2 small items open
+Phase 0  Correctness, hygiene, release pipeline   v1.1   ████████████████████  done
 Phase 1  Secure management plane                  v1.2   ██████████░░░░░░░░░░  in progress
 Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ░░░░░░░░░░░░░░░░░░░░
 Phase 3  Enforcement you can trust                v1.4   ░░░░░░░░░░░░░░░░░░░░
@@ -169,7 +169,7 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
                          └──────────────────────────────────────────────┘
 ```
 
-- **Today (v1.1):** everything runs as a single node on a Raspberry Pi. The Pi–Jetson link does not exist yet.
+- **Today (v1.2):** everything runs as a single node on a Raspberry Pi. The Pi–Jetson link does not exist yet.
 - **Target (v2.0):** the Pi only senses and enforces; the Jetson runs all AI work and owns users, data and the console. One Jetson can serve several sensors.
 - **Fail-safe by design:** if the brain is offline, the sensor keeps basic detection running, buffers data to disk, and never blocks traffic because a link failed.
 
@@ -210,19 +210,19 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 2. Optionally verify where the package was built:
 
    ```bash
-   gh attestation verify sentineledgeai-pi-1.1.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
+   gh attestation verify sentineledgeai-pi-1.2.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
    ```
 
 3. Install:
 
    ```bash
-   sha256sum -c sentineledgeai-pi-1.1.0.tar.gz.sha256
-   tar -xzf sentineledgeai-pi-1.1.0.tar.gz
-   sudo bash sentineledgeai-pi-1.1.0/deploy/pi/provision_key.sh /path/to/model_signing.key
-   sudo bash sentineledgeai-pi-1.1.0/packaging/sentinelctl install sentineledgeai-pi-1.1.0.tar.gz
+   sha256sum -c sentineledgeai-pi-1.2.0.tar.gz.sha256
+   tar -xzf sentineledgeai-pi-1.2.0.tar.gz
+   sudo bash sentineledgeai-pi-1.2.0/deploy/pi/provision_key.sh /path/to/model_signing.key
+   sudo bash sentineledgeai-pi-1.2.0/packaging/sentinelctl install sentineledgeai-pi-1.2.0.tar.gz
    ```
 
-4. Open `http://<pi-address>:9000` and sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password, then delete that file. Add other users from the **Users** panel.
+4. Open `http://<pi-address>:9000` and sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. Add other users from the **Users** panel.
 
    Automation can still use the API key in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`). Users can also be managed on the device:
 
@@ -237,7 +237,7 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 **Upgrades and rollback**
 
 ```bash
-sudo sentinelctl upgrade sentineledgeai-pi-1.2.0.tar.gz   # health-checked; rolls back automatically on failure
+sudo sentinelctl upgrade sentineledgeai-pi-<version>.tar.gz   # health-checked; rolls back automatically on failure
 sudo sentinelctl rollback                                  # return to the previous version
 sentinelctl status                                         # active version and service state
 ```
@@ -363,9 +363,9 @@ docs/         additional documentation and archived material
 
 ---
 
-## Known limitations (v1.1)
+## Known limitations (v1.2)
 
-1. **No TLS yet.** Keep the console on a trusted management network until HTTPS ships in v1.2.
+1. **No TLS yet.** Keep the console on a trusted management network until HTTPS ships in a later v1.2.x release.
 2. **Single node only.** The Jetson is not used until v1.3.
 3. **No inline bridge mode.** Blocks cover traffic to and routed through the appliance; bridge filtering and MAC quarantine arrive in v1.4.
 

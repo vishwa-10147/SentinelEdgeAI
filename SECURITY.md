@@ -21,7 +21,8 @@ Please give us up to **90 days** to ship a fix before public disclosure. Do not 
 
 | Version | Security fixes |
 |---|---|
-| `main` / latest `1.1.x` | ✅ |
+| `main` / latest `1.2.x` | ✅ |
+| `1.1.x` | ✅ until 1.3.0 |
 | `1.0.x` and older | ❌ — upgrade to the latest |
 
 The current and previous minor release receive security fixes.
@@ -151,17 +152,17 @@ The old key no longer verifies any committed model, so a model signed with it wi
 
 ---
 
-## 5. Known security issues (v1.1)
+## 5. Known security issues (v1.2)
 
 | # | Issue | Impact | Tracked in |
 |---|---|---|---|
 | 1 | ~~Firewall commands rejected by the subprocess wrapper; nftables set never attached to a chain~~ | **Fixed in 1.1.0** — blocks had no effect | — |
 | 2 | ~~iptables removal omitted the comment match used at insert~~ | **Fixed in 1.1.0** | — |
 | 3 | Bridge-level (layer 2) filtering and MAC quarantine not implemented; `INPUT` and `FORWARD` are covered | Devices on the same bridge segment are not isolated | Phase 3 |
-| 4 | ~~Single shared API key, no per-user identity~~ | **Fixed in 1.2.0 (unreleased)** — user accounts and roles; the shared key remains for automation until scoped tokens land | Phase 1 |
+| 4 | ~~Single shared API key, no per-user identity~~ | **Fixed in 1.2.0** — user accounts and roles; the shared key remains for automation until scoped tokens land | Phase 1 |
 | 5 | No TLS on API/WebSocket | Credentials and data readable on the management network | Phase 1 |
 | 6 | No rate limiting on the API (login is now throttled and locks accounts) | API flooding | Phase 1 |
-| 10 | ~~Live WebSocket stream had no authentication~~ | **Fixed in 1.2.0 (unreleased)** — anyone who could reach the port could read alerts and flows | — |
+| 10 | ~~Live WebSocket stream had no authentication~~ | **Fixed in 1.2.0** — anyone who could reach the port could read alerts and flows | — |
 | 7 | HMAC model signing — every verifier holds the signing key | A compromised device can sign models | Phase 4 |
 | 8 | ~~Dev tools (pytest, bandit, pip-audit, streamlit) in runtime requirements~~ | **Fixed** — split into `requirements-dev.txt` / `requirements-streamlit.txt` | — |
 | 9 | Docker image runs as root and includes build tools | Container escape impact is higher | Phase 6 |
