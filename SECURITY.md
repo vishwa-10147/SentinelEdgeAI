@@ -90,6 +90,7 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 * **WebSocket:** the live stream sends nothing until the client authenticates with its first message; unauthenticated sockets are closed with code `4401`.
 * **API key:** `DASHBOARD_API_KEY` still works (`X-API-Key` or `Authorization: Bearer`) for automation and device health checks, with the role in `SENTINEL_API_KEY_ROLE` (default `admin`). It is compared in constant time. Scoped, expiring API tokens replace it later in Phase 1.
 * **Development mode:** only when no user exists *and* no API key is set, requests from `127.0.0.1` / `::1` act as an Admin. Creating the first user ends this mode.
+* **Security headers:** every response carries a strict Content-Security-Policy (`default-src 'self'`, no inline scripts or styles, `img-src 'self' data:` for the MFA QR code, `object-src 'none'`, `frame-ancestors 'none'`), plus `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy` and `Cross-Origin-Opener-Policy: same-origin`. `SENTINEL_CSP` replaces the policy if the console is hosted elsewhere. HSTS arrives with HTTPS.
 * **CORS** is limited to `SENTINEL_CORS_ORIGINS` (default: the Vite dev server). The console is normally served by the API itself, so production needs no cross-origin access.
 * The API binds to `127.0.0.1` by default (`SENTINEL_HOST`). Interactive API docs (`/docs`, `/redoc`) are disabled and `/openapi.json` requires sign-in.
 * The health endpoint supports Basic auth via `HEALTH_USER` / `HEALTH_PASS`.
@@ -148,6 +149,9 @@ Earlier commits contained `model_signing.key` at the repository root, and `.ci_t
 | Install the new key on every device (`deploy/pi/provision_key.sh`) — devices with the old key will refuse the newly signed model | ⏳ per device |
 | Change any health-check credentials that match the old `.ci_test_health.env` values | ⏳ per device |
 | Optionally purge both files from history (`git filter-repo`) and force-push; everyone must then re-clone | Optional |
+
+### Key moved to the release device (2026-10-30)
+Development moved from a PC to the Raspberry Pi, and the only copy of the signing key was on the PC. The key was rotated again from the Pi: the model was first confirmed byte-identical (SHA-256 `6ce839cb…a5a8`) to the one the v1.2.0 release pipeline verified with the previous key, then re-signed with a new 256-bit key generated on the Pi (`~/.sentinel/model_signing.key`, mode `600`). The GitHub secret was updated to match. The PC key no longer verifies the committed model. Releases from v1.2.1 onwards need this key on the device.
 
 The old key no longer verifies any committed model, so a model signed with it will be rejected by updated devices and CI.
 
