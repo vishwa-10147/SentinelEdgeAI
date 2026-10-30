@@ -1228,6 +1228,26 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.token-reveal {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0a0e1a;
+  font-size: 13px;
+}
+
+.token-reveal p {
+  margin: 0;
+}
+
+.token-reveal code {
+  word-break: break-all;
+  user-select: all;
+}
+
 .nav-actions button,
 .user-chip {
   white-space: nowrap;
