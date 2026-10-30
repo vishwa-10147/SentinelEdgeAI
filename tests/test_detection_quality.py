@@ -276,3 +276,23 @@ def test_health_check_reconnects_are_not_brute_force():
         hits += d.observe(flow(t, src='10.0.2.7', dst='10.0.2.2', dport=3389, duration=1, out_b=1500, in_b=1500))
         t += rng.uniform(0.5, 5)
     assert [f.kind for f in hits] == ['brute_force']
+
+
+def test_long_internal_sessions_are_not_suspicious():
+    from types import SimpleNamespace
+    from detection.attack_classifier import AttackClassifier
+    c = AttackClassifier()
+    base = dict(forward_bytes=1000, backward_bytes=1000, forward_packets=10, backward_packets=10, responder_port=6379)
+    assert c.classify(SimpleNamespace(duration=600, responder_ip='10.0.2.2', **base), 3) != 'LONG_SUSPICIOUS_SESSION'
+    assert c.classify(SimpleNamespace(duration=600, responder_ip='185.10.10.10', **base), 3) == 'LONG_SUSPICIOUS_SESSION'
+
+
+def test_alert_explanation_labels_only_earlier_findings():
+    from capture.sniffer import _alert_explanation
+    old = {'kind': 'dga', 'evidence': 'random domains'}
+    fused = {'findings': [old], 'new_findings': [],
+             'explanation': ['random domains', 'bytes is 9.0 standard deviations above the TCP baseline for this hour']}
+    assert _alert_explanation(fused) == ['bytes is 9.0 standard deviations above the TCP baseline for this hour',
+                                         'earlier finding for this source: random domains']
+    fused['new_findings'] = [old]
+    assert _alert_explanation(fused)[0] == 'random domains'

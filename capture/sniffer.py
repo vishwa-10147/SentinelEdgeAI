@@ -362,9 +362,7 @@ def _start_ingest_loop():
                         "mitre_technique_name": mitre_info.get("technique_name"),
                         "confidence": result.get("confidence"),
                         "confirmed": bool(fused and fused['confirmed']),
-                        "explanation": ((fused or {}).get('explanation', []) if (fused or {}).get('new_findings')
-                                        else [f"earlier finding for this source: {e}"
-                                              for e in (fused or {}).get('explanation', [])[:2]]),
+                        "explanation": _alert_explanation(fused),
                         "findings": (fused or {}).get('findings', []),
                     }
                     if fused and fused.get('technique') and not alert.get("mitre_technique_id"):
@@ -440,6 +438,18 @@ def _start_ingest_loop():
 
 _brain_buffer = None
 _brain_checked = 0.0
+
+
+def _alert_explanation(fused):
+    """This flow's own evidence first; findings from earlier flows of the source are labelled as such."""
+    if not fused:
+        return []
+    new = {(f['kind'], f['evidence']) for f in fused.get('new_findings', [])}
+    out = [f['evidence'] for f in fused.get('findings', []) if (f['kind'], f['evidence']) in new]
+    out += [e for e in fused.get('explanation', []) if 'standard deviations' in e]
+    out += [f"earlier finding for this source: {f['evidence']}"
+            for f in fused.get('findings', []) if (f['kind'], f['evidence']) not in new][:2]
+    return out
 
 
 def _forward_to_brain(flow, result, features):

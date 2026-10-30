@@ -1,3 +1,6 @@
+from detection.detectors import is_external
+
+
 class AttackClassifier:
 
     def classify(self, flow, threat_score):
@@ -9,8 +12,9 @@ class AttackClassifier:
         if flow.forward_bytes > 5 * flow.backward_bytes:
             return "POSSIBLE_DATA_EXFILTRATION"
 
-        # Long session anomaly
-        if flow.duration > 30:
+        # Long session anomaly: only towards external hosts (possible tunnel or C2);
+        # long-lived internal connections to databases and caches are normal
+        if flow.duration > 30 and is_external(flow.responder_ip):
             return "LONG_SUSPICIOUS_SESSION"
 
         # Large traffic burst
