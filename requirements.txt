@@ -17,6 +17,9 @@ scipy==1.17.0
 scikit-learn==1.8.0
 joblib==1.5.3
 
+# Console accounts (Argon2id password hashing)
+argon2-cffi==25.1.0
+
 # Storage, config, metrics
 psycopg2-binary==2.9.10
 PyYAML==6.0.3

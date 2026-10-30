@@ -124,6 +124,24 @@ link_state() {
   done
 }
 
+ensure_admin_user() {
+  # First install (or first upgrade to a release with accounts): create the
+  # console user 'admin' with a one-time password. No-op once any user exists.
+  local release="$1" db="$STATE_DIR/data/auth.db" pw="$ETC_DIR/initial-admin-password" out
+  out="$(cd "$release" && SENTINEL_AUTH_DB="$db" "$release/.venv/bin/python" -m core.auth \
+    bootstrap-admin --password-file "$pw")" || die "could not create the console admin user"
+  chown "$SERVICE_USER:$SERVICE_USER" "$db"
+  chmod 600 "$db"
+  if [ -f "$pw" ]; then
+    chown root:root "$pw"
+    chmod 600 "$pw"
+  fi
+  case "$out" in
+    created*) log "console user 'admin' created; its one-time password is in $pw (root only)."
+              log "sign in, choose a new password, then delete that file" ;;
+  esac
+}
+
 build_venv() {
   local release="$1"
   python3 -m venv "$release/.venv"
@@ -228,6 +246,7 @@ cmd_install() {
   # code is root-owned and read-only to the service; state links are added after
   chown -R root:root "$release"
   link_state "$release"
+  ensure_admin_user "$release"
   install_units "$release"
 
   switch_to "$release"
