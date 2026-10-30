@@ -51,7 +51,7 @@ SentinelEdgeAI fills that gap: **behavioural detection and automated response on
 
 ```text
 Phase 0  Correctness, hygiene, release pipeline   v1.1   ███████████████████░  done, 2 small items open
-Phase 1  Secure management plane                  v1.2   ░░░░░░░░░░░░░░░░░░░░  next
+Phase 1  Secure management plane                  v1.2   ███████░░░░░░░░░░░░░  in progress
 Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ░░░░░░░░░░░░░░░░░░░░
 Phase 3  Enforcement you can trust                v1.4   ░░░░░░░░░░░░░░░░░░░░
 Phase 4  Detection quality                        v1.5   ░░░░░░░░░░░░░░░░░░░░
@@ -65,7 +65,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░�
 | Phase | Release | Goal | Status |
 |---|---|---|---|
 | 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: IPv6 blocking, licence choice, privileged-runner CI proof |
-| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🔜 Next |
+| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🟡 In progress: accounts, roles, login protection done; MFA, HTTPS, API tokens, audit log next |
 | 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🔜 |
 | 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🔜 |
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🔜 |
@@ -135,7 +135,8 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | Prometheus metrics, Grafana dashboards, health endpoint | ✅ |
 | Offline installer, `sentinelctl` upgrade with health check and automatic rollback | ✅ |
 | Release pipeline: tests, signature check, dependency audit, SBOM, provenance attestation | ✅ |
-| User accounts, roles, MFA, audit log, HTTPS | 🔜 |
+| User accounts with Argon2id passwords, four roles, rotating sessions, login lockout | ✅ |
+| MFA, HTTPS, scoped API tokens, audit log | 🔜 |
 | SIEM export (syslog/CEF, webhooks, JSON for Splunk, ELK and Microsoft Sentinel) | 🔜 |
 | Model registry with shadow testing and hot reload | 🔜 |
 | Multi-sensor and multi-site fleet management | 🔜 |
@@ -220,7 +221,16 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
    sudo bash sentineledgeai-pi-1.1.0/packaging/sentinelctl install sentineledgeai-pi-1.1.0.tar.gz
    ```
 
-4. Open `http://<pi-address>:9000`. The API key generated during install is in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`).
+4. Open `http://<pi-address>:9000` and sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password, then delete that file. Add other users from the **Users** panel.
+
+   Automation can still use the API key in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`). Users can also be managed on the device:
+
+   ```bash
+   cd /opt/sentineledgeai/current
+   sudo -u sentinel .venv/bin/python -m core.auth list
+   sudo -u sentinel .venv/bin/python -m core.auth create-user --username alice --role operator
+   sudo -u sentinel .venv/bin/python -m core.auth reset-password --username alice --must-change-password
+   ```
 
 **Upgrades and rollback**
 
@@ -280,7 +290,12 @@ Detection tuning lives in [config.yaml](config.yaml) (risk thresholds, baseline 
 |---|---|---|
 | `FIREWALL_DRY_RUN` | `1` | `1` records actions only; `0` applies real firewall rules |
 | `SENTINEL_FIREWALL_BACKEND` | `auto` | `auto`, `nft` or `iptables` |
-| `DASHBOARD_API_KEY` | unset | Required on every API call when set (`X-API-Key` or `Bearer`); when unset, only localhost is accepted |
+| `DASHBOARD_API_KEY` | unset | Shared key for automation (`X-API-Key` or `Bearer`). With no key and no users, only localhost is accepted |
+| `SENTINEL_API_KEY_ROLE` | `admin` | Role granted to the API key |
+| `SENTINEL_AUTH_DB` | `data/auth.db` | User accounts and sessions |
+| `SENTINEL_ACCESS_TOKEN_TTL` / `SENTINEL_SESSION_TTL` | `900` / `43200` | Access-token and session lifetime in seconds |
+| `SENTINEL_CORS_ORIGINS` | Vite dev server | Comma-separated origins allowed to call the API from another site |
+| `SENTINEL_COOKIE_SECURE` | auto | `1` forces the `Secure` flag on the session cookie (set it behind an HTTPS proxy) |
 | `SENTINEL_HOST` / `SENTINEL_PORT` | `127.0.0.1` / `9000` | API bind address and port |
 | `SENTINEL_MODEL_SIGNING_KEY` / `_FILE` | unset | Key that verifies the ML model signature. **Never commit it** |
 | `SENTINEL_ALLOW_UNSIGNED_MODELS` | `0` | Development only |
@@ -297,17 +312,26 @@ Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
 
 ## API
 
-Every endpoint requires authentication as described above.
+Every endpoint except sign-in requires authentication: a console access token (`Authorization: Bearer …`) or the API key. Each endpoint has a minimum role.
+
+| Role | Can |
+|---|---|
+| Viewer | Read dashboards, alerts, devices, firewall state, reports |
+| Analyst | Viewer + `POST /api/alerts/explain` |
+| Operator | Analyst + block, unblock, whitelist, expire, rollback, demos |
+| Admin | Operator + `POST /api/firewall/policy` and user management |
 
 | Method and path | Purpose |
 |---|---|
+| `GET /api/auth/status`, `POST /api/auth/login`, `/refresh`, `/logout`, `/password`, `GET /api/auth/me` | Sign-in and sessions |
+| `GET/POST /api/users`, `PATCH/DELETE /api/users/{username}` | User management (Admin) |
 | `GET /api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/risk_timeline`, `/api/live_stats` | Detection data |
 | `GET /api/incidents/timeline`, `/api/reports/security`, `POST /api/alerts/explain` | Investigation and reporting |
 | `GET /api/device/{id}/logs` | Per-device history |
 | `GET/POST /api/firewall/policy`, `GET /api/firewall/rules`, `GET /api/firewall/actions` | Firewall policy and audit trail |
 | `POST /api/firewall/block`, `/unblock`, `/whitelist`, `/expire`, `/rollback` | Response actions |
 | `GET /api/health`, `GET /metrics` | Health and Prometheus metrics |
-| `WS /ws/packets` | Live alerts, flows and demo events |
+| `WS /ws/packets` | Live alerts, flows and demo events. Send `{"type": "auth", "token": "…"}` as the first message |
 
 The OpenAPI document is served at `/openapi.json` to authenticated clients only.
 
@@ -335,7 +359,7 @@ docs/         additional documentation and archived material
 
 ## Known limitations (v1.1)
 
-1. **Single shared API key and no TLS.** Keep the API on a trusted management network until accounts and HTTPS ship in v1.2.
+1. **No TLS or MFA yet.** Keep the console on a trusted management network until HTTPS and MFA ship in v1.2.
 2. **Single node only.** The Jetson is not used until v1.3.
 3. **IPv4 only.** IPv6 addresses cannot be blocked yet.
 4. **No inline bridge mode.** Blocks cover traffic to and routed through the appliance; bridge filtering and MAC quarantine arrive in v1.4.

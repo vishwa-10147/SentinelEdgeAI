@@ -20,35 +20,14 @@ from core.product_intelligence import (
     explain_alert,
 )
 
-API_KEY = os.environ.get('DASHBOARD_API_KEY')
-
-def require_api_key(
-    request: Request = None,
-    x_api_key: Optional[str] = Header(default=None, alias='X-API-Key'),
-    authorization: Optional[str] = Header(default=None),
-):
-    # If `DASHBOARD_API_KEY` is set, enforce that header or Bearer token matches it.
-    # If not set, allow access only from localhost addresses (local-only mode).
-    if API_KEY:
-        auth_value = authorization or ''
-        bearer = auth_value[7:] if auth_value.lower().startswith('bearer ') else auth_value
-        if x_api_key != API_KEY and bearer != API_KEY:
-            raise HTTPException(status_code=401, detail='Invalid API key')
-        return True
-
-    # No API key configured: only allow requests originating from localhost
-    client_host = None
-    if request is not None:
-        try:
-            client_host = request.client.host
-        except Exception:
-            client_host = None
-    # if called without a Request (unit tests), allow by default when no API key configured
-    if request is None:
-        return True
-    if client_host not in ('127.0.0.1', '::1', 'localhost'):
-        raise HTTPException(status_code=401, detail='API key required for remote access')
-    return True
+from dashboard.auth_routes import (
+    router as auth_router,
+    require_viewer,
+    require_analyst,
+    require_operator,
+    require_admin,
+    resolve_principal,
+)
 
 from contextlib import asynccontextmanager
 from core.db_maintenance import start_background
@@ -142,12 +121,21 @@ async def prometheus_middleware(request: Request, call_next):
             logger.exception('metrics update failed')
     return resp
 
+# The console is normally served by this API (same origin). Cross-origin
+# access is only for the Vite dev server or a separately hosted console.
+CORS_ORIGINS = [
+    o.strip() for o in os.environ.get(
+        'SENTINEL_CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'
+    ).split(',') if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Sentinel-CSRF"],
 )
+app.include_router(auth_router)
 
 # Serve built frontend if present (build into frontend/dist)
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -198,7 +186,7 @@ def read_jsonl_optional(name, limit=500):
 
 
 @app.get('/metrics')
-def metrics(api_ok: bool = Depends(require_api_key)):
+def metrics(principal: dict = Depends(require_viewer)):
     # expose prometheus metrics from centralized registry
     try:
         reg = metrics_utils.REGISTRY
@@ -212,7 +200,7 @@ def metrics(api_ok: bool = Depends(require_api_key)):
 
 
 @app.get('/openapi.json')
-def openapi_spec(api_ok: bool = Depends(require_api_key)):
+def openapi_spec(principal: dict = Depends(require_viewer)):
     try:
         return app.openapi()
     except Exception:
@@ -280,14 +268,14 @@ except Exception:
 
 
 @app.get('/api/firewall/rules')
-def firewall_rules(api_ok: bool = Depends(require_api_key)):
+def firewall_rules(principal: dict = Depends(require_viewer)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     return maybe_sanitize(firewall.list_rules())
 
 
 @app.post('/api/firewall/block')
-def firewall_block(payload: dict, api_ok: bool = Depends(require_api_key)):
+def firewall_block(payload: dict, principal: dict = Depends(require_operator)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     ip = payload.get('ip')
@@ -303,7 +291,7 @@ def firewall_block(payload: dict, api_ok: bool = Depends(require_api_key)):
 
 
 @app.post('/api/firewall/unblock')
-def firewall_unblock(payload: dict, api_ok: bool = Depends(require_api_key)):
+def firewall_unblock(payload: dict, principal: dict = Depends(require_operator)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     ip = payload.get('ip')
@@ -317,7 +305,7 @@ def firewall_unblock(payload: dict, api_ok: bool = Depends(require_api_key)):
 
 
 @app.get('/api/firewall/actions')
-def firewall_actions(api_ok: bool = Depends(require_api_key)):
+def firewall_actions(principal: dict = Depends(require_viewer)):
     # return recent firewall action log lines
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
@@ -360,7 +348,7 @@ def firewall_actions(api_ok: bool = Depends(require_api_key)):
 
 
 @app.get('/api/firewall/policy')
-def firewall_policy(api_ok: bool = Depends(require_api_key)):
+def firewall_policy(principal: dict = Depends(require_viewer)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     try:
@@ -370,7 +358,7 @@ def firewall_policy(api_ok: bool = Depends(require_api_key)):
 
 
 @app.post('/api/firewall/policy')
-def firewall_policy_update(payload: dict, api_ok: bool = Depends(require_api_key)):
+def firewall_policy_update(payload: dict, principal: dict = Depends(require_admin)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     try:
@@ -380,7 +368,7 @@ def firewall_policy_update(payload: dict, api_ok: bool = Depends(require_api_key
 
 
 @app.post('/api/firewall/whitelist')
-def firewall_whitelist(payload: dict, api_ok: bool = Depends(require_api_key)):
+def firewall_whitelist(payload: dict, principal: dict = Depends(require_operator)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     ip = payload.get('ip')
@@ -398,14 +386,14 @@ def firewall_whitelist(payload: dict, api_ok: bool = Depends(require_api_key)):
 
 
 @app.post('/api/firewall/expire')
-def firewall_expire(api_ok: bool = Depends(require_api_key)):
+def firewall_expire(principal: dict = Depends(require_operator)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     return maybe_sanitize(firewall.expire_rules())
 
 
 @app.post('/api/firewall/rollback')
-def firewall_rollback(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
+def firewall_rollback(payload: dict = {}, principal: dict = Depends(require_operator)):
     if firewall is None:
         raise HTTPException(status_code=503, detail='firewall module not available')
     reason = (payload or {}).get('reason', 'operator_rollback')
@@ -414,7 +402,7 @@ def firewall_rollback(payload: dict = {}, api_ok: bool = Depends(require_api_key
 
 
 @app.post('/api/demo/run')
-def demo_run(payload: dict, api_ok: bool = Depends(require_api_key)):
+def demo_run(payload: dict, principal: dict = Depends(require_operator)):
     """Safely start a demo attack runner. Does not allow arbitrary shell execution.
     Accepted payload: { ip: optional, simulate_type: optional }
     """
@@ -453,7 +441,7 @@ def demo_run(payload: dict, api_ok: bool = Depends(require_api_key)):
 
 
 @app.post('/api/demo/presenter')
-def demo_presenter(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
+def demo_presenter(payload: dict = {}, principal: dict = Depends(require_operator)):
     """Start a guided presenter demo flow. This will orchestrate a sequence of demo steps
     and emit `demo_step` events into the app event queue so connected UIs can animate a demo.
     Payload can include { ip: optional, simulate_type: optional, step_delay: optional }
@@ -517,7 +505,7 @@ def demo_presenter(payload: dict = {}, api_ok: bool = Depends(require_api_key)):
 
 
 @app.get("/api/alerts")
-def alerts(api_ok: bool = Depends(require_api_key)):
+def alerts(principal: dict = Depends(require_viewer)):
     # prefer DB-backed alerts table
     try:
         from core.storage import get_storage
@@ -530,7 +518,7 @@ def alerts(api_ok: bool = Depends(require_api_key)):
 
 
 @app.get("/api/live_stats")
-def live_stats():
+def live_stats(principal: dict = Depends(require_viewer)):
     # prefer DB live_stats snapshot
     try:
         from core.storage import get_storage
@@ -548,7 +536,7 @@ def live_stats():
 
 
 @app.get("/api/device_profiles")
-def device_profiles(api_ok: bool = Depends(require_api_key)):
+def device_profiles(principal: dict = Depends(require_viewer)):
     # Try DB first for device profiles, fall back to JSON file
     try:
         from core.storage import get_storage
@@ -568,7 +556,7 @@ def device_profiles(api_ok: bool = Depends(require_api_key)):
 
 
 @app.get("/api/risk_timeline")
-def risk_timeline(api_ok: bool = Depends(require_api_key)):
+def risk_timeline(principal: dict = Depends(require_viewer)):
     # prefer DB risk timeline
     try:
         from core.storage import get_storage
@@ -589,7 +577,7 @@ def risk_timeline(api_ok: bool = Depends(require_api_key)):
 
 
 @app.get("/api/flows")
-def flows(limit: int = 500, api_ok: bool = Depends(require_api_key)):
+def flows(limit: int = 500, principal: dict = Depends(require_viewer)):
     limit = max(1, min(int(limit or 500), 5000))
     # prefer DB flows table if available
     try:
@@ -606,7 +594,7 @@ def flows(limit: int = 500, api_ok: bool = Depends(require_api_key)):
 
 
 @app.get("/api/incidents/timeline")
-def incident_timeline(limit: int = 100, api_ok: bool = Depends(require_api_key)):
+def incident_timeline(limit: int = 100, principal: dict = Depends(require_viewer)):
     limit = max(1, min(int(limit or 100), 1000))
     alerts_data = read_json_file_optional("alerts.json", [])
     flows_data = read_jsonl_optional("flows_history.jsonl", limit=limit)
@@ -615,12 +603,12 @@ def incident_timeline(limit: int = 100, api_ok: bool = Depends(require_api_key))
 
 
 @app.post("/api/alerts/explain")
-def alert_explain(payload: dict, api_ok: bool = Depends(require_api_key)):
+def alert_explain(payload: dict, principal: dict = Depends(require_analyst)):
     return maybe_sanitize(explain_alert(payload or {}))
 
 
 @app.get("/api/reports/security")
-def security_report(api_ok: bool = Depends(require_api_key)):
+def security_report(principal: dict = Depends(require_viewer)):
     alerts_data = read_json_file_optional("alerts.json", [])
     profiles_data = read_json_file_optional("device_profiles.json", {})
     actions_data = read_jsonl_optional(os.path.join("logs", "firewall_actions.jsonl"), limit=1000)
@@ -640,12 +628,12 @@ def security_report(api_ok: bool = Depends(require_api_key)):
 
 
 @app.get("/api/health")
-def health(api_ok: bool = Depends(require_api_key)):
+def health(principal: dict = Depends(require_viewer)):
     return maybe_sanitize(read_json_file("health.json"))
 
 
 @app.get('/api/device/{device_id}/logs')
-def device_logs(device_id: str, limit: int = 200, api_ok: bool = Depends(require_api_key)):
+def device_logs(device_id: str, limit: int = 200, principal: dict = Depends(require_viewer)):
     # return recent alerts/flows that mention this device id (mac/ip/host)
     alerts_path = os.path.join(ROOT, 'alerts.json')
     if not os.path.exists(alerts_path):
@@ -675,6 +663,23 @@ def device_logs(device_id: str, limit: int = 200, api_ok: bool = Depends(require
 async def websocket_packets(ws: WebSocket):
     # simple websocket stream: polls alerts.json and live_stats.json and pushes new items
     await ws.accept()
+    # Browsers cannot set headers on a WebSocket, so the first message must be
+    # {"type": "auth", "token": "<access token or API key>"} within 5 seconds.
+    try:
+        first = json.loads(await asyncio.wait_for(ws.receive_text(), timeout=5))
+        token = first.get('token') if isinstance(first, dict) and first.get('type') == 'auth' else None
+    except (asyncio.TimeoutError, ValueError, WebSocketDisconnect):
+        token = None
+        first = None
+    client_host = ws.client.host if ws.client else None
+    principal = resolve_principal(token, client_host) if first is not None else None
+    if principal is None or principal.get('must_change_password'):
+        try:
+            await ws.close(code=4401, reason='authentication required')
+        except RuntimeError:
+            pass
+        return
+    await ws.send_text(json.dumps({'type': 'auth_ok', 'payload': {'role': principal['role']}}))
     last_alert_mtime = 0
     last_stats_mtime = 0
     last_stats_payload = None
