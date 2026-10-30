@@ -7,6 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/vishwa-10147/SentinelEdgeAI?label=release)](https://github.com/vishwa-10147/SentinelEdgeAI/releases/latest)
 [![CI](https://github.com/vishwa-10147/SentinelEdgeAI/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vishwa-10147/SentinelEdgeAI/actions/workflows/ci.yml)
 [![Security Scans](https://github.com/vishwa-10147/SentinelEdgeAI/actions/workflows/security-scans.yml/badge.svg?branch=main)](https://github.com/vishwa-10147/SentinelEdgeAI/actions/workflows/security-scans.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205%20%7C%20Jetson%20Orin%20Nano-555)
 ![Roadmap](https://img.shields.io/badge/roadmap-Phase%201%20of%206%20to%20v2.0-orange)
@@ -381,4 +382,6 @@ docs/         additional documentation and archived material
 
 ## License
 
-No licence has been chosen yet, so all rights are reserved by the author. Choosing one is tracked in [PLAN.md](PLAN.md) Phase 0.
+SentinelEdgeAI is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution. You may use, modify and distribute it, including commercially, provided you keep the licence and notice files.
+
+Unless you state otherwise, any contribution you submit is licensed under the same terms (Apache-2.0 §5).

@@ -1,0 +1,6 @@
+SentinelEdgeAI
+Copyright 2026 vishwa-10147 and the SentinelEdgeAI contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+Third-party components keep their own licences; the CycloneDX SBOM published
+with each release lists the Python dependencies shipped in the device package.
