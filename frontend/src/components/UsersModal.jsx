@@ -53,6 +53,12 @@ export default function UsersModal({ open, onClose, currentUser }){
     if(password) run(()=>apiPatch(`/api/users/${encodeURIComponent(username)}`, { password }))
   }
 
+  const resetMfa = (username)=>{
+    if(window.confirm(`Remove two-step sign-in for ${username}? Use this when they lost their phone. They are signed out and set it up again at next sign-in.`)){
+      run(()=>apiPatch(`/api/users/${encodeURIComponent(username)}`, { reset_mfa: true }))
+    }
+  }
+
   const remove = (username)=>{
     if(window.confirm(`Delete user ${username}? This signs them out everywhere.`)){
       run(()=>apiDelete(`/api/users/${encodeURIComponent(username)}`))
@@ -73,7 +79,7 @@ export default function UsersModal({ open, onClose, currentUser }){
         <div className="rules-section">
           <div className="users-table">
             <div className="users-row users-head">
-              <span>User</span><span>Role</span><span>Status</span><span>Last sign-in</span><span />
+              <span>User</span><span>Role</span><span>Status</span><span>Two-step</span><span>Last sign-in</span><span />
             </div>
             {users.map(u=>{
               const self = u.username.toLowerCase() === currentUser?.username?.toLowerCase()
@@ -86,9 +92,13 @@ export default function UsersModal({ open, onClose, currentUser }){
                     </select>
                   </span>
                   <span>{u.disabled ? 'Disabled' : u.locked ? 'Locked' : u.must_change_password ? 'Must change password' : 'Active'}</span>
+                  <span className={u.mfa_enabled ? 'mfa-on' : u.mfa_setup_required ? 'mfa-pending' : 'mfa-off'}>
+                    {u.mfa_enabled ? 'On' : u.mfa_setup_required ? 'Setup pending' : 'Off'}
+                  </span>
                   <span>{formatDate(u.last_login)}</span>
                   <span className="users-actions">
                     <button className="ghost-button" disabled={busy} onClick={()=>resetPassword(u.username)}>Reset password</button>
+                    {u.mfa_enabled && <button className="ghost-button" disabled={busy} onClick={()=>resetMfa(u.username)}>Reset MFA</button>}
                     <button className="ghost-button" disabled={busy || self} onClick={()=>run(()=>apiPatch(`/api/users/${encodeURIComponent(u.username)}`, { disabled: !u.disabled }))}>
                       {u.disabled ? 'Enable' : 'Disable'}
                     </button>

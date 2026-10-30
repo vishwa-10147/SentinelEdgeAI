@@ -48,7 +48,7 @@ PY
 echo "Running websocket listener and DB marker insertion"
 # use storage factory (Postgres if DATABASE_URL is set)
 $PYTHON - <<'PY'
-import asyncio, json, time
+import asyncio, json, os, time
 from core.storage import get_storage
 import websockets
 
@@ -65,9 +65,16 @@ try:
         uri = 'ws://127.0.0.1:9000/ws/packets'
         try:
             async with websockets.connect(uri, open_timeout=5) as ws:
-                # wait for any message (alert/flow/event) to confirm websocket is delivering
+                # the stream requires authentication in its first message; with no
+                # users and no API key the server accepts localhost (development mode)
+                token = os.environ.get('SMOKE_TOKEN') or os.environ.get('DASHBOARD_API_KEY') or ''
+                await ws.send(json.dumps({'type': 'auth', 'token': token}))
+                # wait for a data message (alert/flow/event), not just the auth reply
                 try:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=12)
+                    while True:
+                        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=12))
+                        if msg.get('type') != 'auth_ok':
+                            break
                     print('SUCCESS: websocket delivered a message')
                     return 0
                 except Exception as e:

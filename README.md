@@ -52,7 +52,7 @@ SentinelEdgeAI fills that gap: **behavioural detection and automated response on
 
 ```text
 Phase 0  Correctness, hygiene, release pipeline   v1.1   ███████████████████░  done, 2 small items open
-Phase 1  Secure management plane                  v1.2   ███████░░░░░░░░░░░░░  in progress
+Phase 1  Secure management plane                  v1.2   ██████████░░░░░░░░░░  in progress
 Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ░░░░░░░░░░░░░░░░░░░░
 Phase 3  Enforcement you can trust                v1.4   ░░░░░░░░░░░░░░░░░░░░
 Phase 4  Detection quality                        v1.5   ░░░░░░░░░░░░░░░░░░░░
@@ -65,8 +65,6 @@ Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░�
 
 | Phase | Release | Goal | Status |
 |---|---|---|---|
-| 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: IPv6 blocking, privileged-runner CI proof |
-| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🟡 In progress: accounts, roles, login protection done; MFA, HTTPS, API tokens, audit log next |
 | 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🔜 |
 | 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🔜 |
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🔜 |
@@ -137,7 +135,8 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | Offline installer, `sentinelctl` upgrade with health check and automatic rollback | ✅ |
 | Release pipeline: tests, signature check, dependency audit, SBOM, provenance attestation | ✅ |
 | User accounts with Argon2id passwords, four roles, rotating sessions, login lockout | ✅ |
-| MFA, HTTPS, scoped API tokens, audit log | 🔜 |
+| Two-step sign-in (TOTP) for Operators and Admins, with recovery codes | ✅ |
+| HTTPS, scoped API tokens, audit log | 🔜 |
 | SIEM export (syslog/CEF, webhooks, JSON for Splunk, ELK and Microsoft Sentinel) | 🔜 |
 | Model registry with shadow testing and hot reload | 🔜 |
 | Multi-sensor and multi-site fleet management | 🔜 |
@@ -231,6 +230,7 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
    sudo -u sentinel .venv/bin/python -m core.auth list
    sudo -u sentinel .venv/bin/python -m core.auth create-user --username alice --role operator
    sudo -u sentinel .venv/bin/python -m core.auth reset-password --username alice --must-change-password
+   sudo -u sentinel .venv/bin/python -m core.auth reset-mfa --username alice   # lost phone
    ```
 
 **Upgrades and rollback**
@@ -296,6 +296,7 @@ Detection tuning lives in [config.yaml](config.yaml) (risk thresholds, baseline 
 | `SENTINEL_AUTH_DB` | `data/auth.db` | User accounts and sessions |
 | `SENTINEL_ACCESS_TOKEN_TTL` / `SENTINEL_SESSION_TTL` | `900` / `43200` | Access-token and session lifetime in seconds |
 | `SENTINEL_CORS_ORIGINS` | Vite dev server | Comma-separated origins allowed to call the API from another site |
+| `SENTINEL_MFA_ROLES` | `operator,admin` | Roles that must use two-step sign-in (empty to turn the requirement off) |
 | `SENTINEL_COOKIE_SECURE` | auto | `1` forces the `Secure` flag on the session cookie (set it behind an HTTPS proxy) |
 | `SENTINEL_HOST` / `SENTINEL_PORT` | `127.0.0.1` / `9000` | API bind address and port |
 | `SENTINEL_MODEL_SIGNING_KEY` / `_FILE` | unset | Key that verifies the ML model signature. **Never commit it** |
@@ -322,9 +323,12 @@ Every endpoint except sign-in requires authentication: a console access token (`
 | Operator | Analyst + block, unblock, whitelist, expire, rollback, demos |
 | Admin | Operator + `POST /api/firewall/policy` and user management |
 
+Operators and Admins must set up two-step sign-in (an authenticator app) at their next sign-in. The first admin does this right after choosing a new password, so have a phone with an authenticator app ready.
+
 | Method and path | Purpose |
 |---|---|
 | `GET /api/auth/status`, `POST /api/auth/login`, `/refresh`, `/logout`, `/password`, `GET /api/auth/me` | Sign-in and sessions |
+| `GET /api/auth/mfa`, `POST /api/auth/mfa/setup`, `/mfa/enable` | Two-step sign-in status and enrolment |
 | `GET/POST /api/users`, `PATCH/DELETE /api/users/{username}` | User management (Admin) |
 | `GET /api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/risk_timeline`, `/api/live_stats` | Detection data |
 | `GET /api/incidents/timeline`, `/api/reports/security`, `POST /api/alerts/explain` | Investigation and reporting |
@@ -360,7 +364,7 @@ docs/         additional documentation and archived material
 
 ## Known limitations (v1.1)
 
-1. **No TLS or MFA yet.** Keep the console on a trusted management network until HTTPS and MFA ship in v1.2.
+1. **No TLS yet.** Keep the console on a trusted management network until HTTPS ships in v1.2.
 2. **Single node only.** The Jetson is not used until v1.3.
 3. **IPv4 only.** IPv6 addresses cannot be blocked yet.
 4. **No inline bridge mode.** Blocks cover traffic to and routed through the appliance; bridge filtering and MAC quarantine arrive in v1.4.

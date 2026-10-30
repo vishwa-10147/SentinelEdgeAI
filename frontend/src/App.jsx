@@ -18,7 +18,7 @@ const PresenterMode = lazy(() => import('./components/PresenterMode'))
 const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'))
 const UsersModal = lazy(() => import('./components/UsersModal'))
 import { apiGet, apiPost, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
-import { ChangePasswordScreen, LoginScreen } from './components/AuthScreens'
+import { ChangePasswordScreen, LoginScreen, MfaSetupScreen } from './components/AuthScreens'
 
 const SEVERITY = {
   NORMAL: { label: 'Normal', color: '#22c55e', className: 'normal' },
@@ -804,6 +804,15 @@ export default function App(){
         minLength={minLength}
         onChanged={()=>{ setUser({ ...user, must_change_password: false }); setChangingPassword(false) }}
         onCancel={user.must_change_password ? signOut : ()=>setChangingPassword(false)}
+      />
+    )
+  }
+  if(user.mfa_setup_required){
+    return (
+      <MfaSetupScreen
+        user={user}
+        onDone={()=>setUser({ ...user, mfa_setup_required: false, mfa_enabled: true })}
+        onSignOut={signOut}
       />
     )
   }

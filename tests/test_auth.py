@@ -16,6 +16,8 @@ def auth_db(tmp_path, monkeypatch):
     monkeypatch.setenv('SENTINEL_AUTH_DB', str(tmp_path / 'auth.db'))
     monkeypatch.delenv('DASHBOARD_API_KEY', raising=False)
     monkeypatch.delenv('SENTINEL_API_KEY_ROLE', raising=False)
+    # role and session tests run without the MFA requirement; MFA tests opt in
+    monkeypatch.setenv('SENTINEL_MFA_ROLES', '')
     monkeypatch.setattr(auth_routes, 'login_throttle', auth.LoginThrottle())
     yield
     auth.get_store().close()
@@ -182,7 +184,8 @@ def test_login_refresh_logout_flow(store):
     r = client.post('/api/auth/login', json={'username': 'root', 'password': PASSWORD})
     assert r.status_code == 200
     body = r.json()
-    assert body['user'] == {'username': 'root', 'role': 'admin', 'must_change_password': False}
+    assert body['user'] == {'username': 'root', 'role': 'admin', 'must_change_password': False,
+                            'mfa_enabled': False, 'mfa_setup_required': False}
     cookie = r.headers['set-cookie'].lower()
     assert 'httponly' in cookie and 'samesite=strict' in cookie and 'path=/api/auth' in cookie
 
