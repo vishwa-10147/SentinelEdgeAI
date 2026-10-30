@@ -53,6 +53,9 @@ def resolve_principal(token: Optional[str], client_host: Optional[str], key: Opt
     token = token or None
     if token and token.startswith(auth.ACCESS_TOKEN_PREFIX + '.'):
         return auth.get_store().verify_access_token(token)
+    for candidate in (key, token):
+        if candidate and candidate.startswith(auth.API_TOKEN_PREFIX + '.'):
+            return auth.get_store().verify_api_token(candidate)
     configured = api_key()
     if configured:
         for candidate in (key, token):
@@ -137,6 +140,12 @@ class NewUser(BaseModel):
     password: str
     role: str = 'viewer'
     must_change_password: bool = True
+
+
+class NewApiToken(BaseModel):
+    name: str
+    role: str = 'viewer'
+    expires_days: int = auth.API_TOKEN_DEFAULT_DAYS
 
 
 class UserUpdate(BaseModel):
@@ -362,3 +371,39 @@ def delete_user(username: str, principal: dict = Depends(require_admin)):
         raise HTTPException(status_code=400, detail=str(exc))
     logger.info('%s deleted user %s', principal['username'], username)
     return {'status': 'deleted'}
+
+
+# ---------- API tokens (admin) ----------
+
+def _token_manager(principal: dict = Depends(require_admin)):
+    # tokens cannot mint or revoke tokens, so a leaked token cannot extend itself
+    if principal.get('kind') != 'user':
+        raise HTTPException(status_code=403, detail='API tokens are managed by signed-in admins only')
+    return principal
+
+
+@router.get('/api/tokens')
+def list_api_tokens(principal: dict = Depends(_token_manager)):
+    return auth.get_store().list_api_tokens()
+
+
+@router.post('/api/tokens', status_code=201)
+def create_api_token(payload: NewApiToken, principal: dict = Depends(_token_manager)):
+    try:
+        token = auth.get_store().create_api_token(
+            principal['username'], payload.name, payload.role, payload.expires_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info('%s created API token %s (%s, %s) expiring %s', principal['username'],
+                token['id'], token['name'], token['role'], token['expires'])
+    return token
+
+
+@router.delete('/api/tokens/{token_id}')
+def revoke_api_token(token_id: str, principal: dict = Depends(_token_manager)):
+    try:
+        auth.get_store().revoke_api_token(token_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail='token not found')
+    logger.info('%s revoked API token %s', principal['username'], token_id)
+    return {'status': 'revoked'}

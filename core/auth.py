@@ -50,6 +50,10 @@ ROLES = ('viewer', 'analyst', 'operator', 'admin')
 ROLE_RANK = {role: rank for rank, role in enumerate(ROLES)}
 
 ACCESS_TOKEN_PREFIX = 'sat1'
+API_TOKEN_PREFIX = 'sak1'  # nosec B105 - token format prefix, not a secret
+API_TOKEN_DEFAULT_DAYS = 90
+API_TOKEN_MAX_DAYS = 365
+TOKEN_NAME_RE = re.compile(r'^[A-Za-z0-9 _.:-]{1,64}$')
 MIN_PASSWORD_LENGTH = 12
 MAX_PASSWORD_LENGTH = 256
 MAX_FAILED_LOGINS = 5
@@ -259,6 +263,22 @@ class AuthStore:
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     code_hash TEXT NOT NULL,
                     used INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            # added in 1.3 (scoped API tokens for automation)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_tokens (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    token_hash TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    created INTEGER NOT NULL,
+                    expires INTEGER NOT NULL,
+                    last_used INTEGER,
+                    revoked INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -645,6 +665,108 @@ class AuthStore:
             (str(username),),
         )
 
+    # ---------- API tokens (automation) ----------
+
+    @staticmethod
+    def _public_token(row):
+        now = int(time.time())
+        return {
+            'id': row['id'],
+            'name': row['name'],
+            'role': row['role'],
+            'owner': row['owner'],
+            'created': row['created'],
+            'expires': row['expires'],
+            'last_used': row['last_used'],
+            'revoked': bool(row['revoked']),
+            'expired': row['expires'] <= now,
+        }
+
+    def create_api_token(self, owner, name, role, expires_days=API_TOKEN_DEFAULT_DAYS):
+        """Create a token acting as `role` (at most the owner's role). The secret is returned once."""
+        user = self._get(owner)
+        if not user:
+            raise KeyError(owner)
+        name = str(name or '').strip()
+        if not TOKEN_NAME_RE.match(name):
+            raise ValueError('token name must be 1-64 letters, digits, spaces or _ . : -')
+        role = validate_role(role)
+        if not role_allows(user['role'], role):
+            raise ValueError(f"a token cannot have more rights than its owner ({user['role']})")
+        try:
+            expires_days = int(expires_days)
+        except (TypeError, ValueError):
+            raise ValueError('expires_days must be a whole number of days')
+        if not 1 <= expires_days <= API_TOKEN_MAX_DAYS:
+            raise ValueError(f'expires_days must be between 1 and {API_TOKEN_MAX_DAYS}')
+        now = int(time.time())
+        token_id = secrets.token_hex(8)
+        secret = secrets.token_urlsafe(32)
+        self._execute(
+            'INSERT INTO api_tokens(id, name, token_hash, role, user_id, created, expires) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (token_id, name, _sha256(secret), role, user['id'], now, now + expires_days * 86400),
+        )
+        token = self.get_api_token(token_id)
+        token['token'] = f'{API_TOKEN_PREFIX}.{token_id}.{secret}'
+        return token
+
+    def _token_rows(self, where='', params=()):
+        return self._fetchall(
+            'SELECT t.*, u.username AS owner FROM api_tokens t JOIN users u ON u.id = t.user_id '
+            + where + ' ORDER BY t.created DESC',  # nosec B608 - where is a fixed clause; values are bound
+            params,
+        )
+
+    def get_api_token(self, token_id):
+        rows = self._token_rows('WHERE t.id = ?', (str(token_id),))
+        return self._public_token(rows[0]) if rows else None
+
+    def list_api_tokens(self, owner=None):
+        if owner is None:
+            rows = self._token_rows()
+        else:
+            rows = self._token_rows('WHERE u.username = ?', (str(owner),))
+        return [self._public_token(r) for r in rows]
+
+    def revoke_api_token(self, token_id):
+        if not self.get_api_token(token_id):
+            raise KeyError(token_id)
+        self._execute('UPDATE api_tokens SET revoked = 1 WHERE id = ?', (str(token_id),))
+
+    def verify_api_token(self, token):
+        """Return the principal for a valid API token, else None."""
+        prefix, _, rest = str(token or '').partition('.')
+        token_id, _, secret = rest.partition('.')
+        if prefix != API_TOKEN_PREFIX or not token_id or not secret:
+            return None
+        row = self._fetchone(
+            'SELECT t.*, u.username AS owner, u.role AS owner_role, u.disabled AS owner_disabled '
+            'FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.id = ?',
+            (token_id,),
+        )
+        if not row:
+            # same hashing work as a real check, so timing does not reveal ids
+            hmac.compare_digest(_sha256(secret), _sha256(''))
+            return None
+        if not hmac.compare_digest(row['token_hash'], _sha256(secret)):
+            return None
+        now = int(time.time())
+        if row['revoked'] or row['owner_disabled'] or row['expires'] <= now:
+            return None
+        if (row['last_used'] or 0) < now - 60:
+            self._execute('UPDATE api_tokens SET last_used = ? WHERE id = ?', (now, token_id))
+        # never more than the owner has now, even if the owner was demoted
+        role = row['role'] if role_allows(row['owner_role'], row['role']) else row['owner_role']
+        return {
+            'kind': 'api_token',
+            'username': f"token:{row['name']}",
+            'role': role,
+            'owner': row['owner'],
+            'token_id': token_id,
+            'must_change_password': False,
+        }
+
     def _purge_expired(self, now):
         # keep revoked sessions for a day so refresh-token reuse is still detected
         self._execute(
@@ -750,6 +872,17 @@ def main(argv=None):
 
     sub.add_parser('list', help='list users')
 
+    p = sub.add_parser('create-token', help='create a scoped, expiring API token for automation (shown once)')
+    p.add_argument('--owner', required=True, help='user the token belongs to; it stops working if they are disabled')
+    p.add_argument('--name', required=True)
+    p.add_argument('--role', required=True, choices=ROLES)
+    p.add_argument('--days', type=int, default=API_TOKEN_DEFAULT_DAYS, help=f'lifetime (1-{API_TOKEN_MAX_DAYS})')
+
+    sub.add_parser('list-tokens', help='list API tokens')
+
+    p = sub.add_parser('revoke-token', help='revoke an API token')
+    p.add_argument('--id', required=True)
+
     p = sub.add_parser(
         'bootstrap-admin',
         help="first install only: create user 'admin' with a random password written to --password-file",
@@ -785,6 +918,19 @@ def main(argv=None):
                                          ('mfa', u['mfa_enabled']),
                                          ('mfa-setup-required', u['mfa_setup_required'])) if on]
                 print(f"{u['username']:<32} {u['role']:<9} {' '.join(flags)}")
+        elif args.command == 'create-token':
+            token = store.create_api_token(args.owner, args.name, args.role, args.days)
+            print(f"created token {token['id']} ({token['name']}, {token['role']}), valid {args.days} days")
+            print('store it now; it is not shown again:')
+            print(token['token'])
+        elif args.command == 'list-tokens':
+            for t in store.list_api_tokens():
+                state = 'revoked' if t['revoked'] else 'expired' if t['expired'] else 'active'
+                expires = time.strftime('%Y-%m-%d', time.gmtime(t['expires']))
+                print(f"{t['id']}  {t['name']:<24} {t['role']:<9} {t['owner']:<16} expires {expires}  {state}")
+        elif args.command == 'revoke-token':
+            store.revoke_api_token(args.id)
+            print(f'revoked token {args.id}')
         elif args.command == 'bootstrap-admin':
             if store.user_count():
                 print('users already exist; nothing to do')
@@ -796,7 +942,8 @@ def main(argv=None):
             store.create_user('admin', password, 'admin', must_change_password=True)
             print(f"created user 'admin'; its one-time password is in {args.password_file}")
     except KeyError as exc:
-        print(f'no such user: {exc.args[0]}', file=sys.stderr)
+        what = 'token' if args.command == 'revoke-token' else 'user'
+        print(f'no such {what}: {exc.args[0]}', file=sys.stderr)
         return 1
     except ValueError as exc:
         print(str(exc), file=sys.stderr)

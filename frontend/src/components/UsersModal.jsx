@@ -15,12 +15,17 @@ function formatDate(ts){
 
 export default function UsersModal({ open, onClose, currentUser }){
   const [users, setUsers] = useState([])
+  const [tokens, setTokens] = useState([])
+  const [tokenForm, setTokenForm] = useState({ name: '', role: 'viewer', expires_days: 90 })
+  const [newToken, setNewToken] = useState(null)
+  const [copied, setCopied] = useState(false)
   const [form, setForm] = useState({ username: '', password: '', role: 'viewer' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async ()=>{
     setUsers(await apiGet('/api/users', []))
+    setTokens(await apiGet('/api/tokens', []))
   }, [])
 
   useEffect(()=>{ if(open) load() }, [open, load])
@@ -47,6 +52,33 @@ export default function UsersModal({ open, onClose, currentUser }){
       setForm({ username: '', password: '', role: 'viewer' })
     })
   }
+
+  const createToken = (event)=>{
+    event.preventDefault()
+    run(async ()=>{
+      const token = await apiPost('/api/tokens', { ...tokenForm, expires_days: Number(tokenForm.expires_days) })
+      setNewToken(token)
+      setCopied(false)
+      setTokenForm({ name: '', role: 'viewer', expires_days: 90 })
+    })
+  }
+
+  const copyToken = async ()=>{
+    try{
+      await navigator.clipboard.writeText(newToken.token)
+      setCopied(true)
+    }catch(e){
+      setError('Copy failed; select the token and copy it by hand')
+    }
+  }
+
+  const revokeToken = (t)=>{
+    if(window.confirm(`Revoke token "${t.name}"? Anything using it stops working immediately.`)){
+      run(()=>apiDelete(`/api/tokens/${encodeURIComponent(t.id)}`))
+    }
+  }
+
+  const tokenState = (t)=>t.revoked ? 'Revoked' : t.expired ? 'Expired' : 'Active'
 
   const resetPassword = (username)=>{
     const password = window.prompt(`Temporary password for ${username} (at least 12 characters). They must change it at next sign-in.`)
@@ -118,6 +150,51 @@ export default function UsersModal({ open, onClose, currentUser }){
           </select>
           <button className="primary-button" type="submit" disabled={busy || !form.username || form.password.length < 12}>Add user</button>
           <p className="auth-hint">{ROLE_HELP[form.role]}. The user must choose their own password at first sign-in.</p>
+        </form>
+        <div className="rules-section">
+          <h3>API tokens</h3>
+          <p className="auth-hint">For scripts and integrations. Send as <code>Authorization: Bearer &lt;token&gt;</code>. A token never has more rights than you, and stops working if your account is disabled.</p>
+          {newToken && (
+            <div className="token-reveal" role="status">
+              <p>Copy the token for <strong>{newToken.name}</strong> now. It will not be shown again.</p>
+              <code>{newToken.token}</code>
+              <div className="users-actions">
+                <button className="ghost-button" type="button" onClick={copyToken}>{copied ? 'Copied' : 'Copy'}</button>
+                <button className="ghost-button" type="button" onClick={()=>setNewToken(null)}>Done</button>
+              </div>
+            </div>
+          )}
+          {tokens.length > 0 && (
+            <div className="users-table">
+              <div className="users-row users-head">
+                <span>Name</span><span>Role</span><span>Status</span><span>Owner</span><span>Expires / last used</span><span />
+              </div>
+              {tokens.map(t=>(
+                <div className="users-row" key={t.id}>
+                  <span>{t.name}</span>
+                  <span>{t.role}</span>
+                  <span>{tokenState(t)}</span>
+                  <span>{t.owner}</span>
+                  <span>{formatDate(t.expires)}<br /><em>{t.last_used ? `used ${formatDate(t.last_used)}` : 'never used'}</em></span>
+                  <span className="users-actions">
+                    {!t.revoked && !t.expired && <button className="ghost-button" disabled={busy} onClick={()=>revokeToken(t)}>Revoke</button>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <form className="rules-section users-create" onSubmit={createToken}>
+          <h3>New API token</h3>
+          <input placeholder="Name, e.g. grafana or backup job" autoComplete="off" value={tokenForm.name} onChange={e=>setTokenForm({ ...tokenForm, name: e.target.value })} />
+          <select value={tokenForm.expires_days} onChange={e=>setTokenForm({ ...tokenForm, expires_days: e.target.value })}>
+            {[7, 30, 90, 180, 365].map(d=><option key={d} value={d}>Expires in {d} days</option>)}
+          </select>
+          <select value={tokenForm.role} onChange={e=>setTokenForm({ ...tokenForm, role: e.target.value })}>
+            {ROLES.map(r=><option key={r} value={r}>{r}</option>)}
+          </select>
+          <button className="primary-button" type="submit" disabled={busy || !tokenForm.name.trim()}>Create token</button>
+          <p className="auth-hint">{ROLE_HELP[tokenForm.role]}. Give each integration its own token with the lowest role it needs.</p>
         </form>
       </section>
     </div>
