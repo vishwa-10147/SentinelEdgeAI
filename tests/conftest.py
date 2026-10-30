@@ -21,6 +21,8 @@ def isolated_audit_log(tmp_path, monkeypatch):
     monkeypatch.setenv('SENTINEL_FEEDBACK_DB', str(tmp_path / 'feedback.db'))
     monkeypatch.setenv('SENTINEL_MODEL_REGISTRY', str(tmp_path / 'models'))
     monkeypatch.setenv('SENTINEL_JA3_BLOCKLIST', str(tmp_path / 'ja3_blocklist.txt'))
+    monkeypatch.setenv('SENTINEL_INTEL_DB', str(tmp_path / 'intel.db'))
+    monkeypatch.setenv('SENTINEL_INTEGRATIONS', str(tmp_path / 'integrations.json'))
     yield
     audit.get_log().close()
 

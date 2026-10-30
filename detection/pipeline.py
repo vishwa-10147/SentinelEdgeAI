@@ -42,6 +42,7 @@ class DetectionPipeline:
             from detection.registry import ModelHandle
             self.autoencoder = ModelHandle('autoencoder')
         self.shadow_scores = 0
+        self.intel_enabled = models
         self._lock = threading.Lock()
 
     def _model_findings(self, record):
@@ -82,9 +83,24 @@ class DetectionPipeline:
         fused['new_findings'] = [f.as_dict() for f in findings]
         return fused
 
+    def _intel(self):
+        try:
+            from intel.store import get_store
+            return get_store()
+        except Exception:
+            return None
+
     def observe_dns(self, src, qname, nxdomain=False, ts=None):
+        from detection.detectors import Finding
+        ts = ts or self.clock()
         with self._lock:
-            findings = self.dns.observe(src, qname, nxdomain, ts or self.clock())
+            findings = self.dns.observe(src, qname, nxdomain, ts)
+            store = self._intel() if self.intel_enabled else None
+            hit = store.match_domain(qname) if store else None
+            if hit and self.dns.cooldown.ready(('intel_domain', src, qname), ts):
+                findings.append(Finding('threat_intel', src, 85, 0.9, 'T1071.004',
+                                        f'lookup of {qname.rstrip(".")}, listed by {hit[0]}' + (f' ({hit[1]})' if hit[1] else ''),
+                                        {'indicator': qname.rstrip('.'), 'source': hit[0], 'label': hit[1]}, ts=ts))
             self.fusion.add_findings(findings)
         return findings
 
@@ -92,8 +108,17 @@ class DetectionPipeline:
         hello = parse_client_hello(payload)
         if not hello:
             return None, []
+        from detection.detectors import Finding
+        ts = ts or self.clock()
         with self._lock:
-            findings = self.tls.observe(src, dst, hello, ts or self.clock())
+            findings = self.tls.observe(src, dst, hello, ts)
+            store = self._intel() if self.intel_enabled else None
+            for fp in (hello['ja3'], hello['ja4']):
+                hit = store.match_fingerprint(fp) if store else None
+                if hit and self.tls.cooldown.ready(('intel_fp', src, fp), ts):
+                    findings.append(Finding('tls_known_bad', src, 90, 0.9, 'T1071.001',
+                                            f'TLS fingerprint {fp} listed by {hit[0]}' + (f' ({hit[1]})' if hit[1] else ''),
+                                            {'fingerprint': fp, 'source': hit[0], 'target': dst}, ts=ts))
             self.fusion.add_findings(findings)
         return hello, findings
 

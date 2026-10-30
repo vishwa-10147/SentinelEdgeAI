@@ -529,6 +529,121 @@ def setup_save(payload: dict, principal: dict = Depends(require_admin)):
     return settings
 
 
+# ---------- Phase 5: integrations and operations ----------
+
+@app.get('/api/integrations')
+def integrations_get(principal: dict = Depends(require_admin)):
+    from integrations import dispatcher
+    return {'config': dispatcher.redacted(dispatcher.load_config()), 'status': dispatcher.read_status()}
+
+
+@app.put('/api/integrations')
+def integrations_put(payload: dict, principal: dict = Depends(require_admin)):
+    from integrations import dispatcher
+    cfg = {'sinks': (payload or {}).get('sinks', [])}
+    current = dispatcher.load_config()
+    # a redacted secret sent back unchanged keeps the stored value
+    by_name = {s.get('name'): s for s in current.get('sinks', [])}
+    for s in cfg['sinks']:
+        for k in dispatcher.SECRET_KEYS:
+            if s.get(k) == '********' and s.get('name') in by_name:
+                s[k] = by_name[s['name']].get(k)
+    try:
+        dispatcher.save_config(cfg)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'integrations_update', details={'sinks': [s.get('type') for s in cfg['sinks']]})
+    return dispatcher.redacted(cfg)
+
+
+@app.post('/api/integrations/test')
+def integrations_test(payload: dict, principal: dict = Depends(require_admin)):
+    from integrations import dispatcher
+    try:
+        ok, message, latency = dispatcher.get_dispatcher().test((payload or {}).get('sink') or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'integrations_test', outcome='success' if ok else 'failure',
+                details={'type': ((payload or {}).get('sink') or {}).get('type'), 'message': message})
+    return {'ok': ok, 'message': message, 'latency_ms': latency}
+
+
+@app.get('/api/intel')
+def intel_status(principal: dict = Depends(require_viewer)):
+    from intel.store import get_store
+    store = get_store()
+    return {'indicators': store.counts(), 'feeds': store.feeds()}
+
+
+@app.post('/api/intel/import')
+def intel_import(payload: dict, principal: dict = Depends(require_admin)):
+    from intel import store as intel_store
+    payload = payload or {}
+    source, text = payload.get('source'), payload.get('text') or ''
+    if not source:
+        raise HTTPException(status_code=400, detail='missing source name')
+    fmt = payload.get('format') or ('stix' if text.lstrip().startswith('{') else 'plain')
+    try:
+        parsed = intel_store.parse_plain(text) if fmt == 'plain' else intel_store.parse_stix(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f'could not parse: {exc}')
+    n = intel_store.get_store().replace_source(str(source)[:64], parsed)
+    audit_event(principal, 'intel_import', target=source, details={'indicators': n, 'format': fmt})
+    return {'source': source, 'indicators': n}
+
+
+@app.post('/api/intel/feeds')
+def intel_add_feed(payload: dict, principal: dict = Depends(require_admin)):
+    from intel.store import get_store
+    payload = payload or {}
+    try:
+        get_store().add_feed(str(payload.get('name') or '')[:64], payload.get('url') or '', payload.get('format', 'plain'))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'intel_feed_add', target=payload.get('name'), details={'url': payload.get('url')})
+    return get_store().feeds()
+
+
+@app.post('/api/intel/update')
+def intel_update(principal: dict = Depends(require_admin)):
+    from intel.store import get_store
+    result = get_store().update_feeds()
+    audit_event(principal, 'intel_update', details=result)
+    return result
+
+
+@app.get('/api/reports/summary')
+def report_summary(period: str = 'daily', format: str = 'json', principal: dict = Depends(require_viewer)):
+    from reporting import summary
+    if period not in summary.PERIODS:
+        raise HTTPException(status_code=400, detail='period must be daily or weekly')
+    report = summary.build(period)
+    if format == 'pdf':
+        return Response(summary.to_pdf(report), media_type='application/pdf',
+                        headers={'Content-Disposition': f'attachment; filename="sentineledgeai-{period}.pdf"'})
+    return report
+
+
+@app.get('/api/devices/{ip}/history')
+def device_history(ip: str, principal: dict = Depends(require_viewer)):
+    from reporting import summary
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='invalid ip')
+    return Response(summary.device_history_csv(ip), media_type='text/csv',
+                    headers={'Content-Disposition': f'attachment; filename="device-{ip}.csv"'})
+
+
+@app.get('/api/export/compliance')
+def compliance(start: Optional[float] = None, end: Optional[float] = None, principal: dict = Depends(require_admin)):
+    from reporting import summary
+    end = end or time.time()
+    start = start or end - 30 * 86400
+    audit_event(principal, 'compliance_export', details={'from': start, 'to': end})
+    return summary.compliance_export(start, end)
+
+
 # ---------- Phase 4: detection quality ----------
 
 @app.post('/api/alerts/feedback')

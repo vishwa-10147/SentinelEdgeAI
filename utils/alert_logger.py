@@ -33,6 +33,13 @@ class AlertLogger:
         with open(self.file_path, "w") as f:
             json.dump(alerts, f, indent=4)
 
+        # SIEM, webhook and notification sinks (non-blocking)
+        try:
+            from integrations.dispatcher import emit
+            emit(alert_data)
+        except Exception:
+            pass
+
         # also persist to SQLite if available
         try:
             storage = get_storage('data/sentinel.db')

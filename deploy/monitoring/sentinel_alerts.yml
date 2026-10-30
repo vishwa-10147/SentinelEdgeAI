@@ -1,0 +1,45 @@
+groups:
+  - name: sentineledgeai
+    rules:
+      - alert: SentinelEngineDown
+        expr: up{job="sentineledgeai-engine"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "SentinelEdgeAI detection engine is not reporting"
+          description: "No metrics from the engine for 2 minutes; traffic is not being analysed."
+      - alert: SentinelSlowDecisions
+        expr: histogram_quantile(0.99, rate(sentinel_decision_latency_seconds_bucket[5m])) > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "99th percentile decision latency above 1 second"
+      - alert: SentinelPacketDrops
+        expr: rate(sentinel_dropped_packets[5m]) > 100
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Capture interface {{ $labels.interface }} is dropping packets"
+          description: "The kernel drops more than 100 packets/s; the appliance may be overloaded."
+      - alert: SentinelHot
+        expr: sentinel_system{resource="temperature_c"} > 80
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Appliance SoC above 80 °C; check cooling"
+      - alert: SentinelIntegrationFailures
+        expr: increase(sentinel_integration_events{result="failed"}[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Alerts are failing to reach a SIEM or notification sink"
+      - alert: SentinelSensorBuffering
+        expr: sentinel_sensor_buffered_flows > 100000
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "A sensor has more than 100,000 flows buffered; the brain may be unreachable"
+      - alert: SentinelCriticalAlerts
+        expr: increase(sentinel_alerts_total{severity="CRITICAL"}[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "SentinelEdgeAI raised a critical security alert"

@@ -237,6 +237,17 @@ Evidence on the labelled synthetic set (7 attack classes × 6 instances, 25 host
 
 **Exit criteria:** alerts appear in a test Splunk/ELK stack within 5 seconds; a full restore onto a fresh device works.
 
+**Status (2026-10-31): built and tested; a real Splunk/ELK stack test is pending.**
+- [x] SIEM export (`integrations/`): syslog RFC 5424 and CEF over UDP, TCP (RFC 6587 framing) or TLS; HMAC-signed HTTPS webhooks; JSON lines for Filebeat / Splunk UF / Vector; Slack, Teams and email. Non-blocking dispatcher with retries, per-sink minimum severity, delivery counters; `/api/integrations` (+ test send). Microsoft Sentinel ingests through its syslog/CEF (AMA) path.
+- [x] Threat intelligence (`intel/`): STIX 2.1 bundles, TAXII 2.1 collections and plain lists; feeds updated daily (`sentineledgeai-intel.timer`); matched on flows, DNS names and TLS fingerprints.
+- [x] Suricata `eve.json` alerts become detector input (rotation-safe tailing).
+- [x] Observability: decision latency, findings, alerts, queue depth, dropped packets, CPU/memory/temperature, sensor buffer, SIEM deliveries; fixed the engine metrics endpoint (it served an empty registry) and moved it to port 9101; JSON logs (`SENTINEL_LOG_FORMAT=json`); Grafana operations dashboard and Prometheus alert rules shipped.
+- [x] Reports: daily/weekly PDF + JSON summary (built-in PDF writer, `sentineledgeai-report.timer`), per-device CSV history, compliance export of alerts and audit entries.
+- [x] Encrypted backup/restore (`sentinelctl backup|restore`): scrypt + AES-256-GCM, consistent SQLite snapshots, checksum and path checks before anything is written.
+- [ ] GPU metrics on the Jetson (pending hardware).
+
+Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CEF) well within 5 seconds of being raised (`tests/test_integrations_ops.py`); **a run against a real Splunk/ELK instance is pending**. A backup restored into an empty device layout yields intact databases, a working admin sign-in and the same audit-chain head; wrong passphrases, tampering and path traversal are refused.
+
 ---
 
 ## Phase 6 — Production release (v2.0)

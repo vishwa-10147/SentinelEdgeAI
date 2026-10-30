@@ -219,4 +219,29 @@ class NewDeviceDetector:
 
 def default_flow_detectors():
     return [PortScanDetector(), BruteForceDetector(), BeaconingDetector(), ExfiltrationDetector(),
-            NewDeviceDetector()]
+            NewDeviceDetector(), IntelDetector()]
+
+
+class IntelDetector:
+    """Traffic to or from an address listed in the threat-intelligence store."""
+
+    def __init__(self, store=None):
+        self._store = store
+        self.cooldown = Cooldown(900)
+
+    def store(self):
+        if self._store is None:
+            from intel.store import get_store
+            self._store = get_store()
+        return self._store
+
+    def observe(self, f):
+        out = []
+        for peer, local in ((f['dst'], f['src']), (f['src'], f['dst'])):
+            hit = self.store().match_ip(peer)
+            if hit and self.cooldown.ready(('threat_intel', local, peer), f['ts']):
+                source, label = hit
+                out.append(Finding('threat_intel', local, 85, 0.9, 'T1071',
+                                   f'traffic with {peer}, listed by {source}' + (f' ({label})' if label else ''),
+                                   {'indicator': peer, 'source': source, 'label': label, 'target': peer}, ts=f['ts']))
+        return out

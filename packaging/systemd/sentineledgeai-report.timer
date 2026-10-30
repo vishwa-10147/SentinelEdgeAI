@@ -1,0 +1,10 @@
+[Unit]
+Description=SentinelEdgeAI: Write the daily security summary (PDF + JSON) (schedule)
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

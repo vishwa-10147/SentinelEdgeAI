@@ -2,13 +2,29 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - rollback_alerts.yml
+  - sentinel_alerts.yml
+
 scrape_configs:
-  - job_name: 'sentineledgeai'
+  # API and console: HTTPS with a Viewer API token
+  # (create one: python -m core.auth create-token --owner admin --name prometheus --role viewer)
+  - job_name: 'sentineledgeai-api'
+    scheme: https
     metrics_path: /metrics
+    tls_config:
+      ca_file: /etc/prometheus/sentinel-ca.pem   # copy of /etc/sentinel/tls/cert.pem (self-signed)
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/sentinel.token
     static_configs:
       - targets: ['localhost:9000']
 
-  # node exporter or other exporters can be added here for Pi metrics
+  # detection engine: flows, decision latency, findings, alerts, queue, drops, temperature
+  - job_name: 'sentineledgeai-engine'
+    static_configs:
+      - targets: ['localhost:9101']
+
   - job_name: 'node'
     static_configs:
       - targets: ['localhost:9100']

@@ -1,0 +1,18 @@
+[Unit]
+Description=SentinelEdgeAI: Update threat-intelligence feeds
+Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
+
+[Service]
+Type=oneshot
+User=sentinel
+Group=sentinel
+WorkingDirectory=/opt/sentineledgeai/current
+EnvironmentFile=/etc/sentinel/sentinel.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m intel update
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel

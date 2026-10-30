@@ -88,6 +88,21 @@ if __name__ == "__main__":
 
     threading.Thread(target=_refresh_identities, daemon=True).start()
 
+    def _collect_metrics():
+        from utils.metrics import collect_system
+        while True:
+            collect_system()
+            time.sleep(15)
+
+    threading.Thread(target=_collect_metrics, daemon=True).start()
+
+    try:
+        from capture.sniffer import alert_logger
+        from integrations.suricata import start_in_engine
+        start_in_engine(alert_logger)
+    except Exception:
+        logger.exception("Suricata integration failed to start")
+
     interface = device_setup.capture_interface()
     logger.info("Starting SentinelEdge AI Flow Engine on %s", interface or "the default interface")
     threading.Thread(target=_watch_capture_interface, args=(interface, logger), daemon=True).start()

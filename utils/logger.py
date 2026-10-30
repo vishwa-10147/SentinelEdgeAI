@@ -1,6 +1,18 @@
+import json
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line (SENTINEL_LOG_FORMAT=json), for log shippers."""
+
+    def format(self, record):
+        out = {'ts': self.formatTime(record, '%Y-%m-%dT%H:%M:%S'), 'level': record.levelname,
+               'logger': record.name, 'msg': record.getMessage()}
+        if record.exc_info:
+            out['exc'] = self.formatException(record.exc_info)
+        return json.dumps(out, ensure_ascii=False)
 
 
 def setup_logger(
@@ -17,9 +29,12 @@ def setup_logger(
     """
     os.makedirs("logs", exist_ok=True)
 
-    formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-    )
+    if os.environ.get('SENTINEL_LOG_FORMAT', '').lower() == 'json':
+        formatter = JsonFormatter()
+    else:
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+        )
 
     # 🔁 Rotating file handler (graceful fallback on permission errors)
     file_handler = None
@@ -43,7 +58,8 @@ def setup_logger(
 
     # Prevent duplicate handlers
     if not logger.handlers:
-        logger.addHandler(file_handler)
+        if file_handler is not None:
+            logger.addHandler(file_handler)
         logger.addHandler(console_handler)
 
     return logger

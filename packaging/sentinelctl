@@ -8,6 +8,8 @@
 #   sudo sentinelctl tls import cert.pem key.pem   # use your organisation's certificate
 #   sudo sentinelctl tls renew                     # new self-signed certificate
 #   sentinelctl tls show                           # certificate details and fingerprint
+#   sudo sentinelctl backup  /root/sentinel.seab   # encrypted backup of config, keys, policy, data
+#   sudo sentinelctl restore /root/sentinel.seab   # onto this device (install first on a fresh one)
 #
 # On-device layout (code is replaceable, state is never touched by upgrades):
 #   /opt/sentineledgeai/releases/<version>/   code + its own Python venv
@@ -46,7 +48,7 @@ die()  { printf '[sentinelctl] ERROR: %s\n' "$*" >&2; exit 1; }
 require_root() { [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"; }
 
 usage() {
-  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -101,12 +103,19 @@ SENTINEL_MODEL_SIGNING_KEY_FILE=$ETC_DIR/model_signing.key
 SENTINEL_DB_PATH=data/sentinel.db
 # Firewall rollback guard (timer): set to 1 once enforcement is enabled.
 ENABLE_ROLLBACK_GUARD=0
+# Engine Prometheus metrics (the API serves its own on /metrics)
+app__metrics_port=9101
 EOF
     umask "$old_umask"
     chown root:"$SERVICE_USER" "$env_file"
     chmod 640 "$env_file"
     log "created $env_file with a new random DASHBOARD_API_KEY"
   fi
+  if ! grep -q '^app__metrics_port=' "$env_file"; then
+    # engine metrics moved off 8001, which other software often uses
+    echo "app__metrics_port=9101" >> "$env_file"
+  fi
+  install -d -m 750 -o "$SERVICE_USER" -g "$SERVICE_USER" "$STATE_DIR/reports"
   if [ ! -f "$ETC_DIR/config.yaml" ]; then
     install -m 640 -o root -g "$SERVICE_USER" "$release/config.yaml" "$ETC_DIR/config.yaml"
     log "created $ETC_DIR/config.yaml from the release defaults"
@@ -240,7 +249,8 @@ install_units() {
   install -m 755 "$release/packaging/sentinelctl" "$SBIN_DIR/sentinelctl"
   systemctl daemon-reload
   systemctl enable "${SERVICES[@]}" sentineledgeai-rollback-guard.timer >/dev/null
-  systemctl enable --now sentineledgeai-watchdog.timer >/dev/null 2>&1 || true
+  systemctl enable --now sentineledgeai-watchdog.timer sentineledgeai-intel.timer sentineledgeai-report.timer \
+    >/dev/null 2>&1 || true
   # two-node services start only once the device has that role (see the .path units)
   for unit in "${ROLE_PATHS[@]}"; do
     if [ -f "$SYSTEMD_DIR/$unit" ]; then
@@ -457,6 +467,44 @@ cmd_tls() {
   esac
 }
 
+cmd_backup() {
+  require_root
+  local out="${1:-}"
+  [ -n "$out" ] || die "usage: sentinelctl backup /path/to/file.seab"
+  [ -x "$PREFIX/current/.venv/bin/python" ] || die "SentinelEdgeAI is not installed"
+  (cd "$PREFIX/current" && .venv/bin/python -m ops.backup --etc "$ETC_DIR" --state "$STATE_DIR" create "$out")
+}
+
+cmd_restore() {
+  require_root
+  local file="${1:-}" svc
+  [ -f "$file" ] || die "usage: sentinelctl restore /path/to/file.seab"
+  [ -x "$PREFIX/current/.venv/bin/python" ] || die "install SentinelEdgeAI first, then restore"
+  # check the passphrase and every checksum before touching anything
+  if [ -z "${SENTINEL_BACKUP_PASSPHRASE:-}" ]; then
+    read -r -s -p "Backup passphrase: " SENTINEL_BACKUP_PASSPHRASE; echo
+    export SENTINEL_BACKUP_PASSPHRASE
+  fi
+  (cd "$PREFIX/current" && .venv/bin/python -m ops.backup --etc "$ETC_DIR" --state "$STATE_DIR" restore --dry-run "$file") \
+    || die "backup not restored"
+  log "stopping services"
+  systemctl stop sentineledgeai-watchdog.timer "${SERVICES[@]}" "${ROLE_SERVICES[@]}" 2>/dev/null || true
+  (cd "$PREFIX/current" && .venv/bin/python -m ops.backup --etc "$ETC_DIR" --state "$STATE_DIR" restore "$file") \
+    || die "restore failed; services left stopped, see the message above"
+  chown -R "$SERVICE_USER:$SERVICE_USER" "$STATE_DIR"
+  chown -R root:"$SERVICE_USER" "$ETC_DIR"
+  chmod 750 "$ETC_DIR"
+  for svc in "$ETC_DIR"/model_signing.key "$ETC_DIR"/tls/key.pem "$ETC_DIR"/sentinel.env; do
+    [ -f "$svc" ] && chmod 640 "$svc"
+  done
+  systemctl start sentineledgeai-watchdog.timer >/dev/null 2>&1 || true
+  if restart_and_check; then
+    log "restored $file; SentinelEdgeAI is running"
+  else
+    die "services unhealthy after restore; check journalctl -u sentineledgeai-engine -u sentineledgeai-api"
+  fi
+}
+
 cmd_status() {
   local current previous svc
   current="$(readlink "$PREFIX/current" 2>/dev/null || true)"
@@ -484,6 +532,8 @@ case "${1:-}" in
   status)          cmd_status ;;
   versions)        cmd_versions ;;
   tls)             shift; cmd_tls "$@" ;;
+  backup)          shift; cmd_backup "$@" ;;
+  restore)         shift; cmd_restore "$@" ;;
   -h|--help|help)  usage 0 ;;
   *)               usage 1 ;;
 esac

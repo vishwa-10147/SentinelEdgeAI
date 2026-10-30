@@ -257,10 +257,20 @@ def _start_ingest_loop():
 
                 ENGINE_METRICS["flows_processed"] += 1
                 try:
-                    if FLOWS_COUNTER is not None:
-                        FLOWS_COUNTER.inc()
+                    from utils import metrics as m
+                    if m.FLOWS_COUNTER is not None:
+                        m.FLOWS_COUNTER.inc()
+                    if m.DECISION_LATENCY is not None:
+                        m.DECISION_LATENCY.observe(processing_time_ms / 1000)
+                    if m.FINDINGS is not None and fused:
+                        for nf in fused.get('new_findings', []):
+                            m.FINDINGS.labels(nf['kind']).inc()
+                    if m.INGEST_QUEUE is not None and ingest_queue is not None:
+                        m.INGEST_QUEUE.set(ingest_queue.queue.qsize())
+                    if m.SENSOR_BUFFER is not None and _brain_buffer is not None:
+                        m.SENSOR_BUFFER.set(len(_brain_buffer))
                 except Exception:
-                    logger.debug("FLOWS_COUNTER.inc failed", exc_info=True)
+                    logger.debug("metrics update failed", exc_info=True)
                 ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
                 health_monitor.update_flows()
 
@@ -327,6 +337,12 @@ def _start_ingest_loop():
                     if fused and fused.get('technique') and not alert.get("mitre_technique_id"):
                         alert["mitre_technique_id"] = fused['technique']
                     alert_logger.log(alert)
+                    try:
+                        from utils import metrics as m
+                        if m.ALERTS is not None:
+                            m.ALERTS.labels(severity).inc()
+                    except Exception:
+                        pass
                     try:
                         if storage:
                             storage.insert_alert(int(time.time()), flow.initiator_ip, flow.responder_ip, flow.initiator_port, flow.responder_port, flow.protocol, final_risk, confidence, str(alert))

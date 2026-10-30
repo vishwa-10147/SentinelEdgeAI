@@ -87,6 +87,16 @@ ROUTES = {
     ('POST', '/api/models/{name}/{version}/stage'): 'admin',
     ('POST', '/api/models/{name}/rollback'): 'admin',
     ('GET', '/api/eval/latest'): 'viewer',
+    ('GET', '/api/integrations'): 'admin',
+    ('PUT', '/api/integrations'): 'admin',
+    ('POST', '/api/integrations/test'): 'admin',
+    ('GET', '/api/intel'): 'viewer',
+    ('POST', '/api/intel/import'): 'admin',
+    ('POST', '/api/intel/feeds'): 'admin',
+    ('POST', '/api/intel/update'): 'admin',
+    ('GET', '/api/reports/summary'): 'viewer',
+    ('GET', '/api/devices/{ip}/history'): 'viewer',
+    ('GET', '/api/export/compliance'): 'admin',
 }
 PROTECTED = sorted(k for k, v in ROUTES.items() if v != 'public')
 USERS = {'viewer': 'vera', 'analyst': 'anna', 'operator': 'otto', 'admin': 'adam'}
@@ -117,7 +127,7 @@ def declared_minimum(route):
 
 
 def concrete(path):
-    return path.replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
+    return path.replace('{ip}', '192.0.2.1').replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
 
 
 @pytest.fixture(autouse=True)
