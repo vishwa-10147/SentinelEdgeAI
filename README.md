@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205%20%7C%20Jetson%20Orin%20Nano-555)
-![Roadmap](https://img.shields.io/badge/roadmap-Phase%201%20of%206%20to%20v2.0-orange)
+![Roadmap](https://img.shields.io/badge/roadmap-Phase%202%20of%206%20to%20v2.0-orange)
 
 [Overview](#overview) ·
 [Roadmap](#roadmap-and-progress) ·
@@ -52,7 +52,7 @@ SentinelEdgeAI fills that gap: **behavioural detection and automated response on
 
 ```text
 Phase 0  Correctness, hygiene, release pipeline   v1.1   ████████████████████  done
-Phase 1  Secure management plane                  v1.2   ██████████████████░░  in progress
+Phase 1  Secure management plane                  v1.2   ████████████████████  done (exit checks met)
 Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ░░░░░░░░░░░░░░░░░░░░
 Phase 3  Enforcement you can trust                v1.4   ░░░░░░░░░░░░░░░░░░░░
 Phase 4  Detection quality                        v1.5   ░░░░░░░░░░░░░░░░░░░░
@@ -61,12 +61,12 @@ Phase 6  Production release                       v2.0   ░░░░░░░�
 Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░░░░░░░░░░░░░░  after v2.0
 ```
 
-**6 phases remain before the v2.0 production release** (Phases 1 to 6), followed by Phase 7, which is ongoing post-release work.
+**5 phases remain before the v2.0 production release** (Phases 2 to 6), followed by Phase 7, which is ongoing post-release work.
 
 | Phase | Release | Goal | Status |
 |---|---|---|---|
 | 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: privileged-runner CI proof |
-| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🟡 In progress: accounts, roles, MFA, rate limits, security headers, API tokens, HTTPS and audit log done; setup wizard done; exit checks next |
+| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | ✅ Built and exit checks met (role test per endpoint, clean ZAP baseline); release pending |
 | 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🔜 |
 | 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🔜 |
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🔜 |

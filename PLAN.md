@@ -125,6 +125,12 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 
 **Exit criteria:** every endpoint has a role test; no unauthenticated endpoint except `/healthz`; OWASP ZAP baseline scan clean; login brute force is throttled.
 
+**Status (2026-10-30): met.**
+- Every endpoint has a role test: `tests/test_endpoint_roles.py` lists all 44 routes with their minimum role, fails when a route is added without one, and checks the guard wired to each route, 401 for anonymous callers, 403 for the role below the minimum, and access for the minimum role on reads.
+- Unauthenticated endpoints: only what sign-in itself needs (`/api/auth/status`, `/login`, `/refresh` with its cookie and CSRF header, `/logout` with its CSRF header) and the console's static files. There is no separate `/healthz`; health is `/api/health` (Viewer).
+- OWASP ZAP baseline against the installed console over HTTPS: 0 FAIL, 0 WARN, 66 PASS (`scripts/zap_baseline.sh`; two informational rules ignored with reasons in `security/zap-baseline.conf`).
+- Login brute force: 10 attempts per client per 5 minutes and a 15-minute lockout after 5 wrong passwords (`tests/test_auth.py`), plus general API rate limits.
+
 ---
 
 ## Phase 2 — Two-node architecture (v1.3)
