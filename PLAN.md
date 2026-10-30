@@ -262,6 +262,16 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 
 **Exit criteria:** 30-day beta with no outage caused by the appliance; pen-test high and critical findings fixed; published performance and detection numbers.
 
+**Status (2026-10-31): software built; OS images, the external pen test and the beta are pending.**
+- [x] One-command installer (`scripts/install.sh`: verified download, private Python when needed, preset) and presets Home / Office / OT / Enterprise (`sentinelctl preset`). **Pre-built OS images are not made yet.**
+- [x] Releases: reproducible packages (verified byte-identical on the Pi and checked in CI), Sigstore/cosign keyless signatures, CycloneDX SBOM, build provenance; minimal non-root container (multi-stage, no compilers, uid 10001, 547 MB).
+- [x] Secure OS baseline script (`deploy/pi/harden_os.sh`, dry run by default): SSH keys only with a lockout guard, management firewall, unattended upgrades, journald cap; LUKS and read-only root documented.
+- [x] Over-the-air updates (`sentinelctl update`): GitHub release or offline mirror, SHA-256 enforced, signature verified with cosign, health-checked install with automatic rollback (A/B via versioned releases). Verified on the Pi, including refusal of a tampered package.
+- [x] Performance (docs/PERFORMANCE.md): AF_PACKET fast-path capture (~121k packets/s effective, was ~4.9k), compiled Isolation Forest (3,843 decisions/s, was 124), throttled timeout scan; fixed a flow-expiry bug.
+- [x] Documentation: admin guide, operator runbooks, troubleshooting, generated API reference (82 endpoints, kept current by a test), pen-test scope, beta plan.
+- [ ] External penetration test (scope in docs/PENTEST_SCOPE.md).
+- [ ] 30-day beta at 3–5 sites (plan in docs/BETA_PROGRAM.md).
+
 ---
 
 ## Phase 7 — Scale and advanced intelligence (v2.x and later)

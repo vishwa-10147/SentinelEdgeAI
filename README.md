@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205%20%7C%20Jetson%20Orin%20Nano-555)
-![Roadmap](https://img.shields.io/badge/roadmap-Phase%202%20of%206%20to%20v2.0-orange)
+![Roadmap](https://img.shields.io/badge/roadmap-Phases%201--6%20built%2C%20field%20validation%20pending-yellow)
 
 [Overview](#overview) ·
 [Roadmap](#roadmap-and-progress) ·
@@ -36,7 +36,7 @@ SentinelEdgeAI is a network appliance that learns how every device on a network 
 | **Target hardware** | Raspberry Pi 5 (sensor) and NVIDIA Jetson Orin Nano (AI and management) |
 | **Interfaces** | Web console, REST API, WebSocket event stream, Prometheus metrics |
 | **Supply chain** | Signed ML model, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
-| **Documentation** | [EXPLAIN.md](EXPLAIN.md) (how it works) · [SECURITY.md](SECURITY.md) (security model) · [PLAN.md](PLAN.md) (roadmap) · [CHANGELOG.md](CHANGELOG.md) |
+| **Documentation** | [Admin guide](docs/ADMIN_GUIDE.md) · [Runbooks](docs/RUNBOOKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [API reference](docs/API.md) · [Performance](docs/PERFORMANCE.md) · [EXPLAIN.md](EXPLAIN.md) · [SECURITY.md](SECURITY.md) · [PLAN.md](PLAN.md) · [CHANGELOG.md](CHANGELOG.md) |
 
 > **Status legend:** ✅ available · 🟡 partial · 🔜 planned (see [PLAN.md](PLAN.md))
 
@@ -53,25 +53,25 @@ SentinelEdgeAI fills that gap: **behavioural detection and automated response on
 ```text
 Phase 0  Correctness, hygiene, release pipeline   v1.1   ████████████████████  done
 Phase 1  Secure management plane                  v1.2   ████████████████████  done (exit checks met)
-Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ░░░░░░░░░░░░░░░░░░░░
-Phase 3  Enforcement you can trust                v1.4   ░░░░░░░░░░░░░░░░░░░░
-Phase 4  Detection quality                        v1.5   ░░░░░░░░░░░░░░░░░░░░
-Phase 5  Integrations and operations              v1.6   ░░░░░░░░░░░░░░░░░░░░
-Phase 6  Production release                       v2.0   ░░░░░░░░░░░░░░░░░░░░
+Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ████████████████░░░░  built; Jetson validation pending
+Phase 3  Enforcement you can trust                v1.4   ████████████████░░░░  built; 72 h inline soak pending
+Phase 4  Detection quality                        v1.5   ███████████████░░░░░  built; public datasets + GPU pending
+Phase 5  Integrations and operations              v1.6   ██████████████████░░  built; real SIEM test pending
+Phase 6  Production release                       v2.0   ██████████████░░░░░░  built; OS images, pen test, beta pending
 Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░░░░░░░░░░░░░░  after v2.0
 ```
 
-**5 phases remain before the v2.0 production release** (Phases 2 to 6), followed by Phase 7, which is ongoing post-release work.
+**All software for Phases 2–6 is built and tested** (simulations, real-kernel network-namespace tests and the Pi itself). What remains before v2.0 needs hardware or time rather than code: Jetson validation, a 72-hour inline soak, public-dataset evaluation and GPU models, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta. Each phase's evidence and open items are listed in [PLAN.md](PLAN.md).
 
 | Phase | Release | Goal | Status |
 |---|---|---|---|
 | 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: privileged-runner CI proof |
 | 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | ✅ Built and exit checks met (role test per endpoint, clean ZAP baseline); release pending |
-| 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🔜 |
-| 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🔜 |
-| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🔜 |
-| 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🔜 |
-| 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🔜 |
+| 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🟡 Built; brain outage, forged/replayed commands and 3 sensors verified in simulation and on the Pi. Pending: Jetson hardware |
+| 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🟡 Built; 22/22 real-kernel checks (routed and bridged), rollback ~100 ms. Pending: 72 h inline soak |
+| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built; 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models |
+| 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
+| 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Installer, OTA, reproducible signed builds, hardening, container, docs, 25–31× faster capture/decisions done. Pending: OS images, pen test, beta |
 | 7 | v2.x+ | Fleet manager, micro-segmentation, federated learning, OT protocols, high availability | 🔜 |
 
 Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked done when all of them are met.

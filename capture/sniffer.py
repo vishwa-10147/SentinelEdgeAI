@@ -1,5 +1,6 @@
 from scapy.all import sniff, IP, TCP, UDP, ARP, DNS, Raw
 import json
+import os
 import time
 import logging
 import psutil
@@ -128,7 +129,21 @@ def process_packet(packet):
             dst_port = packet[UDP].dport
             protocol_name = "UDP"
 
-        # Update flow table
+        handle_parsed(src_ip, dst_ip, src_port, dst_port, protocol_name, size)
+
+    except Exception as e:
+        logger.error(
+            f"Packet processing error | Error={str(e)}",
+            exc_info=True
+        )
+
+
+_last_timeout_check = 0.0
+
+
+def handle_parsed(src_ip, dst_ip, src_port, dst_port, protocol_name, size):
+    """Flow accounting for one parsed packet; shared by the scapy and AF_PACKET capture paths."""
+    try:
         flow_table.process_packet(
             src_ip,
             src_port,
@@ -138,7 +153,13 @@ def process_packet(packet):
             size
         )
 
-        # Check for expired flows
+        # Check for expired flows. The scan walks every active flow, so run it at most
+        # once a second instead of on every packet (idle timeouts are 30 s).
+        global _last_timeout_check
+        now_mono = time.monotonic()
+        if now_mono - _last_timeout_check < 1.0:
+            return
+        _last_timeout_check = now_mono
         expired = flow_table.check_timeouts()
 
         for flow in expired:
@@ -179,6 +200,14 @@ def start_sniffing(interface=None):
     logger.info("Starting SentinelEdge AI Hybrid Engine...")
     # ensure ingest loop is running
     _start_ingest_loop()
+    mode = os.environ.get("SENTINEL_CAPTURE", "auto").lower()
+    from capture import afpacket
+    if mode == "afpacket" or (mode == "auto" and afpacket.available()):
+        from scapy.layers.l2 import Ether
+        logger.warning("capture: AF_PACKET fast path on %s", interface or "all interfaces")
+        afpacket.run(interface, handle_parsed, lambda frame: process_packet(Ether(frame)))
+        return
+    logger.warning("capture: scapy on %s", interface or "all interfaces")
     sniff(prn=process_packet, iface=interface, store=False)
 
 

@@ -36,9 +36,18 @@ die() { printf '[install] ERROR: %s\n' "$*" >&2; exit 1; }
 case "$PRESET" in home|office|ot|enterprise) ;; *) die "--preset must be home, office, ot or enterprise" ;; esac
 case "$(uname -m)" in aarch64|x86_64) ;; *) die "unsupported CPU $(uname -m) (aarch64 or x86_64 needed)" ;; esac
 
-log "installing prerequisites"
-if command -v apt-get >/dev/null; then
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv curl nftables openssl ca-certificates >/dev/null
+missing=""
+for cmd in python3 curl nft openssl sha256sum; do command -v "$cmd" >/dev/null || missing="$missing $cmd"; done
+python3 -c 'import venv, ensurepip' 2>/dev/null || missing="$missing python3-venv"
+if [ -n "$missing" ]; then
+  log "installing prerequisites:$missing"
+  command -v apt-get >/dev/null || die "install these first:$missing"
+  if ! out="$(DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv curl nftables openssl ca-certificates 2>&1)"; then
+    printf '%s\n' "$out" | tail -3 >&2
+    die "apt-get failed (see above); fix the package manager, then run this installer again"
+  fi
+else
+  log "prerequisites present"
 fi
 
 WORK="$(mktemp -d)"

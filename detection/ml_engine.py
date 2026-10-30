@@ -117,11 +117,27 @@ class MLEngine:
             return 0
 
         vector = self._to_vector(features)
-        result = self.model.predict([vector])
+        fast = self._fast_scorer()
+        if fast is not None:
+            label = fast.predict_one(vector)
+        else:
+            label = self.model.predict([vector])[0]
 
         # -1 = anomaly
         #  1 = normal
-        return 1 if result[0] == -1 else 0
+        return 1 if label == -1 else 0
+
+    def _fast_scorer(self):
+        """Compiled scorer for the current model (same results, ~100x faster for one flow)."""
+        model = self.model
+        if getattr(self, '_fast_for', None) is not model:
+            self._fast_for = model
+            try:
+                from detection.fast_iforest import FastIsolationForest
+                self._fast = FastIsolationForest(model)
+            except Exception:
+                self._fast = None   # verified mismatch or unexpected model: use sklearn
+        return self._fast
 
     def _to_vector(self, features):
         return [

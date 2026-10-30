@@ -53,7 +53,8 @@ class FlowTable:
         expired_flows = []
 
         for key, flow in list(self.flows.items()):
-            if (now - flow["last_seen"]).seconds > self.idle_timeout:
+            # total_seconds(): .seconds drops whole days, so day-old flows never expired
+            if (now - flow["last_seen"]).total_seconds() > self.idle_timeout:
                 duration = (flow["last_seen"] - flow["start_time"]).total_seconds()
 
                 record = FlowRecord(
