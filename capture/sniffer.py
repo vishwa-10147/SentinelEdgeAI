@@ -1,4 +1,4 @@
-from scapy.all import sniff, IP, TCP, UDP, ARP
+from scapy.all import sniff, IP, TCP, UDP, ARP, DNS, Raw
 import json
 import time
 import logging
@@ -106,6 +106,7 @@ def process_packet(packet):
             identity.observe_packet(packet)
         if IP not in packet:
             return
+        _observe_dns_tls(packet)
 
         ip_layer = packet[IP]
 
@@ -221,6 +222,20 @@ def _start_ingest_loop():
                 end_time = time.perf_counter()
                 processing_time_ms = round((end_time - start_time) * 1000, 3)
 
+                fused = None
+                try:
+                    from common.protocol import flow_record
+                    from detection.pipeline import get_pipeline
+                    record = flow_record(flow, result, features)
+                    fused = get_pipeline().observe_flow(record, result)
+                    if fused['risk'] > (result.get("final_risk") or 0):
+                        result["final_risk"] = fused['risk']
+                        if fused['attack_type']:
+                            result["attack_type"] = fused['attack_type']
+                    result["confidence"] = max(result.get("confidence") or 0, fused['confidence'])
+                except Exception:
+                    logger.debug("Detection pipeline failed", exc_info=True)
+
                 final_risk = result.get("final_risk", 0)
                 try:
                     _record_flow_stats(flow, final_risk)
@@ -303,8 +318,14 @@ def _start_ingest_loop():
                         "behavior_reasons": behavior_reasons,
                         "mitre_tactic": mitre_info.get("tactic"),
                         "mitre_technique_id": mitre_info.get("technique_id"),
-                        "mitre_technique_name": mitre_info.get("technique_name")
+                        "mitre_technique_name": mitre_info.get("technique_name"),
+                        "confidence": result.get("confidence"),
+                        "confirmed": bool(fused and fused['confirmed']),
+                        "explanation": (fused or {}).get('explanation', []),
+                        "findings": (fused or {}).get('findings', []),
                     }
+                    if fused and fused.get('technique') and not alert.get("mitre_technique_id"):
+                        alert["mitre_technique_id"] = fused['technique']
                     alert_logger.log(alert)
                     try:
                         if storage:
@@ -314,7 +335,8 @@ def _start_ingest_loop():
 
                     try:
                         policy = firewall.get_policy()
-                        if policy.get("response_mode") == "auto_block":
+                        # multi-stage confirmation before any automatic enforcement
+                        if policy.get("response_mode") == "auto_block" and fused and fused['confirmed']:
                             # graduated: alert -> rate limit -> block -> quarantine, with approval gates
                             from enforcement.playbook import get_playbook
                             get_playbook().evaluate(flow.initiator_ip, final_risk, reason=str(attack_type))
@@ -387,6 +409,32 @@ def _forward_to_brain(flow, result, features):
         logger.warning("sensor enrolled; forwarding flows to the brain")
     from common.protocol import flow_record
     _brain_buffer.put(flow_record(flow, result, features))
+
+
+def _observe_dns_tls(packet):
+    """Feed DNS answers and TLS ClientHellos to the Phase 4 detectors; alert on findings."""
+    try:
+        from detection.pipeline import get_pipeline
+        findings = []
+        if DNS in packet and packet[DNS].qr == 1 and packet[DNS].qd is not None:
+            qname = packet[DNS].qd.qname.decode('ascii', 'replace') if isinstance(packet[DNS].qd.qname, bytes) \
+                else str(packet[DNS].qd.qname)
+            findings = get_pipeline().observe_dns(packet[IP].dst, qname, nxdomain=packet[DNS].rcode == 3)
+        elif TCP in packet and Raw in packet:
+            payload = bytes(packet[Raw].load)
+            if payload[:1] == b'\x16':
+                _, findings = get_pipeline().observe_tls(packet[IP].src, packet[IP].dst, payload)
+        for f in findings:
+            if f.severity >= config.get("alerts", "min_risk_score"):
+                alert_logger.log({
+                    "timestamp": str(time.strftime('%Y-%m-%d %H:%M:%S')), "initiator_ip": f.src,
+                    "responder_ip": f.details.get('target'), "protocol": 'DNS' if 'dns' in f.kind or f.kind == 'dga' else 'TLS',
+                    "final_risk_score": f.severity, "severity": "CRITICAL" if f.severity >= 75 else "HIGH",
+                    "attack_type": f.kind, "confidence": f.probability, "mitre_technique_id": f.technique,
+                    "explanation": [f.evidence], "findings": [f.as_dict()],
+                })
+    except Exception:
+        logger.debug("DNS/TLS analysis failed", exc_info=True)
 
 
 def _record_flow_stats(flow, risk):

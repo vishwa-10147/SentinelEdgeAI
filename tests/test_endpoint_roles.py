@@ -81,6 +81,12 @@ ROUTES = {
     ('POST', '/api/playbook/pending/{pending_id}/deny'): 'operator',
     ('POST', '/api/policy/diff'): 'admin',
     ('POST', '/api/policy/apply'): 'admin',
+    ('POST', '/api/alerts/feedback'): 'analyst',
+    ('GET', '/api/alerts/feedback'): 'viewer',
+    ('GET', '/api/models'): 'viewer',
+    ('POST', '/api/models/{name}/{version}/stage'): 'admin',
+    ('POST', '/api/models/{name}/rollback'): 'admin',
+    ('GET', '/api/eval/latest'): 'viewer',
 }
 PROTECTED = sorted(k for k, v in ROUTES.items() if v != 'public')
 USERS = {'viewer': 'vera', 'analyst': 'anna', 'operator': 'otto', 'admin': 'adam'}
@@ -111,7 +117,7 @@ def declared_minimum(route):
 
 
 def concrete(path):
-    return path.replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
+    return path.replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
 
 
 @pytest.fixture(autouse=True)

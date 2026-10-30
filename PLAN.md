@@ -210,6 +210,20 @@ Exit criteria evidence so far (`sudo bash tests/firewall_netns/run_enforcement_n
 
 **Exit criteria (targets, measured on the evaluation set):** ≥ 90% detection on the covered attack classes, ≤ 1% false-positive rate on benign traffic after the warm-up period, and end-to-end decision latency under 1 second at the target flow rate.
 
+**Status (2026-10-31): detectors, fusion, registry, feedback and evaluation harness built; real-dataset and GPU work pending.**
+- [x] Detectors (`detection/detectors.py`, `dns_analysis.py`, `tls.py`): port scan, internal host sweep, brute force, beaconing (NTP exempt), exfiltration to new destinations, new device, DNS tunnelling, DGA, JA3/JA4 + SNI (blocklist, missing SNI, new client fingerprint). No decryption.
+- [x] Per-protocol, hour-of-day baselines (`detection/fusion.py`) used for explanations.
+- [x] Fusion with calibrated confidence; automatic response only when confirmed (≥ 0.8 confidence and two independent signals, a repeated finding, or one finding with ≥ 0.9 precision); every alert carries its evidence and the features furthest from baseline.
+- [x] Model registry (`detection/registry.py`): Ed25519-signed, hash-pinned versions; shadow → canary (share of sources) → active; hot reload; rollback; refuses tampered models.
+- [x] Autoencoder (`detection/autoencoder.py`) on CPU as the first registered model.
+- [x] Feedback loop: `/api/alerts/feedback` (Analyst); labels recalibrate each detector's precision, which drives confirmation.
+- [x] Evaluation harness (`python -m evaluation.harness`, `--cicids file.csv`), reports in `reports/eval/`.
+- [ ] GPU models on the Jetson (TensorRT autoencoder, sequence and graph models) — pending hardware.
+- [ ] Evaluation on CIC-IDS2017 / UNSW-NB15 / CIC-IoT2023 and captured lab attacks; Suricata comparison — the loader exists, datasets not yet run.
+- [ ] Console views for feedback, models and evaluation (API exists).
+
+Evidence on the labelled synthetic set (7 attack classes × 6 instances, 25 hosts, realistic false-positive bait such as NTP, backups, CDN browsing, management polling; 5 seeds and a 24-hour run): **100% detection, 0.0% false positives, p99 0.15 ms per event**. The harness was checked by an over-sensitive configuration, which it correctly scores at 1.4% false positives. These are upper-bound numbers on synthetic data; **the targets count as met only after the public datasets and lab captures.**
+
 ---
 
 ## Phase 5 — Integrations and operations (v1.6)

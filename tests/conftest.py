@@ -18,6 +18,9 @@ def isolated_audit_log(tmp_path, monkeypatch):
     monkeypatch.setenv('SENTINEL_PLAYBOOK_DB', str(tmp_path / 'playbook.db'))
     monkeypatch.setenv('SENTINEL_RESPONSE_POLICY', str(tmp_path / 'response_policy.json'))
     monkeypatch.setenv('SENTINEL_WATCHDOG_STATE', str(tmp_path / 'watchdog.json'))
+    monkeypatch.setenv('SENTINEL_FEEDBACK_DB', str(tmp_path / 'feedback.db'))
+    monkeypatch.setenv('SENTINEL_MODEL_REGISTRY', str(tmp_path / 'models'))
+    monkeypatch.setenv('SENTINEL_JA3_BLOCKLIST', str(tmp_path / 'ja3_blocklist.txt'))
     yield
     audit.get_log().close()
 

@@ -65,3 +65,4 @@ SentinelEdgeAI_Abstract.docx
 
 # scan output (scripts/zap_baseline.sh)
 reports/zap/
+reports/eval/

@@ -529,6 +529,70 @@ def setup_save(payload: dict, principal: dict = Depends(require_admin)):
     return settings
 
 
+# ---------- Phase 4: detection quality ----------
+
+@app.post('/api/alerts/feedback')
+def alert_feedback(payload: dict, principal: dict = Depends(require_analyst)):
+    from detection.feedback import get_store
+    payload = payload or {}
+    alert = payload.get('alert') or {}
+    try:
+        fid = get_store().add(payload.get('kind') or alert.get('attack_type'), payload.get('label'),
+                              src=alert.get('initiator_ip'), alert=alert, by=principal.get('username'),
+                              note=payload.get('note', ''))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'alert_feedback', target=alert.get('initiator_ip'),
+                details={'label': payload.get('label'), 'kind': payload.get('kind') or alert.get('attack_type')})
+    return {'id': fid}
+
+
+@app.get('/api/alerts/feedback')
+def alert_feedback_summary(principal: dict = Depends(require_viewer)):
+    from detection.feedback import get_store
+    return get_store().summary()
+
+
+@app.get('/api/models')
+def models_list(principal: dict = Depends(require_viewer)):
+    from detection import registry
+    return registry.index()
+
+
+@app.post('/api/models/{name}/{version}/stage')
+def models_stage(name: str, version: int, payload: dict, principal: dict = Depends(require_admin)):
+    from detection import registry
+    try:
+        entry = registry.set_stage(name, version, (payload or {}).get('stage'), (payload or {}).get('percent'))
+    except KeyError:
+        raise HTTPException(status_code=404, detail='model version not found')
+    except (ValueError, registry.RegistryError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'model_stage', target=f'{name} v{version}', details={'stage': (payload or {}).get('stage')})
+    return entry
+
+
+@app.post('/api/models/{name}/rollback')
+def models_rollback(name: str, principal: dict = Depends(require_admin)):
+    from detection import registry
+    try:
+        entry = registry.rollback(name)
+    except (ValueError, registry.RegistryError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'model_rollback', target=name, details={'active': entry['active']})
+    return entry
+
+
+@app.get('/api/eval/latest')
+def eval_latest(principal: dict = Depends(require_viewer)):
+    import glob
+    reports = sorted(glob.glob(os.path.join(ROOT, 'reports', 'eval', '*.json')), key=os.path.getmtime)
+    if not reports:
+        raise HTTPException(status_code=404, detail='no evaluation report yet; run python -m evaluation.harness')
+    with open(reports[-1]) as f:
+        return json.load(f)
+
+
 # ---------- Phase 3: enforcement ----------
 
 @app.get('/api/enforcement/protected')
