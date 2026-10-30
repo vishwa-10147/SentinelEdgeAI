@@ -3,7 +3,7 @@ from core.config_loader import Config
 from core.health_server import start_health_server
 from utils.logger import setup_logger
 import logging
-from utils.metrics import start_metrics_server, PROCESS_UP, FLOWS_COUNTER
+from utils.metrics import start_metrics_server
 
 
 def _log_config_summary(cfg, logger):
@@ -47,11 +47,6 @@ if __name__ == "__main__":
         metrics_port = config.get("app", "metrics_port") or 8001
         ok = start_metrics_server(metrics_port)
         if ok:
-            try:
-                if PROCESS_UP is not None:
-                    PROCESS_UP.set(1)
-            except Exception:
-                pass
             logger.info("Prometheus metrics available on port %s", metrics_port)
         else:
             logger.debug("prometheus_client not installed or failed; skipping metrics endpoint")

@@ -262,9 +262,25 @@ healthy() {
     # loopback check; -k because an imported certificate may not name 127.0.0.1
     code="$(curl -s -k -o /dev/null -w '%{http_code}' -H "X-API-Key: $(api_key)" \
              "$scheme://127.0.0.1:${port:-9000}/openapi.json" || true)"
-    [ "$code" = "200" ] && return 0
+    [ "$code" = "200" ] || continue
+    # a crash-looping service still looks "active" between restarts, so it
+    # must also stay up without any automatic restart for a settle period
+    sleep "${SENTINEL_HEALTH_SETTLE:-15}"
+    stable
+    return $?
   done
   return 1
+}
+
+stable() {
+  local svc
+  for svc in "${SERVICES[@]}"; do
+    if ! systemctl is-active --quiet "$svc" || \
+       [ "$(systemctl show -p NRestarts --value "$svc")" != "0" ]; then
+      log "$svc is restarting; see journalctl -u $svc"
+      return 1
+    fi
+  done
 }
 
 restart_and_check() {
