@@ -155,7 +155,7 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 git clone https://github.com/vishwa-10147/SentinelEdgeAI.git
 cd SentinelEdgeAI
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime deps + test/security tools
 
 # build the web console
 (cd frontend && npm ci && npm run build)
@@ -188,7 +188,7 @@ Docker (API + console, dry-run): `docker compose up -d --build` then open `http:
 ### Raspberry Pi installation
 
 ```bash
-bash scripts/build_pi_package.sh                         # on the build machine → dist/*.tar.gz
+bash scripts/build_pi_package.sh   # on the build machine: builds the console, packages committed files → dist/*.tar.gz (+ .sha256)
 # copy the tarball to the Pi, extract it, then:
 sudo bash packaging/pi/install_from_package.sh
 sudo bash /opt/sentineledgeai/deploy/pi/install_pi.sh --install-rollback

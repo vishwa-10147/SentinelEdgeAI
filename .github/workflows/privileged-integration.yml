@@ -25,7 +25,7 @@ jobs:
       - name: Install prerequisites
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Start docker-compose
         run: |
@@ -65,7 +65,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest || true
+          pip install -r requirements-dev.txt || true
       - name: Build and run privileged firewall integration tests
         env:
           SENTINEL_RUN_FIREWALL_CONTAINER_TESTS: '1'
@@ -86,7 +86,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest || true
+          pip install -r requirements-dev.txt || true
       - name: Validate rollback guard behavior
         env:
           VENV_PYTHON: python

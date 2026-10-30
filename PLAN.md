@@ -1,6 +1,6 @@
 # SentinelEdgeAI — Product Plan and Roadmap
 
-This is the single source of truth for what we are building, in what order, and how we know each step is done. It replaces the older `notes.txt` upgrade prompt and `docs/BUILD_PLAN.md`.
+This is the single source of truth for what we are building, in what order, and how we know each step is done. It replaces the older upgrade prompt and build plan, now in `docs/archive/`.
 
 ---
 
@@ -91,11 +91,12 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 - [x] Rollback flushes every SentinelEdgeAI kernel rule, including ones missing from the state file.
 - [x] Container integration test checks the kernel ruleset after block, unblock and rollback.
 - [ ] IPv6 blocking (`ipv6_addr` set and `ip6tables`).
-- [ ] Split `requirements.txt` into `requirements.txt` (runtime) and `requirements-dev.txt` (pytest, bandit, pip-audit); upgrade `uvicorn`.
-- [ ] Include the built web console in the Pi package (`scripts/build_pi_package.sh` currently excludes `frontend/dist`).
+- [x] Split dependencies: `requirements.txt` (runtime), `requirements-dev.txt` (pytest, bandit, pip-audit), `requirements-streamlit.txt` (legacy dashboard); upgrade `uvicorn` 0.23 → 0.54.
+- [x] Pi package is built from `git archive HEAD` (no untracked secrets), includes the built web console, refuses secret-like files, and ships a SHA-256 checksum.
+- [x] Package installer no longer deletes the device's database, firewall state or keys on upgrade.
 - [ ] Choose a licence (Apache-2.0 recommended for an open-core product; or proprietary).
-- [ ] Fill or delete the empty stubs `flow/timeout_manager.py` and `utils/config.py`.
-- [ ] Consolidate the duplicate docs (`README_LOCAL.md`, `README_DEPLOY.md`, `BUILD_SUMMARY.md`, `SECURITY_AUDIT.md`, `docs/BUILD_PLAN.md`) into the new set or `docs/archive/`.
+- [x] Delete the empty stubs `flow/timeout_manager.py` and `utils/config.py`.
+- [x] Move superseded docs (`README_LOCAL.md`, `README_DEPLOY.md`, `BUILD_SUMMARY.md`, `SECURITY_AUDIT.md`, `docs/BUILD_PLAN.md`, `notes.txt`) to `docs/archive/`.
 
 **Exit criteria:** a block issued with `FIREWALL_DRY_RUN=0` drops packets and unblock restores them, on both nft and iptables, proven in CI (the container test now checks this; it must pass on the privileged runner); no secrets in the tree; all tests green.
 

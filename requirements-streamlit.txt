@@ -1,0 +1,9 @@
+# Legacy Streamlit dashboard (dashboard/streamlit_app.py). Optional.
+-r requirements.txt
+
+streamlit==1.54.0
+streamlit-autorefresh==1.0.1
+pandas>=1.4.0,<3
+# security floors for Streamlit's transitive dependencies
+tornado>=6.5.5
+pillow>=12.2.0

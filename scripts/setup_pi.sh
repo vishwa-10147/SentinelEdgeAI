@@ -41,13 +41,16 @@ fi
 
 echo "Installing/upgrading pip and wheel inside the venv as $TARGET_USER..."
 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
-if [ -f "$REPO_DIR/requirements.txt" ]; then
-  "$VENV_DIR/bin/pip" install -r "$REPO_DIR/requirements.txt"
-else
-  echo "Warning: requirements.txt not found in repo — please check $REPO_DIR/requirements.txt"
+REQ_FILE="$REPO_DIR/requirements.txt"
+if [ "$SERVICE_TYPE" = "streamlit" ]; then
+  # legacy dashboard: runtime deps plus Streamlit
+  REQ_FILE="$REPO_DIR/requirements-streamlit.txt"
 fi
-# Ensure optional helpers are available
-"$VENV_DIR/bin/pip" install python-dotenv || true
+if [ -f "$REQ_FILE" ]; then
+  "$VENV_DIR/bin/pip" install -r "$REQ_FILE"
+else
+  echo "Warning: $REQ_FILE not found in repo"
+fi
 
 echo "Creating systemd service at $SERVICE_PATH (requires sudo)"
 

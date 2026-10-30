@@ -65,7 +65,8 @@ From `v1.0` onward, the current and previous minor release will receive security
 | | Back-pressure, sampling under load, overload alerting | 🔜 |
 | Leaking sensitive data in screenshots/demos | `REDACT_SENSITIVE=1` hashes IPs and MACs in API output | ✅ |
 | Vulnerable dependencies | `pip-audit` + Bandit in CI; pinned versions | ✅ |
-| | Dependabot, SBOM per release, separate runtime vs dev requirements | 🔜 |
+| | Separate runtime, dev and Streamlit requirement files; devices install runtime only | ✅ |
+| | Dependabot, SBOM per release | 🔜 |
 | Evidence tampering | Append-only firewall action log | 🟡 |
 | | Tamper-evident (hash-chained) audit log for all user actions | 🔜 |
 
@@ -144,7 +145,7 @@ Earlier commits contained `model_signing.key` at the repository root, and `.ci_t
 | 5 | No TLS on API/WebSocket | Credentials and data readable on the management network | Phase 1 |
 | 6 | No rate limiting | Brute force of the API key; API flooding | Phase 1 |
 | 7 | HMAC model signing — every verifier holds the signing key | A compromised device can sign models | Phase 4 |
-| 8 | Dev tools (pytest, bandit, pip-audit, streamlit) in runtime requirements | Larger attack surface on devices | Phase 0 |
+| 8 | ~~Dev tools (pytest, bandit, pip-audit, streamlit) in runtime requirements~~ | **Fixed** — split into `requirements-dev.txt` / `requirements-streamlit.txt` | — |
 | 9 | Docker image runs as root and includes build tools | Container escape impact is higher | Phase 6 |
 
 ---
