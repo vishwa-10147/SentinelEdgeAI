@@ -543,7 +543,11 @@ cmd_update() {
   read -r latest url < <(latest_release) || die "could not read the latest release from $UPDATE_URL"
   [ -n "$latest" ] && [ -n "$url" ] || die "no release found at $UPDATE_URL"
   current="$(current_version)"
-  if [ "$current" = "$latest" ] || [ "$(printf '%s\n%s\n' "$latest" "$current" | sort -V | tail -1)" = "$current" ]; then
+  # compare X.Y.Z; a dev suffix (e.g. -dev.<commit>) cannot be ordered, so any different
+  # build of the same or a newer base version counts as an update
+  local base_latest="${latest%%-*}" base_current="${current%%-*}"
+  if [ "$current" = "$latest" ] || { [ "$base_latest" != "$base_current" ] && \
+       [ "$(printf '%s\n%s\n' "$base_latest" "$base_current" | sort -V | tail -1)" = "$base_current" ]; }; then
     log "up to date ($current; latest release $latest)"
     return 0
   fi

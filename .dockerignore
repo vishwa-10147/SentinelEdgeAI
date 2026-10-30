@@ -11,3 +11,26 @@ dist
 /tmp
 *.log
 .env.local
+# never ship secrets or local state in an image
+*.key
+*.pem
+*.seab
+data/
+logs/
+reports/
+alerts.json
+live_*.json
+live_events.jsonl
+health.json
+flows*.csv
+flows_history.jsonl
+device_profiles.json
+risk_timeline.json
+firewall_rules.json
+firewall_policy.json
+firewall_restrictions.json
+actions-runner/
+packaging/pi/*.tar.gz
+tests/
+.venv*/
+venv*/

@@ -1,18 +1,23 @@
+# Evaluation / development setup of the API and console in a container.
+# Production appliances use the Pi/Jetson packages (sentinelctl), which add
+# the capture engine, enforcement and systemd hardening.
 services:
   backend:
     build: .
     container_name: sentineledge-backend
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"     # publish on localhost only; put a TLS proxy in front for remote access
     environment:
       - CAPTURE_IN_PROCESS=0
       - FIREWALL_DRY_RUN=1
     volumes:
+      - sentinel-data:/app/data
       - ./logs:/app/logs
       - ./frontend/dist:/app/frontend/dist:ro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+    # the image's own HEALTHCHECK (python, no curl in the slim image) is used
+
+volumes:
+  sentinel-data:
