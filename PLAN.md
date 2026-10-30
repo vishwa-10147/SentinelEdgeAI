@@ -85,16 +85,19 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 - [x] Remove stray files and tracked runtime data, compiled files, the signing key and the credentials file; clean `.gitignore`.
 - [x] Rewrite documentation (README, SECURITY, PLAN, EXPLAIN).
 - [ ] **Rotate the model signing key** and health credentials (see SECURITY.md §4); update the GitHub secret; re-sign the model.
-- [ ] **Fix the nftables backend:** create a chain in `inet sentinel` hooked to `input` and `forward` that drops `ip saddr @blacklist`; add an IPv6 set.
-- [ ] **Fix iptables removal** so it matches the inserted rule (including the comment), and add the `FORWARD` chain.
-- [ ] Add integration tests that check the kernel ruleset actually contains, and then no longer contains, the rule (privileged CI runner).
+- [x] **Fix firewall command execution:** `_run_cmd` now runs only allowlisted `nft`/`iptables` binaries directly (the generic subprocess wrapper rejected them, so nothing was ever applied).
+- [x] **Fix the nftables backend:** `input` and `forward` chains in `inet sentinel` drop traffic matching `@blacklist`; created idempotently.
+- [x] **Fix iptables removal** so it matches the inserted rule (including the comment); cover `INPUT` and `FORWARD`; no duplicate rules on re-block.
+- [x] Rollback flushes every SentinelEdgeAI kernel rule, including ones missing from the state file.
+- [x] Container integration test checks the kernel ruleset after block, unblock and rollback.
+- [ ] IPv6 blocking (`ipv6_addr` set and `ip6tables`).
 - [ ] Split `requirements.txt` into `requirements.txt` (runtime) and `requirements-dev.txt` (pytest, bandit, pip-audit); upgrade `uvicorn`.
 - [ ] Include the built web console in the Pi package (`scripts/build_pi_package.sh` currently excludes `frontend/dist`).
 - [ ] Choose a licence (Apache-2.0 recommended for an open-core product; or proprietary).
 - [ ] Fill or delete the empty stubs `flow/timeout_manager.py` and `utils/config.py`.
 - [ ] Consolidate the duplicate docs (`README_LOCAL.md`, `README_DEPLOY.md`, `BUILD_SUMMARY.md`, `SECURITY_AUDIT.md`, `docs/BUILD_PLAN.md`) into the new set or `docs/archive/`.
 
-**Exit criteria:** a block issued with `FIREWALL_DRY_RUN=0` drops packets and unblock restores them, on both nft and iptables, proven in CI; no secrets in the tree; all tests green.
+**Exit criteria:** a block issued with `FIREWALL_DRY_RUN=0` drops packets and unblock restores them, on both nft and iptables, proven in CI (the container test now checks this; it must pass on the privileged runner); no secrets in the tree; all tests green.
 
 ---
 

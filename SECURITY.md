@@ -137,9 +137,9 @@ Earlier commits contained `model_signing.key` at the repository root, and `.ci_t
 
 | # | Issue | Impact | Tracked in |
 |---|---|---|---|
-| 1 | The nftables backend adds IPs to a set that no chain uses | Blocks silently have no effect when `nft` is present | PLAN.md Phase 0 |
-| 2 | iptables removal omits the comment match used at insert | Unblock and expiry may leave rules in place | Phase 0 |
-| 3 | Rules apply to `INPUT` only | Forwarded traffic is not blocked in inline mode | Phase 3 |
+| 1 | ~~Firewall commands rejected by the subprocess wrapper; nftables set never attached to a chain~~ | **Fixed in 0.9.1** — blocks had no effect | — |
+| 2 | ~~iptables removal omitted the comment match used at insert~~ | **Fixed in 0.9.1** | — |
+| 3 | Bridge-level (layer 2) filtering and MAC quarantine not implemented; `INPUT` and `FORWARD` are covered | Devices on the same bridge segment are not isolated | Phase 3 |
 | 4 | Single shared API key, no per-user identity | No accountability; key compromise grants full control | Phase 1 |
 | 5 | No TLS on API/WebSocket | Credentials and data readable on the management network | Phase 1 |
 | 6 | No rate limiting | Brute force of the API key; API flooding | Phase 1 |

@@ -61,10 +61,10 @@ SentinelEdgeAI is **not** a replacement for endpoint protection, email security 
 ### Response (adaptive firewall)
 | Capability | Status |
 |---|---|
-| Block / unblock an IP via nftables or iptables, with time-to-live (TTL) expiry | 🟡 see *Known issues* |
+| Block / unblock an IP via nftables or iptables (host `INPUT` and forwarded traffic), with time-to-live (TTL) expiry | ✅ |
 | Whitelist, response modes (`monitor` / `alert` / `auto_block`), risk threshold policy | ✅ |
 | Dry-run by default; atomic enable/disable; full rollback; systemd rollback guard | ✅ |
-| Inline (bridge) enforcement for forwarded traffic, MAC-based device quarantine | 🔜 |
+| Inline bridge mode (layer-2 filtering) and MAC-based device quarantine | 🔜 |
 | Graduated response playbooks: alert → rate-limit → block → quarantine, with approval gates | 🔜 |
 | Commands from the AI node signed and authenticated (mTLS) | 🔜 |
 
@@ -262,12 +262,10 @@ docs/         additional documentation and archived material
 
 ## Known issues (v0.9)
 
-These are tracked as Phase 0 in [PLAN.md](PLAN.md) and must be fixed before enabling enforcement in production:
+1. **Single shared API key, no TLS.** Do not expose the API beyond a trusted management network until user accounts and HTTPS land (see [SECURITY.md](SECURITY.md)).
+2. **No inline bridge mode yet.** Blocks cover traffic to the appliance and traffic it routes (`FORWARD`), but bridge-level filtering and MAC quarantine are Phase 3.
 
-1. **nftables backend does not block.** It creates the `inet sentinel` table and `blacklist` set but no chain/rule that drops traffic from the set. Because the default backend is `auto`, a Pi with `nft` installed records blocks that have no effect.
-2. **iptables unblock can fail.** Blocks are inserted with a comment match, but removal omits it, so `iptables -D` does not match and the rule stays.
-3. **Blocks only protect the appliance itself.** Rules are added to the `INPUT` chain; forwarded traffic (inline mode) needs `FORWARD`/bridge rules.
-4. **Single shared API key, no TLS.** Do not expose the API beyond a trusted management network until user accounts and HTTPS land (see [SECURITY.md](SECURITY.md)).
+Fixed in `v0.9.1`: firewall commands were rejected by the subprocess wrapper so no rule was ever applied; the nftables backend never attached its blacklist set to a chain; iptables unblock did not match the inserted rule; rules only covered `INPUT`.
 
 ---
 
