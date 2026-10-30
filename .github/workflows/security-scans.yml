@@ -30,13 +30,17 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit (JSON)
-        run: pip-audit --format json --output pip_audit_report.json || true
+        run: |
+          pip-audit -r requirements.txt --format json --output pip_audit_report.json || true
+          pip-audit -r requirements-streamlit.txt --format json --output pip_audit_streamlit_report.json || true
 
       - name: Upload pip-audit report
         uses: actions/upload-artifact@v4
         with:
           name: pip-audit-report
-          path: pip_audit_report.json
+          path: |
+            pip_audit_report.json
+            pip_audit_streamlit_report.json
 
   bandit:
     name: bandit static analysis
