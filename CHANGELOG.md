@@ -28,6 +28,7 @@ First release built by the automated release pipeline. Single-node ("Lite") depl
 - Secrets, runtime data and compiled files are no longer tracked in git.
 - Development tools (pytest, bandit, pip-audit, Streamlit) are no longer installed on devices.
 - `uvicorn` upgraded from 0.23 to 0.54.
+- `starlette` upgraded from 1.0.1 to 1.3.1 to fix PYSEC-2026-248, PYSEC-2026-249, PYSEC-2026-2280 and PYSEC-2026-2281 (caught by the release pipeline's dependency audit).
 
 ### Changed
 - Version numbering continues from `v1.0.0`; the roadmap now runs v1.2 → v2.0 (production).
