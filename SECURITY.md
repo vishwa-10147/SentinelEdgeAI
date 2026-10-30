@@ -50,9 +50,11 @@ The current and previous minor release receive security fixes.
 
 | Threat | Mitigation | Status |
 |---|---|---|
-| Unauthorised use of the API (block/unblock/policy) | API key, or localhost-only when no key is set | ✅ |
-| | Per-user accounts, roles, MFA, session expiry | 🔜 |
-| | Rate limiting and lockout on login | 🔜 |
+| Unauthorised use of the API (block/unblock/policy) | Per-user accounts with Argon2id passwords, four roles enforced on every endpoint, session expiry | ✅ |
+| | Rate limiting per client and account lockout on login | ✅ |
+| | TOTP MFA for Operator and Admin; scoped, expiring API tokens replacing the shared key | 🔜 |
+| Stolen session token | 15-minute access tokens held in memory; refresh token in an HttpOnly, SameSite=Strict cookie, rotated on every use; reuse of an old refresh token revokes the session | ✅ |
+| Cross-site request forgery | Bearer tokens (not cookies) authorise API calls; the refresh/logout endpoints require a custom header; CORS limited to configured origins | ✅ |
 | Eavesdropping on the console/API | HTTPS with a certificate created at install | 🔜 |
 | Appliance blocks critical hosts (self-DoS) | Whitelist; `127.0.0.1` always whitelisted | ✅ |
 | | Auto-detect and protect gateway, DNS, management IPs | 🔜 |
@@ -74,22 +76,28 @@ The current and previous minor release receive security fixes.
 
 ## 3. Security architecture
 
-### Authentication and access (today)
-* If `DASHBOARD_API_KEY` is set, every request must carry it as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
-* If it is **not** set, the API only answers requests from `127.0.0.1` / `::1`.
-* The API binds to `127.0.0.1` by default (`SENTINEL_HOST`). The Docker image binds `0.0.0.0` inside the container but still requires the key or localhost.
-* Interactive API docs (`/docs`, `/redoc`) are disabled.
-* The health endpoint supports Basic auth via `HEALTH_USER` / `HEALTH_PASS`.
+### Authentication and access
+Console users sign in with a username and password (`core/auth.py`, `dashboard/auth_routes.py`).
 
-### Authentication and access (target, v1.2)
-Accounts are stored on the Jetson with Argon2id password hashes. TOTP MFA is required for Operator and Admin. Short-lived access tokens plus refresh tokens. Every action is written to a hash-chained audit log.
+* **Accounts** are stored in `data/auth.db` (`SENTINEL_AUTH_DB`; on devices `/var/lib/sentinel/data/auth.db`, mode `600`, owned by the service user). Passwords are hashed with **Argon2id**; the minimum length is 12 characters.
+* **First install:** `sentinelctl` creates the user `admin` with a random one-time password in `/etc/sentinel/initial-admin-password` (root only, mode `600`). The console forces a password change at first sign-in; delete the file afterwards. Users can also be managed on the device with `python -m core.auth` (`create-user`, `reset-password`, `set-role`, `unlock`, `list`).
+* **Sessions:** a login returns a 15-minute access token (`SENTINEL_ACCESS_TOKEN_TTL`) that the console keeps in memory only, and sets a refresh token in an `HttpOnly`, `SameSite=Strict` cookie scoped to `/api/auth` (lifetime `SENTINEL_SESSION_TTL`, default 12 h). The refresh token is rotated on every use; presenting an old one revokes the whole session. Access tokens are checked against the session and the user on every request, so sign-out, disabling a user or changing a role apply immediately. Changing a password signs out the user's other sessions.
+* **Brute force:** 10 login attempts per client per 5 minutes, and an account locks for 15 minutes after 5 wrong passwords. Error messages do not reveal whether a username exists.
+* **WebSocket:** the live stream sends nothing until the client authenticates with its first message; unauthenticated sockets are closed with code `4401`.
+* **API key:** `DASHBOARD_API_KEY` still works (`X-API-Key` or `Authorization: Bearer`) for automation and device health checks, with the role in `SENTINEL_API_KEY_ROLE` (default `admin`). It is compared in constant time. Scoped, expiring API tokens replace it later in Phase 1.
+* **Development mode:** only when no user exists *and* no API key is set, requests from `127.0.0.1` / `::1` act as an Admin. Creating the first user ends this mode.
+* **CORS** is limited to `SENTINEL_CORS_ORIGINS` (default: the Vite dev server). The console is normally served by the API itself, so production needs no cross-origin access.
+* The API binds to `127.0.0.1` by default (`SENTINEL_HOST`). Interactive API docs (`/docs`, `/redoc`) are disabled and `/openapi.json` requires sign-in.
+* The health endpoint supports Basic auth via `HEALTH_USER` / `HEALTH_PASS`.
 
 | Role | Can |
 |---|---|
-| **Viewer** | See dashboards and reports |
-| **Analyst** | Viewer + investigate, annotate and acknowledge alerts, export data |
-| **Operator** | Analyst + block, unblock, quarantine, and approve pending responses |
-| **Admin** | Operator + policy, users, sensors, model promotion, integrations |
+| **Viewer** | See dashboards, alerts, devices, firewall state and reports |
+| **Analyst** | Viewer + investigate and explain alerts |
+| **Operator** | Analyst + block, unblock, whitelist, expire and roll back; run demos |
+| **Admin** | Operator + firewall policy and user management |
+
+Still to come in v1.2: TOTP MFA (required for Operator and Admin), HTTPS by default, scoped API tokens, and a hash-chained audit log of every sign-in and action.
 
 ### Firewall safety model
 1. **Dry-run by default** (`FIREWALL_DRY_RUN=1`). Real enforcement must be turned on explicitly with `deploy/pi/enforcement_ctl.sh enable`.
@@ -148,9 +156,10 @@ The old key no longer verifies any committed model, so a model signed with it wi
 | 1 | ~~Firewall commands rejected by the subprocess wrapper; nftables set never attached to a chain~~ | **Fixed in 1.1.0** — blocks had no effect | — |
 | 2 | ~~iptables removal omitted the comment match used at insert~~ | **Fixed in 1.1.0** | — |
 | 3 | Bridge-level (layer 2) filtering and MAC quarantine not implemented; `INPUT` and `FORWARD` are covered | Devices on the same bridge segment are not isolated | Phase 3 |
-| 4 | Single shared API key, no per-user identity | No accountability; key compromise grants full control | Phase 1 |
+| 4 | ~~Single shared API key, no per-user identity~~ | **Fixed in 1.2.0 (unreleased)** — user accounts and roles; the shared key remains for automation until scoped tokens land | Phase 1 |
 | 5 | No TLS on API/WebSocket | Credentials and data readable on the management network | Phase 1 |
-| 6 | No rate limiting | Brute force of the API key; API flooding | Phase 1 |
+| 6 | No rate limiting on the API (login is now throttled and locks accounts) | API flooding | Phase 1 |
+| 10 | ~~Live WebSocket stream had no authentication~~ | **Fixed in 1.2.0 (unreleased)** — anyone who could reach the port could read alerts and flows | — |
 | 7 | HMAC model signing — every verifier holds the signing key | A compromised device can sign models | Phase 4 |
 | 8 | ~~Dev tools (pytest, bandit, pip-audit, streamlit) in runtime requirements~~ | **Fixed** — split into `requirements-dev.txt` / `requirements-streamlit.txt` | — |
 | 9 | Docker image runs as root and includes build tools | Container escape impact is higher | Phase 6 |

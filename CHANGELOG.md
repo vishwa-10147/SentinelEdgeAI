@@ -5,6 +5,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **User accounts and roles (Phase 1).** The console now has a sign-in screen. Accounts use Argon2id password hashes and one of four roles, enforced on every API endpoint:
+  - **Viewer:** dashboards, alerts, devices, firewall state, reports.
+  - **Analyst:** Viewer, plus alert explanations.
+  - **Operator:** Analyst, plus block, unblock, whitelist, expire, rollback and demos.
+  - **Admin:** Operator, plus firewall policy and user management.
+- Sessions use a 15-minute access token held in memory and a 12-hour refresh token in an HttpOnly, SameSite=Strict cookie that is rotated on every use. Replaying an old refresh token revokes the session.
+- Sign-out, disabling a user and role changes take effect immediately.
+- Login is throttled per client, accounts lock for 15 minutes after 5 wrong passwords, and errors do not reveal whether a username exists.
+- Admins manage users in a new **Users** panel. Every user can change their own password, and new or reset accounts must choose a new password at first sign-in.
+- `python -m core.auth` manages users on the device: `create-user`, `reset-password`, `set-role`, `unlock`, `list`.
+- `sentinelctl install`/`upgrade` creates the first `admin` user with a one-time password in `/etc/sentinel/initial-admin-password` when no users exist.
+
+### Security
+- The live WebSocket stream (`/ws/packets`) and `/api/live_stats` previously had **no authentication**. Both now require sign-in; the WebSocket authenticates with its first message.
+- CORS was open to every origin (`*`). It is now limited to `SENTINEL_CORS_ORIGINS`.
+- `DASHBOARD_API_KEY` is compared in constant time, and its role is configurable with `SENTINEL_API_KEY_ROLE` (default `admin`).
+
+### Fixed
+- The built console called `http://localhost:9000` instead of the device it was loaded from, so it only worked in a browser running on the device itself. It now uses its own origin.
+
 ## [1.1.0] - 2026-10-30
 
 First release built by the automated release pipeline. Single-node ("Lite") deployment on a Raspberry Pi.

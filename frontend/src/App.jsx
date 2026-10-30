@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense, lazy } from 'react'
-import axios from 'axios'
 import {
   Area,
   AreaChart,
@@ -17,8 +16,10 @@ const Topology = lazy(() => import('./components/Topology'))
 const DeviceDetail = lazy(() => import('./components/DeviceDetail'))
 const PresenterMode = lazy(() => import('./components/PresenterMode'))
 const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'))
+const UsersModal = lazy(() => import('./components/UsersModal'))
+import { apiGet, apiPost, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
+import { ChangePasswordScreen, LoginScreen } from './components/AuthScreens'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:9000'
 const SEVERITY = {
   NORMAL: { label: 'Normal', color: '#22c55e', className: 'normal' },
   LOW: { label: 'Low', color: '#22c55e', className: 'normal' },
@@ -26,34 +27,6 @@ const SEVERITY = {
   HIGH: { label: 'High', color: '#f59e0b', className: 'high' },
   CRITICAL: { label: 'Critical', color: '#ef4444', className: 'critical' },
   BLOCKED: { label: 'Blocked', color: '#991b1b', className: 'blocked' }
-}
-
-function getApiKey(){
-  return sessionStorage.getItem('sentinel_api_key') || ''
-}
-
-function setApiKey(value){
-  if(value) sessionStorage.setItem('sentinel_api_key', value)
-  else sessionStorage.removeItem('sentinel_api_key')
-}
-
-function requestHeaders(){
-  const key = getApiKey()
-  return key ? { 'X-API-Key': key } : {}
-}
-
-async function apiGet(path, fallback){
-  try{
-    const res = await axios.get(API_BASE + path, { headers: requestHeaders() })
-    return res.data ?? fallback
-  }catch(e){
-    return fallback
-  }
-}
-
-async function apiPost(path, body = {}){
-  const res = await axios.post(API_BASE + path, body, { headers: requestHeaders() })
-  return res.data
 }
 
 function riskSeverity(score){
@@ -245,7 +218,7 @@ function Sparkline({ values = [] }){
   )
 }
 
-function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, onApiKey }){
+function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onChangePassword, onLogout }){
   const utc = useUtcClock()
   return (
     <header className={`top-nav ${criticalPulse ? 'critical-pulse' : ''}`}>
@@ -266,8 +239,13 @@ function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter
         <span className="severity-pill high">{counts.HIGH || 0} High</span>
         <span className="severity-pill medium">{counts.MEDIUM || 0} Medium</span>
         <button className={`mode-badge ${enforcementMode === 'ENFORCING' ? 'enforcing' : ''}`} onClick={onOpenFirewall}>{enforcementMode}</button>
-        <button className="ghost-button" onClick={onApiKey}>API Key</button>
-        <button className="primary-button" onClick={onPresenter}>Start Presenter Demo</button>
+        {hasRole(user, 'operator') && <button className="primary-button" onClick={onPresenter}>Start Presenter Demo</button>}
+        {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onUsers}>Users</button>}
+        <div className="user-chip" title={`Signed in as ${user?.username} (${user?.role})`}>
+          <span>{user?.username}</span><em>{user?.role}</em>
+        </div>
+        {user?.username !== 'local' && <button className="ghost-button" onClick={onChangePassword}>Password</button>}
+        {user?.username !== 'local' && <button className="ghost-button" onClick={onLogout}>Sign out</button>}
       </div>
     </header>
   )
@@ -505,7 +483,7 @@ function FirewallPolicyModal({ open, onClose, rules, onChanged }){
           </div>
           <div className="policy-card">
             <label>Whitelist management</label>
-            <input value={whitelistIp} onChange={e=>setWhitelistIp(e.target.value)} placeholder="Add IPv4 address" />
+            <input value={whitelistIp} onChange={e=>setWhitelistIp(e.target.value)} placeholder="Add IP address" />
             <button disabled={busy || !whitelistIp} className="ghost-button" onClick={whitelist}>Add whitelist</button>
           </div>
           <div className="policy-card danger-zone">
@@ -540,7 +518,7 @@ function FirewallPolicyModal({ open, onClose, rules, onChanged }){
   )
 }
 
-export default function App(){
+function Dashboard({ user, onLogout, onChangePassword }){
   const [rawDevices, setRawDevices] = useState({})
   const [liveStats, setLiveStats] = useState({})
   const [rawAlerts, setRawAlerts] = useState([])
@@ -553,6 +531,7 @@ export default function App(){
   const [filter, setFilter] = useState('ALL')
   const [search, setSearch] = useState('')
   const [firewallOpen, setFirewallOpen] = useState(false)
+  const [usersOpen, setUsersOpen] = useState(false)
   const [connected, setConnected] = useState(false)
   const [criticalPulse, setCriticalPulse] = useState(false)
   const [toast, setToast] = useState(null)
@@ -603,11 +582,14 @@ export default function App(){
     let reconnect
     let closed = false
     const connect = ()=>{
-      ws = new WebSocket(API_BASE.replace(/^http/, 'ws') + '/ws/packets')
+      ws = openSocket('/ws/packets')
       ws.onopen = ()=>setConnected(true)
-      ws.onclose = ()=>{
+      ws.onclose = (event)=>{
         setConnected(false)
-        if(!closed) reconnect = setTimeout(connect, 2000)
+        if(closed) return
+        // 4401: the access token expired or was revoked; renew it before reconnecting
+        if(event.code === 4401) refreshSession().catch(()=>{})
+        reconnect = setTimeout(connect, 2000)
       }
       ws.onerror = ()=>setConnected(false)
       ws.onmessage = (event)=>{
@@ -660,14 +642,6 @@ export default function App(){
     }
   }
 
-  const configureApiKey = ()=>{
-    const current = getApiKey()
-    const value = window.prompt('Enter dashboard API key for this tab. Leave blank to clear.', current)
-    if(value === null) return
-    setApiKey(value.trim())
-    loadAll()
-  }
-
   const exportAlerts = ()=>{
     const blob = new Blob([JSON.stringify(alerts, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -708,7 +682,10 @@ export default function App(){
         criticalPulse={criticalPulse}
         onPresenter={startPresenter}
         onOpenFirewall={()=>setFirewallOpen(true)}
-        onApiKey={configureApiKey}
+        user={user}
+        onUsers={()=>setUsersOpen(true)}
+        onChangePassword={onChangePassword}
+        onLogout={onLogout}
       />
       <main className="dashboard-shell">
         <KpiStrip devices={devices} alerts={alerts} firewallRules={firewallRules} health={health} timeline={timeline} liveStats={liveStats} />
@@ -762,6 +739,11 @@ export default function App(){
           <DeviceDetail deviceId={selected} devices={devices} alerts={alerts} flows={flows} onClose={()=>setSelected(null)} topologyApi={topologyApi} onFirewallChanged={loadAll} />
         </Suspense>
       )}
+      {usersOpen && (
+        <Suspense fallback={null}>
+          <UsersModal open={usersOpen} onClose={()=>setUsersOpen(false)} currentUser={user} />
+        </Suspense>
+      )}
       <FirewallPolicyModal open={firewallOpen} onClose={()=>setFirewallOpen(false)} rules={firewallRules} onChanged={loadAll} />
       <Suspense fallback={null}>
         <PresenterMode />
@@ -769,4 +751,61 @@ export default function App(){
       {toast && <div className={`toast ${toast.type}`}>{toast.message}</div>}
     </div>
   )
+}
+
+export default function App(){
+  // 'loading' → 'signed-out' | 'signed-in'
+  const [state, setState] = useState('loading')
+  const [user, setUser] = useState(null)
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [minLength, setMinLength] = useState(12)
+
+  const start = useCallback(async ()=>{
+    try{
+      setUser(await refreshSession())
+      setState('signed-in')
+      return
+    }catch(e){
+      // no valid session cookie
+    }
+    try{
+      const status = await authStatus()
+      setMinLength(status.password_min_length || 12)
+      if(status.local_dev_mode){
+        setUser({ username: 'local', role: 'admin', must_change_password: false })
+        setState('signed-in')
+        return
+      }
+    }catch(e){
+      // API unreachable; show the sign-in form and let the user retry
+    }
+    setUser(null)
+    setState('signed-out')
+  }, [])
+
+  useEffect(()=>{ start() }, [start])
+  useEffect(()=>onSessionEnded(()=>{ setUser(null); setState('signed-out') }), [])
+
+  const signOut = async ()=>{
+    try{ await logout() }catch(e){ /* the session is gone either way */ }
+    setUser(null)
+    setChangingPassword(false)
+    setState('signed-out')
+  }
+
+  if(state === 'loading') return <div className="auth-screen"><p className="auth-hint">Connecting…</p></div>
+  if(state === 'signed-out' || !user){
+    return <LoginScreen onSignedIn={(u)=>{ setUser(u); setState('signed-in') }} />
+  }
+  if(user.must_change_password || changingPassword){
+    return (
+      <ChangePasswordScreen
+        user={user}
+        minLength={minLength}
+        onChanged={()=>{ setUser({ ...user, must_change_password: false }); setChangingPassword(false) }}
+        onCancel={user.must_change_password ? signOut : ()=>setChangingPassword(false)}
+      />
+    )
+  }
+  return <Dashboard user={user} onLogout={signOut} onChangePassword={()=>setChangingPassword(true)} />
 }
