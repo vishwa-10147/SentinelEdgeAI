@@ -16,6 +16,8 @@ Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m sensor run
 Restart=on-failure
 RestartSec=5
+# exit 78: the device no longer has this role
+RestartPreventExitStatus=78
 
 # verified brain commands change firewall rules
 AmbientCapabilities=CAP_NET_ADMIN

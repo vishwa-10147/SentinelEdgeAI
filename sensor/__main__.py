@@ -38,7 +38,8 @@ def main(argv=None):
         link = uplink.Uplink()
     except uplink.EnrolmentError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
+        # EX_CONFIG: the unit sets RestartPreventExitStatus=78, so systemd does not retry
+        return 78
     link.run()
     return 0
 

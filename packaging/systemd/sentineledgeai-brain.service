@@ -16,6 +16,8 @@ Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m brain.server
 Restart=on-failure
 RestartSec=5
+# exit 78: the device no longer has this role
+RestartPreventExitStatus=78
 
 CapabilityBoundingSet=
 NoNewPrivileges=yes

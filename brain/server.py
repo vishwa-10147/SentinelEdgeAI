@@ -137,7 +137,11 @@ def ssl_options():
 
 def main():
     import uvicorn
+    from core import setup as device_setup
 
+    if not os.path.exists(device_setup.brain_marker()) and os.environ.get('SENTINEL_BRAIN_FORCE') != '1':
+        print('this device does not have the Brain role (choose it in Setup)', file=sys.stderr)
+        return 78  # EX_CONFIG: RestartPreventExitStatus=78 stops systemd retrying
     keys.init()
     host = os.environ.get('SENTINEL_BRAIN_HOST', '0.0.0.0')  # nosec B104 - sensors connect from the network
     port = int(os.environ.get('SENTINEL_BRAIN_PORT', '9443'))
