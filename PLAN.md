@@ -118,7 +118,7 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 - [x] TOTP two-step sign-in, required for Operator and Admin (`SENTINEL_MFA_ROLES`), with QR enrolment, replay protection, 10 single-use recovery codes and admin reset.
 - [x] General API rate limits: 600 reads and 60 writes per client per minute on `/api/*`, configurable, `429` with `Retry-After`.
 - [ ] Service accounts and API tokens (scoped, expiring) for automation, replacing the single shared key.
-- [ ] HTTPS by default: certificate generated at install, with the option to import an organisation's own certificate; HSTS; secure WebSocket (WSS).
+- [x] HTTPS by default: certificate generated at install, with the option to import an organisation's own certificate; HSTS; secure WebSocket (WSS).
 - [x] Security headers: CSP, X-Frame-Options, Referrer-Policy (plus nosniff, Permissions-Policy, COOP); HSTS follows with HTTPS.
 - [ ] Hash-chained audit log of every login, policy change and response action, viewable by Admins.
 - [ ] First-run setup wizard: set the network role, choose passive or inline mode.

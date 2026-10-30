@@ -5,12 +5,15 @@
 #   sudo sentinelctl upgrade    sentineledgeai-pi-1.2.0.tar.gz   # later versions
 #   sudo sentinelctl rollback                                     # back to the previous version
 #   sentinelctl status | versions
+#   sudo sentinelctl tls import cert.pem key.pem   # use your organisation's certificate
+#   sudo sentinelctl tls renew                     # new self-signed certificate
+#   sentinelctl tls show                           # certificate details and fingerprint
 #
 # On-device layout (code is replaceable, state is never touched by upgrades):
 #   /opt/sentineledgeai/releases/<version>/   code + its own Python venv
 #   /opt/sentineledgeai/current  -> releases/<version>   (active version)
 #   /opt/sentineledgeai/previous -> releases/<version>   (rollback target)
-#   /etc/sentinel/      sentinel.env, config.yaml, model_signing.key
+#   /etc/sentinel/      sentinel.env, config.yaml, model_signing.key, tls/
 #   /var/lib/sentinel/  database, firewall state, alerts, profiles
 #   /var/log/sentinel/  logs
 set -euo pipefail
@@ -39,7 +42,7 @@ die()  { printf '[sentinelctl] ERROR: %s\n' "$*" >&2; exit 1; }
 require_root() { [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"; }
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -112,6 +115,71 @@ EOF
   fi
 }
 
+TLS_DIR="$ETC_DIR/tls"
+TLS_DAYS="${SENTINEL_TLS_DAYS:-825}"
+
+env_value() {
+  sed -n "s/^$1=//p" "$ETC_DIR/sentinel.env" | tail -1
+}
+
+tls_enabled() {
+  [ -n "$(env_value SENTINEL_TLS_CERT)" ]
+}
+
+install_tls_pair() {
+  local cert="$1" key="$2"
+  install -d -m 750 -o root -g "$SERVICE_USER" "$TLS_DIR"
+  install -m 644 -o root -g "$SERVICE_USER" "$cert" "$TLS_DIR/cert.pem.new"
+  install -m 640 -o root -g "$SERVICE_USER" "$key" "$TLS_DIR/key.pem.new"
+  mv -f "$TLS_DIR/cert.pem.new" "$TLS_DIR/cert.pem"
+  mv -f "$TLS_DIR/key.pem.new" "$TLS_DIR/key.pem"
+}
+
+new_self_signed_cert() {
+  # EC P-256 certificate naming the device's hostname and current addresses
+  local host san ip tmp
+  command -v openssl >/dev/null || die "openssl not found (apt install openssl)"
+  host="$(hostname -s 2>/dev/null || hostname)"
+  san="DNS:$host,DNS:$host.local,DNS:localhost,IP:127.0.0.1,IP:::1"
+  for ip in $(hostname -I 2>/dev/null); do
+    case "$ip" in
+      172.1[6-9].*|172.2[0-9].*|172.3[01].*) continue ;;  # docker bridges
+      *) san="$san,IP:$ip" ;;
+    esac
+  done
+  tmp="$(mktemp -d)"
+  if ! openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+      -keyout "$tmp/key.pem" -out "$tmp/cert.pem" -days "$TLS_DAYS" \
+      -subj "/CN=$host/O=SentinelEdgeAI" -addext "subjectAltName=$san" \
+      -addext "basicConstraints=critical,CA:FALSE" \
+      -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=serverAuth" \
+      >/dev/null 2>&1; then
+    rm -rf "$tmp"
+    die "could not create a TLS certificate"
+  fi
+  install_tls_pair "$tmp/cert.pem" "$tmp/key.pem"
+  rm -rf "$tmp"
+  log "created a self-signed TLS certificate for $san"
+}
+
+ensure_tls() {
+  # HTTPS by default, also for devices upgraded from a release without it.
+  # Empty SENTINEL_TLS_CERT= and SENTINEL_TLS_KEY= lines keep plain HTTP.
+  local env_file="$ETC_DIR/sentinel.env"
+  if ! grep -q '^SENTINEL_TLS_CERT=' "$env_file"; then
+    {
+      echo "# HTTPS for the console and API. Use 'sentinelctl tls import' for your own"
+      echo "# certificate; set both to empty values for plain HTTP."
+      echo "SENTINEL_TLS_CERT=$TLS_DIR/cert.pem"
+      echo "SENTINEL_TLS_KEY=$TLS_DIR/key.pem"
+    } >> "$env_file"
+    log "enabled HTTPS in $env_file"
+  fi
+  if tls_enabled && [ ! -f "$TLS_DIR/cert.pem" ]; then
+    new_self_signed_cert
+  fi
+}
+
 link_state() {
   local release="$1" name
   rm -rf "$release/data" "$release/logs" "$release/config.yaml"
@@ -180,15 +248,17 @@ api_key() {
 }
 
 healthy() {
-  local deadline=$((SECONDS + HEALTH_TIMEOUT)) port code svc
-  port="$(sed -n 's/^SENTINEL_PORT=//p' "$ETC_DIR/sentinel.env" | tail -1)"
+  local deadline=$((SECONDS + HEALTH_TIMEOUT)) port code svc scheme=http
+  port="$(env_value SENTINEL_PORT)"
+  if tls_enabled; then scheme=https; fi
   while [ "$SECONDS" -lt "$deadline" ]; do
     sleep 3
     for svc in "${SERVICES[@]}"; do
       systemctl is-active --quiet "$svc" || continue 2
     done
-    code="$(curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: $(api_key)" \
-             "http://127.0.0.1:${port:-9000}/openapi.json" || true)"
+    # loopback check; -k because an imported certificate may not name 127.0.0.1
+    code="$(curl -s -k -o /dev/null -w '%{http_code}' -H "X-API-Key: $(api_key)" \
+             "$scheme://127.0.0.1:${port:-9000}/openapi.json" || true)"
     [ "$code" = "200" ] && return 0
   done
   return 1
@@ -242,6 +312,7 @@ cmd_install() {
   rm -rf "$release"
   mv "$src" "$release"
   ensure_config "$release"
+  ensure_tls
   build_venv "$release"
   # code is root-owned and read-only to the service; state links are added after
   chown -R root:root "$release"
@@ -252,6 +323,7 @@ cmd_install() {
   switch_to "$release"
   if restart_and_check; then
     log "SentinelEdgeAI $version is running"
+    console_url
     prune_releases
     return 0
   fi
@@ -291,6 +363,62 @@ cmd_rollback() {
   fi
 }
 
+tls_self_signed() {
+  local cert="$TLS_DIR/cert.pem"
+  [ -r "$cert" ] || return 1
+  [ "$(openssl x509 -in "$cert" -noout -issuer -nameopt RFC2253 | sed 's/^issuer=//')" = \
+    "$(openssl x509 -in "$cert" -noout -subject -nameopt RFC2253 | sed 's/^subject=//')" ]
+}
+
+console_url() {
+  local scheme=http ip
+  if tls_enabled; then scheme=https; fi
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  log "console: $scheme://${ip:-<device-address>}:$(env_value SENTINEL_PORT)"
+  if tls_enabled && tls_self_signed; then
+    log "the certificate is self-signed: the browser warns once; compare the fingerprint from 'sentinelctl tls show'"
+  fi
+}
+
+cmd_tls() {
+  local action="${1:-show}" cert key
+  case "$action" in
+    show)
+      cert="$(env_value SENTINEL_TLS_CERT)"
+      if [ -z "$cert" ]; then
+        echo "HTTPS is off (SENTINEL_TLS_CERT is empty in $ETC_DIR/sentinel.env)"
+        return 0
+      fi
+      [ -r "$cert" ] || die "cannot read $cert"
+      openssl x509 -in "$cert" -noout -subject -issuer -enddate -ext subjectAltName
+      openssl x509 -in "$cert" -noout -fingerprint -sha256
+      ;;
+    renew)
+      require_root
+      new_self_signed_cert
+      ensure_tls
+      systemctl restart sentineledgeai-api.service
+      log "restarted the API with the new certificate"
+      ;;
+    import)
+      require_root
+      cert="${2:-}" key="${3:-}"
+      [ -f "$cert" ] && [ -f "$key" ] || die "usage: sentinelctl tls import cert.pem key.pem"
+      openssl x509 -in "$cert" -noout 2>/dev/null || die "$cert is not a PEM certificate"
+      openssl pkey -in "$key" -noout -passin pass: 2>/dev/null \
+        || die "$key is not an unencrypted PEM private key"
+      [ "$(openssl x509 -in "$cert" -noout -pubkey | openssl sha256)" = \
+        "$(openssl pkey -in "$key" -pubout | openssl sha256)" ] || die "the key does not match the certificate"
+      openssl x509 -in "$cert" -noout -checkend 0 >/dev/null || die "the certificate has expired"
+      install_tls_pair "$cert" "$key"
+      ensure_tls
+      systemctl restart sentineledgeai-api.service
+      log "installed $cert and restarted the API"
+      ;;
+    *) die "usage: sentinelctl tls show | renew | import cert.pem key.pem" ;;
+  esac
+}
+
 cmd_status() {
   local current previous svc
   current="$(readlink "$PREFIX/current" 2>/dev/null || true)"
@@ -317,6 +445,7 @@ case "${1:-}" in
   rollback)        cmd_rollback ;;
   status)          cmd_status ;;
   versions)        cmd_versions ;;
+  tls)             shift; cmd_tls "$@" ;;
   -h|--help|help)  usage 0 ;;
   *)               usage 1 ;;
 esac

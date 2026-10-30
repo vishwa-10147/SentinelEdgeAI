@@ -7,7 +7,12 @@ set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-/home/vishwa/SentinelEdgeAI}"
 VENV_PYTHON="${VENV_PYTHON:-$REPO_DIR/.venv/bin/python}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:9000/api/health}"
+if [ -n "${SENTINEL_TLS_CERT:-}" ]; then
+  HEALTH_SCHEME=https
+else
+  HEALTH_SCHEME=http
+fi
+HEALTH_URL="${HEALTH_URL:-$HEALTH_SCHEME://127.0.0.1:${SENTINEL_PORT:-9000}/api/health}"
 STATE_DIR="${STATE_DIR:-/run/sentinel}"
 FAIL_FILE="$STATE_DIR/firewall_rollback_guard.failures"
 FAIL_THRESHOLD="${FAIL_THRESHOLD:-3}"
@@ -46,6 +51,10 @@ if [ "${ACTIVE_RULES:-0}" -eq 0 ]; then
 fi
 
 CURL_ARGS=(-fsS --max-time 2)
+if [[ "$HEALTH_URL" == https://127.0.0.1* ]]; then
+  # loopback check; an imported certificate may not name 127.0.0.1
+  CURL_ARGS+=(-k)
+fi
 if [ -n "$DASHBOARD_API_KEY" ]; then
   CURL_ARGS+=(-H "X-API-Key: $DASHBOARD_API_KEY")
 fi

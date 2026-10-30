@@ -222,7 +222,7 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
    sudo bash sentineledgeai-pi-1.2.0/packaging/sentinelctl install sentineledgeai-pi-1.2.0.tar.gz
    ```
 
-4. Open `http://<pi-address>:9000` and sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. Add other users from the **Users** panel.
+4. Open `https://<pi-address>:9000` (the installer prints the address). The certificate is self-signed, so the browser warns once: check that the SHA-256 fingerprint matches `sentinelctl tls show` before continuing, or install your own certificate with `sudo sentinelctl tls import cert.pem key.pem`. Sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. Add other users from the **Users** panel.
 
    Automation can still use the API key in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`). Users can also be managed on the device:
 
@@ -240,6 +240,9 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 sudo sentinelctl upgrade sentineledgeai-pi-<version>.tar.gz   # health-checked; rolls back automatically on failure
 sudo sentinelctl rollback                                  # return to the previous version
 sentinelctl status                                         # active version and service state
+sentinelctl tls show                                       # certificate, expiry and fingerprint
+sudo sentinelctl tls import cert.pem key.pem               # use your organisation's certificate
+sudo sentinelctl tls renew                                 # new self-signed certificate
 ```
 
 **Device layout**
@@ -300,6 +303,8 @@ Detection tuning lives in [config.yaml](config.yaml) (risk thresholds, baseline 
 | `SENTINEL_CSP` | strict same-origin policy | Replaces the Content-Security-Policy header (only needed if the console is hosted on another origin) |
 | `SENTINEL_RATE_LIMIT_READ` / `_WRITE` | `600` / `60` | API requests per client per minute (reads / writes); `0` turns a limit off |
 | `SENTINEL_MFA_ROLES` | `operator,admin` | Roles that must use two-step sign-in (empty to turn the requirement off) |
+| `SENTINEL_TLS_CERT` / `SENTINEL_TLS_KEY` | set by `sentinelctl` | PEM certificate and key; when both are set the API serves HTTPS. Empty for plain HTTP |
+| `SENTINEL_HSTS_MAX_AGE` | `31536000` | `Strict-Transport-Security` lifetime in seconds (HTTPS only) |
 | `SENTINEL_COOKIE_SECURE` | auto | `1` forces the `Secure` flag on the session cookie (set it behind an HTTPS proxy) |
 | `SENTINEL_HOST` / `SENTINEL_PORT` | `127.0.0.1` / `9000` | API bind address and port |
 | `SENTINEL_MODEL_SIGNING_KEY` / `_FILE` | unset | Key that verifies the ML model signature. **Never commit it** |
@@ -367,7 +372,7 @@ docs/         additional documentation and archived material
 
 ## Known limitations (v1.2)
 
-1. **No TLS yet.** Keep the console on a trusted management network until HTTPS ships in a later v1.2.x release.
+1. **Self-signed certificate by default.** Browsers warn until you import a certificate from your own CA (`sentinelctl tls import`).
 2. **Single node only.** The Jetson is not used until v1.3.
 3. **No inline bridge mode.** Blocks cover traffic to and routed through the appliance; bridge filtering and MAC quarantine arrive in v1.4.
 

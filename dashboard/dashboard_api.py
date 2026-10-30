@@ -177,6 +177,7 @@ SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
     'Cross-Origin-Opener-Policy': 'same-origin',
 }
+HSTS = f"max-age={int(os.environ.get('SENTINEL_HSTS_MAX_AGE', '31536000'))}"
 
 
 @app.middleware("http")
@@ -184,6 +185,10 @@ async def security_headers_middleware(request: Request, call_next):
     resp = await call_next(request)
     for name, value in SECURITY_HEADERS.items():
         resp.headers.setdefault(name, value)
+    if request.url.scheme == 'https':
+        # browsers ignore HSTS from a certificate they do not trust, so the
+        # self-signed install certificate cannot lock anyone out
+        resp.headers.setdefault('Strict-Transport-Security', HSTS)
     return resp
 
 # The console is normally served by this API (same origin). Cross-origin
@@ -891,8 +896,6 @@ if os.path.isdir(DIST_DIR):
         raise HTTPException(status_code=404, detail='Not Found')
 
 if __name__ == "__main__":
-    import uvicorn
-    # Allow configuring host/port via environment for safer defaults
-    host = os.getenv("SENTINEL_HOST", "127.0.0.1")
-    port = int(os.getenv("SENTINEL_PORT", "9000"))
-    uvicorn.run(app, host=host, port=port)
+    # same as python -m dashboard.serve (HTTPS when SENTINEL_TLS_CERT/KEY are set)
+    from dashboard.serve import main
+    sys.exit(main())

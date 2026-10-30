@@ -11,7 +11,8 @@ Group=sentinel
 WorkingDirectory=/opt/sentineledgeai/current
 EnvironmentFile=/etc/sentinel/sentinel.env
 Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m uvicorn dashboard.dashboard_api:app --host ${SENTINEL_HOST} --port ${SENTINEL_PORT}
+# HTTPS when SENTINEL_TLS_CERT / SENTINEL_TLS_KEY are set in sentinel.env
+ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m dashboard.serve
 Restart=on-failure
 RestartSec=5
 
