@@ -124,12 +124,19 @@ Accounts are stored on the Jetson with Argon2id password hashes. TOTP MFA is req
 `.gitignore` blocks `*.key`, `*.pem`, `*.env` and runtime data.
 
 ### Incident note: signing key in git history
-Earlier commits contained `model_signing.key` at the repository root, and `.ci_test_health.env` with health-check credentials. These files are no longer tracked, but **they remain in git history**. Treat both as compromised:
+Earlier commits contained `model_signing.key` at the repository root, and `.ci_test_health.env` with health-check credentials. These files are no longer tracked, but **they remain in git history**, so both are treated as compromised.
 
-1. Generate a new signing key, re-sign `model/isolation_forest.pkl` (`scripts/sign_model.py`), and commit the new `.sig`.
-2. Update the `SENTINEL_MODEL_SIGNING_KEY` GitHub secret and every device's key file.
-3. Change any health-check credentials that match the old file.
-4. Optionally purge the files from history (`git filter-repo`) and force-push. Everyone must then re-clone.
+| Step | Status |
+|---|---|
+| Verify the current model against the old key before re-signing (so a tampered model is not re-blessed) | ✅ 2026-10-30 |
+| Generate a new 256-bit signing key, stored outside the repository | ✅ 2026-10-30 |
+| Re-sign `model/isolation_forest.pkl` and commit the new `.sig` | ✅ 2026-10-30 |
+| Update the `SENTINEL_MODEL_SIGNING_KEY` GitHub secret | ✅ 2026-10-30 |
+| Install the new key on every device (`deploy/pi/provision_key.sh`) — devices with the old key will refuse the newly signed model | ⏳ per device |
+| Change any health-check credentials that match the old `.ci_test_health.env` values | ⏳ per device |
+| Optionally purge both files from history (`git filter-repo`) and force-push; everyone must then re-clone | Optional |
+
+The old key no longer verifies any committed model, so a model signed with it will be rejected by updated devices and CI.
 
 ---
 

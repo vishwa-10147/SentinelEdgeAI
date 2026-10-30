@@ -84,7 +84,7 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 
 - [x] Remove stray files and tracked runtime data, compiled files, the signing key and the credentials file; clean `.gitignore`.
 - [x] Rewrite documentation (README, SECURITY, PLAN, EXPLAIN).
-- [ ] **Rotate the model signing key** and health credentials (see SECURITY.md §4); update the GitHub secret; re-sign the model.
+- [x] **Rotate the model signing key:** new key, model re-signed, GitHub secret updated (2026-10-30). Remaining per device: install the new key and change the old health-check credentials (SECURITY.md §4).
 - [x] **Fix firewall command execution:** `_run_cmd` now runs only allowlisted `nft`/`iptables` binaries directly (the generic subprocess wrapper rejected them, so nothing was ever applied).
 - [x] **Fix the nftables backend:** `input` and `forward` chains in `inet sentinel` drop traffic matching `@blacklist`; created idempotently.
 - [x] **Fix iptables removal** so it matches the inserted rule (including the comment); cover `INPUT` and `FORWARD`; no duplicate rules on re-block.
