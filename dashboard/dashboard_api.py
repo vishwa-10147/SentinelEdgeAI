@@ -15,6 +15,7 @@ import ipaddress
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 import core.audit as audit_core
+import core.setup as setup_core
 import core.auth as auth_core
 from core.product_intelligence import (
     build_incident_timeline,
@@ -491,6 +492,31 @@ def firewall_rollback(payload: dict = {}, principal: dict = Depends(require_oper
 def audit_entries(limit: int = 100, before: Optional[int] = None, action: Optional[str] = None,
                   actor: Optional[str] = None, principal: dict = Depends(require_admin)):
     return audit_core.get_log().entries(limit=limit, before=before, action=action, actor=actor)
+
+
+@app.get('/api/setup')
+def setup_get(principal: dict = Depends(require_admin)):
+    return {
+        **setup_core.load(),
+        'interfaces': setup_core.list_interfaces(),
+        'options': setup_core.options(),
+        'enforcement': 'dry_run' if getattr(firewall, 'FIREWALL_DRY_RUN', True) else 'enforcing',
+    }
+
+
+@app.post('/api/setup')
+def setup_save(payload: dict, principal: dict = Depends(require_admin)):
+    first_time = not setup_core.is_complete()
+    try:
+        values = setup_core.validate(payload or {})
+        if firewall is not None:
+            firewall.update_policy({'response_mode': values['response_mode']})
+        settings = setup_core.save(values, by=principal.get('username'))
+    except ValueError as exc:
+        audit_event(principal, 'setup', outcome='rejected', details={'error': str(exc)})
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'setup', details={**values, 'first_run': first_time})
+    return settings
 
 
 @app.get('/api/audit/verify')

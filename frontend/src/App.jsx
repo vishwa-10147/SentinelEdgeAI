@@ -18,6 +18,7 @@ const PresenterMode = lazy(() => import('./components/PresenterMode'))
 const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'))
 const UsersModal = lazy(() => import('./components/UsersModal'))
 const AuditModal = lazy(() => import('./components/AuditModal'))
+const SetupWizard = lazy(() => import('./components/SetupWizard'))
 import { apiGet, apiPost, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
 import { ChangePasswordScreen, LoginScreen, MfaSetupScreen } from './components/AuthScreens'
 
@@ -219,7 +220,7 @@ function Sparkline({ values = [] }){
   )
 }
 
-function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onChangePassword, onLogout }){
+function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onSetup, onChangePassword, onLogout }){
   const utc = useUtcClock()
   return (
     <header className={`top-nav ${criticalPulse ? 'critical-pulse' : ''}`}>
@@ -243,6 +244,7 @@ function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter
         {hasRole(user, 'operator') && <button className="primary-button" onClick={onPresenter}>Start Presenter Demo</button>}
         {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onUsers}>Users</button>}
         {hasRole(user, 'admin') && <button className="ghost-button" onClick={onAudit}>Audit log</button>}
+        {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onSetup}>Setup</button>}
         <div className="user-chip" title={`Signed in as ${user?.username} (${user?.role})`}>
           <span>{user?.username}</span><em>{user?.role}</em>
         </div>
@@ -520,7 +522,7 @@ function FirewallPolicyModal({ open, onClose, rules, onChanged }){
   )
 }
 
-function Dashboard({ user, onLogout, onChangePassword }){
+function Dashboard({ user, onLogout, onChangePassword, onSetup }){
   const [rawDevices, setRawDevices] = useState({})
   const [liveStats, setLiveStats] = useState({})
   const [rawAlerts, setRawAlerts] = useState([])
@@ -688,6 +690,7 @@ function Dashboard({ user, onLogout, onChangePassword }){
         user={user}
         onUsers={()=>setUsersOpen(true)}
         onAudit={()=>setAuditOpen(true)}
+        onSetup={onSetup}
         onChangePassword={onChangePassword}
         onLogout={onLogout}
       />
@@ -765,6 +768,7 @@ function Dashboard({ user, onLogout, onChangePassword }){
 export default function App(){
   // 'loading' → 'signed-out' | 'signed-in'
   const [state, setState] = useState('loading')
+  const [editingSetup, setEditingSetup] = useState(false)
   const [user, setUser] = useState(null)
   const [changingPassword, setChangingPassword] = useState(false)
   const [minLength, setMinLength] = useState(12)
@@ -825,5 +829,15 @@ export default function App(){
       />
     )
   }
-  return <Dashboard user={user} onLogout={signOut} onChangePassword={()=>setChangingPassword(true)} />
+  if(user.setup_required || editingSetup){
+    return (
+      <Suspense fallback={<div className="auth-screen"><p className="auth-hint">Loading…</p></div>}>
+        <SetupWizard
+          onDone={()=>{ setUser({ ...user, setup_required: false }); setEditingSetup(false) }}
+          onCancel={user.setup_required ? null : ()=>setEditingSetup(false)}
+        />
+      </Suspense>
+    )
+  }
+  return <Dashboard user={user} onLogout={signOut} onChangePassword={()=>setChangingPassword(true)} onSetup={()=>setEditingSetup(true)} />
 }

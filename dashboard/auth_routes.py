@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from core import audit, auth
+from core import audit, auth, setup
 
 logger = logging.getLogger('sentinel.auth')
 
@@ -186,11 +186,13 @@ def _set_refresh_cookie(response: Response, request: Request, tokens: dict):
 
 
 def _token_response(tokens: dict, user: dict):
+    out = {k: user.get(k, False) for k in USER_FIELDS}
+    out['setup_required'] = auth.role_allows(user.get('role'), 'admin') and not setup.is_complete()
     return {
         'access_token': tokens['access_token'],
         'token_type': 'bearer',
         'expires_in': tokens['expires_in'],
-        'user': {k: user.get(k, False) for k in USER_FIELDS},
+        'user': out,
     }
 
 
@@ -276,6 +278,8 @@ def logout(request: Request, response: Response):
 def me(principal: dict = Depends(require_signed_in)):
     out = {k: bool(principal.get(k)) for k in USER_FIELDS[2:]}
     out.update({k: principal.get(k) for k in ('username', 'role', 'kind')})
+    # the first admin to sign in is taken through the setup wizard
+    out['setup_required'] = auth.role_allows(principal.get('role'), 'admin') and not setup.is_complete()
     return out
 
 

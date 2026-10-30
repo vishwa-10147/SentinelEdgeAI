@@ -1355,6 +1355,86 @@ button:disabled {
   font-size: 13px;
 }
 
+.setup-progress {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-progress li {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.setup-progress li.done {
+  background: var(--cyan, #22d3ee);
+}
+
+.setup-options {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0a0e1a;
+  cursor: pointer;
+}
+
+.setup-option.selected {
+  border-color: var(--cyan, #22d3ee);
+}
+
+.setup-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.setup-option strong {
+  text-transform: capitalize;
+}
+
+.setup-option small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.setup-review {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.setup-review dt {
+  color: var(--muted);
+}
+
+.setup-review dd {
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.setup-nav {
+  justify-content: space-between;
+}
+
 .mfa-on { color: var(--green); }
 .mfa-pending { color: var(--amber); }
 .mfa-off { color: var(--muted); }

@@ -3,7 +3,31 @@ from core.config_loader import Config
 from core.health_server import start_health_server
 from utils.logger import setup_logger
 import logging
+import os
+import threading
+import time
+from core import setup as device_setup
 from utils.metrics import start_metrics_server
+
+# exit code that tells systemd (Restart=on-failure) to start the engine again
+RESTART_EXIT_CODE = 75
+
+
+def _watch_capture_interface(active, logger, interval=5):
+    # the setup wizard runs in the unprivileged API, which cannot restart this
+    # service; when the chosen interface changes, exit and let systemd restart us
+    while True:
+        time.sleep(interval)
+        try:
+            wanted = device_setup.capture_interface()
+        except Exception:
+            logger.debug("could not read setup", exc_info=True)
+            continue
+        if wanted != active:
+            logger.warning("capture interface changed from %s to %s; restarting the engine",
+                           active or "default", wanted or "default")
+            logging.shutdown()
+            os._exit(RESTART_EXIT_CODE)
 
 
 def _log_config_summary(cfg, logger):
@@ -53,5 +77,7 @@ if __name__ == "__main__":
     except Exception:
         logger.exception("Failed to start Prometheus metrics server")
 
-    logger.info("Starting SentinelEdge AI Flow Engine...")
-    start_sniffing()
+    interface = device_setup.capture_interface()
+    logger.info("Starting SentinelEdge AI Flow Engine on %s", interface or "the default interface")
+    threading.Thread(target=_watch_capture_interface, args=(interface, logger), daemon=True).start()
+    start_sniffing(interface=interface)

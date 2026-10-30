@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { changePassword, enableMfa, errorMessage, login, startMfaSetup } from '../api'
 
-function AuthCard({ title, subtitle, children }){
+export function AuthCard({ title, subtitle, children }){
   return (
     <div className="auth-screen">
       <section className="auth-card">

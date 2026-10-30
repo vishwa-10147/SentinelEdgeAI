@@ -105,7 +105,7 @@ Console users sign in with a username and password (`core/auth.py`, `dashboard/a
 | **Operator** | Analyst + block, unblock, whitelist, expire and roll back; run demos |
 | **Admin** | Operator + firewall policy and user management |
 
-Still to come in v1.2: a first-run setup wizard.
+All Phase 1 features are in place; the remaining Phase 1 work is the exit checks (a role test for every endpoint, an OWASP ZAP baseline scan).
 
 ### Firewall safety model
 1. **Dry-run by default** (`FIREWALL_DRY_RUN=1`). Real enforcement must be turned on explicitly with `deploy/pi/enforcement_ctl.sh enable`.

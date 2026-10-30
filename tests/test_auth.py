@@ -185,7 +185,7 @@ def test_login_refresh_logout_flow(store):
     assert r.status_code == 200
     body = r.json()
     assert body['user'] == {'username': 'root', 'role': 'admin', 'must_change_password': False,
-                            'mfa_enabled': False, 'mfa_setup_required': False}
+                            'mfa_enabled': False, 'mfa_setup_required': False, 'setup_required': True}
     cookie = r.headers['set-cookie'].lower()
     assert 'httponly' in cookie and 'samesite=strict' in cookie and 'path=/api/auth' in cookie
 

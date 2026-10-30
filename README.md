@@ -66,7 +66,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░�
 | Phase | Release | Goal | Status |
 |---|---|---|---|
 | 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: privileged-runner CI proof |
-| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🟡 In progress: accounts, roles, MFA, rate limits, security headers, API tokens, HTTPS and audit log done; setup wizard next |
+| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🟡 In progress: accounts, roles, MFA, rate limits, security headers, API tokens, HTTPS and audit log done; setup wizard done; exit checks next |
 | 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🔜 |
 | 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🔜 |
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🔜 |
@@ -222,7 +222,7 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
    sudo bash sentineledgeai-pi-1.2.0/packaging/sentinelctl install sentineledgeai-pi-1.2.0.tar.gz
    ```
 
-4. Open `https://<pi-address>:9000` (the installer prints the address). The certificate is self-signed, so the browser warns once: check that the SHA-256 fingerprint matches `sentinelctl tls show` before continuing, or install your own certificate with `sudo sentinelctl tls import cert.pem key.pem`. Sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. Add other users from the **Users** panel.
+4. Open `https://<pi-address>:9000` (the installer prints the address). The certificate is self-signed, so the browser warns once: check that the SHA-256 fingerprint matches `sentinelctl tls show` before continuing, or install your own certificate with `sudo sentinelctl tls import cert.pem key.pem`. Sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. The setup wizard then asks for the network placement, the capture interface and the response mode (reopen it later from **Setup**). Add other users from the **Users** panel.
 
    For scripts and integrations, create an API token in the **Users** panel (or with `create-token` below) and send it as `Authorization: Bearer <token>`. The older shared key in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`) still works. Users and tokens can also be managed on the device:
 
@@ -303,6 +303,8 @@ Detection tuning lives in [config.yaml](config.yaml) (risk thresholds, baseline 
 | `SENTINEL_API_KEY_ROLE` | `admin` | Role granted to the API key |
 | `SENTINEL_AUTH_DB` | `data/auth.db` | User accounts and sessions |
 | `SENTINEL_AUDIT_DB` | `data/audit.db` | Hash-chained audit log |
+| `SENTINEL_SETUP_FILE` | `data/setup.json` | Settings saved by the setup wizard |
+| `CAPTURE_IFACE` | unset | Overrides the capture interface chosen in the setup wizard |
 | `SENTINEL_ACCESS_TOKEN_TTL` / `SENTINEL_SESSION_TTL` | `900` / `43200` | Access-token and session lifetime in seconds |
 | `SENTINEL_CORS_ORIGINS` | Vite dev server | Comma-separated origins allowed to call the API from another site |
 | `SENTINEL_CSP` | strict same-origin policy | Replaces the Content-Security-Policy header (only needed if the console is hosted on another origin) |
@@ -345,6 +347,7 @@ Operators and Admins must set up two-step sign-in (an authenticator app) at thei
 | `GET/POST /api/users`, `PATCH/DELETE /api/users/{username}` | User management (Admin) |
 | `GET/POST /api/tokens`, `DELETE /api/tokens/{id}` | API tokens (signed-in Admin) |
 | `GET /api/audit?limit=&before=&action=&actor=`, `GET /api/audit/verify` | Hash-chained audit log and integrity check (Admin) |
+| `GET/POST /api/setup` | Device setup: network role, placement, capture interface, response mode (Admin) |
 | `GET /api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/risk_timeline`, `/api/live_stats` | Detection data |
 | `GET /api/incidents/timeline`, `/api/reports/security`, `POST /api/alerts/explain` | Investigation and reporting |
 | `GET /api/device/{id}/logs` | Per-device history |

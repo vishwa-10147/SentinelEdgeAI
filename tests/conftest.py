@@ -9,6 +9,7 @@ import dashboard.dashboard_api as api
 def isolated_audit_log(tmp_path, monkeypatch):
     # every test gets its own audit database, never the repository's data/
     monkeypatch.setenv('SENTINEL_AUDIT_DB', str(tmp_path / 'audit.db'))
+    monkeypatch.setenv('SENTINEL_SETUP_FILE', str(tmp_path / 'setup.json'))
     yield
     audit.get_log().close()
 
