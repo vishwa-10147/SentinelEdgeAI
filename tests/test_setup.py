@@ -51,7 +51,6 @@ def test_virtual_interfaces_are_hidden():
 
 
 @pytest.mark.parametrize('values, message', [
-    ({'network_role': 'sensor'}, 'not available'),
     ({'network_role': 'router'}, 'network_role'),
     ({'placement': 'tap'}, 'placement'),
     ({'capture_interface': 'docker0'}, 'unknown capture interface'),
@@ -103,7 +102,7 @@ def test_admin_is_sent_to_setup_until_done(env):
 
     info = c.get('/api/setup', headers=h).json()
     assert [i['name'] for i in info['interfaces']] == ['eth0', 'eth1']
-    assert [r['value'] for r in info['options']['roles'] if r['available']] == ['standalone']
+    assert [r['value'] for r in info['options']['roles'] if r['available']] == ['standalone', 'sensor', 'brain']
     assert info['enforcement'] in ('dry_run', 'enforcing')
 
     r = c.post('/api/setup', headers=h, json={'network_role': 'standalone', 'placement': 'passive',
@@ -120,8 +119,15 @@ def test_invalid_setup_is_rejected_and_audited(env):
     auth.get_store().create_user('root', PASSWORD, 'admin')
     c = client()
     _, h = login(c)
-    r = c.post('/api/setup', headers=h, json={'network_role': 'brain'})
-    assert r.status_code == 400 and 'not available' in r.json()['detail']
+    r = c.post('/api/setup', headers=h, json={'network_role': 'router'})
+    assert r.status_code == 400 and 'network_role' in r.json()['detail']
     assert env == {}
     assert setup.is_complete() is False
     assert audit.get_log().entries(action='setup')[0]['outcome'] == 'rejected'
+
+
+def test_brain_role_creates_the_service_marker():
+    setup.save({'network_role': 'brain'}, by='root')
+    assert os.path.exists(setup.brain_marker())
+    setup.save({'network_role': 'standalone'}, by='root')
+    assert not os.path.exists(setup.brain_marker())

@@ -59,6 +59,14 @@ ROUTES = {
     ('GET', '/api/audit/verify'): 'admin',
     ('GET', '/api/setup'): 'admin',
     ('POST', '/api/setup'): 'admin',
+    ('GET', '/api/brain/sensors'): 'viewer',
+    ('GET', '/api/brain/commands'): 'viewer',
+    ('GET', '/api/brain/flows'): 'viewer',
+    ('POST', '/api/brain/codes'): 'admin',
+    ('POST', '/api/brain/sensors/{sensor_id}/revoke'): 'admin',
+    ('POST', '/api/brain/sensors/{sensor_id}/commands'): 'operator',
+    ('GET', '/api/sensor/status'): 'viewer',
+    ('POST', '/api/sensor/enroll'): 'admin',
 }
 PROTECTED = sorted(k for k, v in ROUTES.items() if v != 'public')
 USERS = {'viewer': 'vera', 'analyst': 'anna', 'operator': 'otto', 'admin': 'adam'}
@@ -89,7 +97,7 @@ def declared_minimum(route):
 
 
 def concrete(path):
-    return path.replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
+    return path.replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
 
 
 @pytest.fixture(autouse=True)

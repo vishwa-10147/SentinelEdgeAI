@@ -222,6 +222,10 @@ def _start_ingest_loop():
                     _record_flow_stats(flow, final_risk)
                 except Exception:
                     logger.debug("Failed to update live stats", exc_info=True)
+                try:
+                    _forward_to_brain(flow, result, features)
+                except Exception:
+                    logger.exception("Failed to queue flow for the brain")
                 attack_type = result.get("attack_type")
                 drift_flag = result.get("drift")
                 drift_reason = result.get("drift_reason")
@@ -370,6 +374,28 @@ def _start_ingest_loop():
     asyncio.run_coroutine_threadsafe(ingest_queue.start(), ingest_loop)
 
 
+_brain_buffer = None
+_brain_checked = 0.0
+
+
+def _forward_to_brain(flow, result, features):
+    """When this device is an enrolled sensor, queue the scored flow for the brain."""
+    global _brain_buffer, _brain_checked
+    if _brain_buffer is None:
+        # re-check enrolment once a minute, so enrolling needs no engine restart
+        if time.time() - _brain_checked < 60:
+            return
+        _brain_checked = time.time()
+        from sensor import uplink
+        if not uplink.load_identity():
+            return
+        from sensor.buffer import DiskBuffer
+        _brain_buffer = DiskBuffer()
+        logger.warning("sensor enrolled; forwarding flows to the brain")
+    from common.protocol import flow_record
+    _brain_buffer.put(flow_record(flow, result, features))
+
+
 def _record_flow_stats(flow, risk):
     """Append a finished flow and its risk score to the live stats file."""
     try:
@@ -403,5 +429,6 @@ def _process_flow_sync(flow):
         ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
         health_monitor.update_flows()
         _record_flow_stats(flow, result.get("final_risk", 0))
+        _forward_to_brain(flow, result, features)
     except Exception:
         logger.exception("Synchronous flow processing failed")

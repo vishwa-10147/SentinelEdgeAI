@@ -17,10 +17,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 ROLES = {
     'standalone': {'label': 'Standalone', 'available': True,
                    'help': 'This device captures, detects, enforces and runs the console (Lite profile).'},
-    'sensor': {'label': 'Sensor', 'available': False,
-               'help': 'Captures and enforces; sends flows to a Brain node. Available in v1.3.'},
-    'brain': {'label': 'Brain', 'available': False,
-              'help': 'Runs the AI models and console for several sensors (Jetson). Available in v1.3.'},
+    'sensor': {'label': 'Sensor', 'available': True,
+               'help': 'Captures, detects locally and enforces; sends flows to a Brain and executes its '
+                       'signed commands. Enrol it with a code from the Brain after setup.'},
+    'brain': {'label': 'Brain', 'available': True,
+              'help': 'Receives flows from sensors over mutual TLS, runs the console and sends signed '
+                      'commands (Jetson in the Standard profile; any device can act as one).'},
 }
 PLACEMENTS = {
     'passive': {'label': 'Passive (mirror port)',
@@ -103,9 +105,20 @@ def validate(values):
     return {'network_role': role, 'placement': placement, 'capture_interface': iface, 'response_mode': mode}
 
 
+def brain_marker():
+    # a systemd path unit starts the brain service when this file exists
+    return os.path.join(os.path.dirname(os.path.abspath(setup_file())), 'brain', 'enabled')
+
+
 def save(values, by):
     """Validate and store settings, marking setup complete. Returns the stored settings."""
     settings = {**validate(values), 'completed': True, 'completed_at': int(time.time()), 'completed_by': str(by)}
+    marker = brain_marker()
+    if settings['network_role'] == 'brain':
+        os.makedirs(os.path.dirname(marker), mode=0o700, exist_ok=True)
+        open(marker, 'a').close()
+    elif os.path.exists(marker):
+        os.remove(marker)
     path = setup_file()
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), prefix='.setup-')

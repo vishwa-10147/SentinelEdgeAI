@@ -28,6 +28,8 @@ HEALTH_TIMEOUT="${SENTINEL_HEALTH_TIMEOUT:-90}"
 SYSTEMD_DIR="${SENTINEL_SYSTEMD_DIR:-/etc/systemd/system}"
 SBIN_DIR="${SENTINEL_SBIN_DIR:-/usr/local/sbin}"
 SERVICES=(sentineledgeai-engine.service sentineledgeai-api.service)
+ROLE_PATHS=(sentineledgeai-brain.path sentineledgeai-sensor.path)
+ROLE_SERVICES=(sentineledgeai-brain.service sentineledgeai-sensor.service)
 MIN_PYTHON="3.11"
 
 # Runtime files the application writes relative to its working directory.
@@ -228,12 +230,20 @@ build_venv() {
 
 install_units() {
   local release="$1" unit
-  for unit in "$release"/packaging/systemd/*.service "$release"/packaging/systemd/*.timer; do
+  for unit in "$release"/packaging/systemd/*.service "$release"/packaging/systemd/*.timer \
+              "$release"/packaging/systemd/*.path; do
+    [ -f "$unit" ] || continue
     install -m 644 "$unit" "$SYSTEMD_DIR/$(basename "$unit")"
   done
   install -m 755 "$release/packaging/sentinelctl" "$SBIN_DIR/sentinelctl"
   systemctl daemon-reload
   systemctl enable "${SERVICES[@]}" sentineledgeai-rollback-guard.timer >/dev/null
+  # two-node services start only once the device has that role (see the .path units)
+  for unit in "${ROLE_PATHS[@]}"; do
+    if [ -f "$SYSTEMD_DIR/$unit" ]; then
+      systemctl enable --now "$unit" >/dev/null 2>&1 || true
+    fi
+  done
 }
 
 switch_to() {
@@ -285,6 +295,11 @@ stable() {
 
 restart_and_check() {
   systemctl restart "${SERVICES[@]}"
+  local svc
+  for svc in "${ROLE_SERVICES[@]}"; do
+    # pick up the new code if this device runs a two-node role
+    systemctl try-restart "$svc" >/dev/null 2>&1 || true
+  done
   healthy
 }
 
@@ -445,7 +460,7 @@ cmd_status() {
   previous="$(readlink "$PREFIX/previous" 2>/dev/null || true)"
   echo "current:  ${current:+$(basename "$current")}"
   echo "previous: ${previous:+$(basename "$previous")}"
-  for svc in "${SERVICES[@]}" sentineledgeai-rollback-guard.timer; do
+  for svc in "${SERVICES[@]}" sentineledgeai-rollback-guard.timer "${ROLE_SERVICES[@]}"; do
     printf '%-40s %s\n' "$svc" "$(systemctl is-active "$svc" 2>/dev/null || true)"
   done
 }

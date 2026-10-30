@@ -1,0 +1,9 @@
+[Unit]
+Description=Start the SentinelEdgeAI sensor link once this device is enrolled with a brain
+
+[Path]
+PathExists=/var/lib/sentinel/data/sensor/sensor.json
+Unit=sentineledgeai-sensor.service
+
+[Install]
+WantedBy=multi-user.target

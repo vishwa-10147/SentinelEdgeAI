@@ -1,0 +1,9 @@
+[Unit]
+Description=Start the SentinelEdgeAI brain when this device has the Brain role
+
+[Path]
+PathExists=/var/lib/sentinel/data/brain/enabled
+Unit=sentineledgeai-brain.service
+
+[Install]
+WantedBy=multi-user.target

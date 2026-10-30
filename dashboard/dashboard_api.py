@@ -529,6 +529,97 @@ def setup_save(payload: dict, principal: dict = Depends(require_admin)):
     return settings
 
 
+# ---------- two-node mode: brain side ----------
+
+def _brain():
+    from brain import keys as brain_keys, manage as brain_manage
+    if not brain_keys.initialised():
+        raise HTTPException(status_code=409, detail='this device is not a brain; choose the Brain role in Setup')
+    return brain_keys, brain_manage
+
+
+@app.get('/api/brain/sensors')
+def brain_sensors(principal: dict = Depends(require_viewer)):
+    _, m = _brain()
+    return m.store().list_sensors()
+
+
+@app.post('/api/brain/codes')
+def brain_create_code(payload: dict, request: Request, principal: dict = Depends(require_admin)):
+    _, m = _brain()
+    url = (payload or {}).get('brain_url') or f"https://{request.url.hostname}:{os.environ.get('SENTINEL_BRAIN_PORT', '9443')}"
+    code = m.store().create_code(int((payload or {}).get('ttl') or 3600))
+    audit_event(principal, 'sensor_code_create')
+    return m.enrolment_instructions(code, url)
+
+
+@app.post('/api/brain/sensors/{sensor_id}/revoke')
+def brain_revoke(sensor_id: str, principal: dict = Depends(require_admin)):
+    _, m = _brain()
+    try:
+        m.store().revoke_sensor(sensor_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail='sensor not found')
+    audit_event(principal, 'sensor_revoke', target=sensor_id)
+    return {'status': 'revoked'}
+
+
+@app.post('/api/brain/sensors/{sensor_id}/commands')
+def brain_command(sensor_id: str, payload: dict, principal: dict = Depends(require_operator)):
+    _, m = _brain()
+    payload = payload or {}
+    try:
+        env = m.issue_command(sensor_id, payload.get('action'), payload.get('ip'), payload.get('ttl'),
+                              payload.get('reason') or principal.get('username'))
+    except KeyError:
+        raise HTTPException(status_code=404, detail='sensor not found')
+    except ValueError as exc:
+        audit_event(principal, 'sensor_command_issue', target=sensor_id, outcome='rejected',
+                    details={'error': str(exc)})
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'sensor_command_issue', target=sensor_id,
+                details={k: env['payload'][k] for k in ('seq', 'action', 'ip')})
+    return env['payload']
+
+
+@app.get('/api/brain/commands')
+def brain_commands(sensor_id: Optional[str] = None, principal: dict = Depends(require_viewer)):
+    _, m = _brain()
+    return m.store().list_commands(sensor_id)
+
+
+@app.get('/api/brain/flows')
+def brain_flows(limit: int = 100, sensor_id: Optional[str] = None, principal: dict = Depends(require_viewer)):
+    _, m = _brain()
+    return m.store().recent_flows(min(max(limit, 1), 1000), sensor_id)
+
+
+# ---------- two-node mode: sensor side ----------
+
+@app.get('/api/sensor/status')
+def sensor_status(principal: dict = Depends(require_viewer)):
+    from sensor import uplink
+    from sensor.buffer import DiskBuffer
+    buf = DiskBuffer()
+    return {'enrolled': uplink.load_identity(), 'buffered': len(buf), 'dropped': buf.dropped()}
+
+
+@app.post('/api/sensor/enroll')
+def sensor_enroll(payload: dict, principal: dict = Depends(require_admin)):
+    from sensor import uplink
+    payload = payload or {}
+    if uplink.load_identity():
+        raise HTTPException(status_code=409, detail='already enrolled')
+    try:
+        sensor_id = uplink.enroll(payload.get('brain_url', ''), payload.get('code', ''),
+                                  payload.get('ca_fingerprint', ''), payload.get('name'))
+    except uplink.EnrolmentError as exc:
+        audit_event(principal, 'sensor_enroll', outcome='rejected', details={'error': str(exc)})
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'sensor_enroll', target=sensor_id, details={'brain_url': payload.get('brain_url')})
+    return {'sensor_id': sensor_id}
+
+
 @app.get('/api/audit/verify')
 def audit_verify(principal: dict = Depends(require_admin)):
     return audit_core.get_log().verify()

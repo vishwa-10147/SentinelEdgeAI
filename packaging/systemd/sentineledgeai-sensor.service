@@ -1,0 +1,30 @@
+[Unit]
+Description=SentinelEdgeAI sensor link (sends flows to the brain, executes signed commands)
+Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
+After=network-online.target sentineledgeai-engine.service
+Wants=network-online.target
+# started by sentineledgeai-sensor.path once the device is enrolled with a brain
+ConditionPathExists=/var/lib/sentinel/data/sensor/sensor.json
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+WorkingDirectory=/opt/sentineledgeai/current
+EnvironmentFile=/etc/sentinel/sentinel.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m sensor run
+Restart=on-failure
+RestartSec=5
+
+# verified brain commands change firewall rules
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel
+
+[Install]
+WantedBy=multi-user.target
