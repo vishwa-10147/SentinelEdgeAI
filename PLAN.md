@@ -180,6 +180,19 @@ Exit criteria evidence so far:
 
 **Exit criteria:** a 72-hour inline soak with enforcement enabled causes zero unintended blocks of protected hosts; every action rolls back in under 2 seconds; a killed enforcer leaves traffic flowing.
 
+**Status (2026-10-31): built and verified on the real kernel in network namespaces; inline soak pending hardware.**
+- [x] Inline bridge mode: a `bridge sentinel` table mirrors blocks and quarantines when placement is inline (`SENTINEL_BRIDGE`); `inet` rules keep covering traffic to and routed through the device. Bypass hardware is documented as a deployment choice; the software side is the fail-open watchdog.
+- [x] Watchdog (`sentineledgeai-watchdog.timer`, every 20 s): if the engine or API is down for 3 checks while anything is enforced, all rules are removed and the event is audited.
+- [x] MAC identity (`enforcement/identity.py`): ARP table, ARP and DHCP packets; IEEE OUI vendor, DHCP hostname, option-55 fingerprint, vendor class, IP history.
+- [x] Quarantine: only DNS, DHCP, the console port (a public `/quarantined` page) and replies to existing connections; matched by IP, and by MAC on the bridge.
+- [x] Graduated playbook alert → rate-limit → block → quarantine, escalation for repeat sources, Operator approval gate above a risk threshold for a period (default: risk ≥ 75); `/api/playbook/pending` + approve/deny.
+- [x] Protected hosts found automatically (gateway, DNS, DHCP, the appliance's own addresses, loopback) plus management hosts and the whitelist; every block, quarantine and rate limit refuses them.
+- [x] Policy as code (`python -m enforcement policy export|validate|diff|apply`, `/api/policy`): versioned YAML, validation with conflict and duplicate warnings, dry-run diff, history in `data/policy_history/`, audited.
+- [ ] Optional VLAN reassignment through managed-switch APIs (later, as planned).
+- [ ] Console panels for quarantine, approvals and policy editing (API and CLI exist).
+
+Exit criteria evidence so far (`sudo bash tests/firewall_netns/run_enforcement_netns.sh`, 22 checks, real nftables): block, quarantine and rate limit behave as specified on live traffic, routed and bridged; rollback took ~100 ms; the appliance refuses to block itself; rollback leaves no rules. Fail-open: the watchdog removes all rules when the enforcer is down (unit-tested). **The 72-hour inline soak with two NICs is pending hardware.**
+
 ---
 
 ## Phase 4 — Detection quality (v1.5)

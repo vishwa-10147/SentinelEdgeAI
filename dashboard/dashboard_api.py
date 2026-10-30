@@ -529,6 +529,140 @@ def setup_save(payload: dict, principal: dict = Depends(require_admin)):
     return settings
 
 
+# ---------- Phase 3: enforcement ----------
+
+@app.get('/api/enforcement/protected')
+def enforcement_protected(principal: dict = Depends(require_viewer)):
+    from enforcement import protected
+    return protected.summary()
+
+
+@app.get('/api/devices/identity')
+def devices_identity(principal: dict = Depends(require_viewer)):
+    from enforcement import identity
+    return identity.get_registry().list()
+
+
+@app.get('/api/firewall/restrictions')
+def firewall_restrictions(principal: dict = Depends(require_viewer)):
+    return firewall.list_restrictions()
+
+
+def _restrict(kind, payload, principal):
+    ip = (payload or {}).get('ip')
+    if not ip:
+        raise HTTPException(status_code=400, detail='missing ip')
+    try:
+        res = firewall.add_restriction(kind, ip, ttl=(payload or {}).get('ttl'),
+                                       reason=(payload or {}).get('reason', ''))
+    except ValueError as exc:
+        audit_event(principal, f'firewall_{kind}', target=ip, outcome='rejected', details={'error': str(exc)})
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, f'firewall_{kind}', target=res['ip'], details={'ttl': (payload or {}).get('ttl')})
+    return res
+
+
+@app.post('/api/firewall/quarantine')
+def firewall_quarantine(payload: dict, principal: dict = Depends(require_operator)):
+    return _restrict('quarantine', payload, principal)
+
+
+@app.post('/api/firewall/ratelimit')
+def firewall_ratelimit(payload: dict, principal: dict = Depends(require_operator)):
+    return _restrict('ratelimit', payload, principal)
+
+
+@app.post('/api/firewall/release')
+def firewall_release(payload: dict, principal: dict = Depends(require_operator)):
+    payload = payload or {}
+    try:
+        res = firewall.remove_restriction(payload.get('kind'), payload.get('ip', ''))
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, f"firewall_{payload.get('kind')}_release", target=payload.get('ip'))
+    return res
+
+
+@app.get('/api/playbook/pending')
+def playbook_pending(status: str = 'pending', principal: dict = Depends(require_viewer)):
+    from enforcement.playbook import get_playbook
+    return get_playbook().pending(status)
+
+
+def _decide(pending_id, approve, principal):
+    from enforcement.playbook import get_playbook
+    try:
+        res = get_playbook().decide(pending_id, approve, principal.get('username'))
+    except KeyError:
+        raise HTTPException(status_code=404, detail='pending action not found')
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    audit_event(principal, 'playbook_approve' if approve else 'playbook_deny', target=res['ip'],
+                details={'id': pending_id, 'action': res['action'], 'status': res['status']})
+    return res
+
+
+@app.post('/api/playbook/pending/{pending_id}/approve')
+def playbook_approve(pending_id: int, principal: dict = Depends(require_operator)):
+    return _decide(pending_id, True, principal)
+
+
+@app.post('/api/playbook/pending/{pending_id}/deny')
+def playbook_deny(pending_id: int, principal: dict = Depends(require_operator)):
+    return _decide(pending_id, False, principal)
+
+
+@app.get('/api/policy')
+def policy_get(principal: dict = Depends(require_viewer)):
+    from enforcement import policy
+    return {'policy': policy.current(), 'yaml': policy.export()}
+
+
+@app.post('/api/policy/diff')
+def policy_diff(payload: dict, principal: dict = Depends(require_admin)):
+    from enforcement import policy
+    try:
+        new, errors, warnings = policy.validate(policy.parse((payload or {}).get('yaml', '')))
+    except ValueError as exc:
+        return {'valid': False, 'errors': [str(exc)], 'warnings': [], 'changes': []}
+    return {'valid': not errors, 'errors': errors, 'warnings': warnings,
+            'changes': [{'key': k, 'old': o, 'new': n} for k, o, n in policy.diff(new)]}
+
+
+@app.post('/api/policy/apply')
+def policy_apply(payload: dict, principal: dict = Depends(require_admin)):
+    from enforcement import policy
+    try:
+        result = policy.apply(policy.parse((payload or {}).get('yaml', '')), by=principal.get('username'))
+    except ValueError as exc:
+        audit_event(principal, 'policy_apply', outcome='rejected', details={'error': str(exc)[:500]})
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'policy_apply', details={'changed': [c[0] for c in result['changes']]})
+    return {'changes': [{'key': k, 'old': o, 'new': n} for k, o, n in result['changes']],
+            'warnings': result['warnings']}
+
+
+QUARANTINE_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Device quarantined</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/quarantined.css">
+</head><body><main><h1>This device has been quarantined</h1>
+<p>SentinelEdgeAI detected suspicious activity from this device and limited its network access to
+protect the rest of the network. Only name resolution and address assignment still work.</p>
+<p>Please contact your IT or network administrator. Mention the time you saw this page.</p></main></body></html>"""
+QUARANTINE_CSS = ('body{font-family:system-ui,sans-serif;background:#0b1020;color:#e2e8f0;display:grid;'
+                  'place-items:center;min-height:100vh;margin:0}main{max-width:560px;padding:32px}'
+                  'h1{color:#f59e0b}')
+
+
+@app.get('/quarantined', include_in_schema=False)
+def quarantined_page():
+    return Response(QUARANTINE_PAGE, media_type='text/html')
+
+
+@app.get('/quarantined.css', include_in_schema=False)
+def quarantined_css():
+    return Response(QUARANTINE_CSS, media_type='text/css')
+
+
 # ---------- two-node mode: brain side ----------
 
 def _brain():

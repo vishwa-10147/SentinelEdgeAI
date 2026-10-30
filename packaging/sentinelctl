@@ -38,7 +38,7 @@ PYTHON_BIN="${SENTINEL_PYTHON:-$(cat "$ETC_DIR/python" 2>/dev/null || echo pytho
 # Each becomes a symlink from the release directory into STATE_DIR.
 STATE_FILES=(alerts.json device_profiles.json risk_timeline.json live_stats.json
              live_events.jsonl health.json flows.csv flows_history.jsonl
-             firewall_rules.json firewall_policy.json)
+             firewall_rules.json firewall_policy.json firewall_restrictions.json)
 
 log()  { printf '[sentinelctl] %s\n' "$*"; }
 die()  { printf '[sentinelctl] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -240,6 +240,7 @@ install_units() {
   install -m 755 "$release/packaging/sentinelctl" "$SBIN_DIR/sentinelctl"
   systemctl daemon-reload
   systemctl enable "${SERVICES[@]}" sentineledgeai-rollback-guard.timer >/dev/null
+  systemctl enable --now sentineledgeai-watchdog.timer >/dev/null 2>&1 || true
   # two-node services start only once the device has that role (see the .path units)
   for unit in "${ROLE_PATHS[@]}"; do
     if [ -f "$SYSTEMD_DIR/$unit" ]; then

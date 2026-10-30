@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the SentinelEdgeAI fail-open watchdog every 20 seconds
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=20
+AccuracySec=2
+
+[Install]
+WantedBy=timers.target

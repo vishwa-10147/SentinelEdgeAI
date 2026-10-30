@@ -77,6 +77,17 @@ if __name__ == "__main__":
     except Exception:
         logger.exception("Failed to start Prometheus metrics server")
 
+    def _refresh_identities():
+        from enforcement import identity
+        while True:
+            try:
+                identity.get_registry().refresh_from_arp()
+            except Exception:
+                logger.debug("ARP refresh failed", exc_info=True)
+            time.sleep(60)
+
+    threading.Thread(target=_refresh_identities, daemon=True).start()
+
     interface = device_setup.capture_interface()
     logger.info("Starting SentinelEdge AI Flow Engine on %s", interface or "the default interface")
     threading.Thread(target=_watch_capture_interface, args=(interface, logger), daemon=True).start()

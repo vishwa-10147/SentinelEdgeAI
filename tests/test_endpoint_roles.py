@@ -67,6 +67,20 @@ ROUTES = {
     ('POST', '/api/brain/sensors/{sensor_id}/commands'): 'operator',
     ('GET', '/api/sensor/status'): 'viewer',
     ('POST', '/api/sensor/enroll'): 'admin',
+    ('GET', '/quarantined'): 'public',
+    ('GET', '/quarantined.css'): 'public',
+    ('GET', '/api/enforcement/protected'): 'viewer',
+    ('GET', '/api/devices/identity'): 'viewer',
+    ('GET', '/api/firewall/restrictions'): 'viewer',
+    ('GET', '/api/playbook/pending'): 'viewer',
+    ('GET', '/api/policy'): 'viewer',
+    ('POST', '/api/firewall/quarantine'): 'operator',
+    ('POST', '/api/firewall/ratelimit'): 'operator',
+    ('POST', '/api/firewall/release'): 'operator',
+    ('POST', '/api/playbook/pending/{pending_id}/approve'): 'operator',
+    ('POST', '/api/playbook/pending/{pending_id}/deny'): 'operator',
+    ('POST', '/api/policy/diff'): 'admin',
+    ('POST', '/api/policy/apply'): 'admin',
 }
 PROTECTED = sorted(k for k, v in ROUTES.items() if v != 'public')
 USERS = {'viewer': 'vera', 'analyst': 'anna', 'operator': 'otto', 'admin': 'adam'}
@@ -97,7 +111,7 @@ def declared_minimum(route):
 
 
 def concrete(path):
-    return path.replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
+    return path.replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
 
 
 @pytest.fixture(autouse=True)

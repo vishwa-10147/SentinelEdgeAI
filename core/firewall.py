@@ -265,7 +265,12 @@ def _apply_block_rule(ip):
         ok, out = _ensure_nft_ruleset()
         if not ok:
             return False, out
-        return _run_cmd(['nft', 'add', 'element', *NFT_TABLE, _nft_set_for(ip), '{', ip, '}'])
+        ok, out = _run_cmd(['nft', 'add', 'element', *NFT_TABLE, _nft_set_for(ip), '{', ip, '}'])
+        if ok and bridge_enabled():
+            bok, bout = _run_nft_script(_enforcement_script(bridge=True))
+            if bok:
+                _run_cmd(['nft', 'add', 'element', *BRIDGE_TABLE, _nft_set_for(ip), '{', ip, '}'])
+        return ok, out
     tool = _iptables_tool(ip)
     outputs = []
     for chain, spec in _iptables_specs(ip):
@@ -299,6 +304,8 @@ def _remove_block_rule(ip):
         results.extend(_remove_iptables_rule(ip))
     if backend in ('auto', 'nft') and shutil.which('nft'):
         results.append(_run_cmd(['nft', 'delete', 'element', *NFT_TABLE, _nft_set_for(ip), '{', ip, '}']))
+        if bridge_enabled():
+            results.append(_run_cmd(['nft', 'delete', 'element', *BRIDGE_TABLE, _nft_set_for(ip), '{', ip, '}']))
     return results
 
 
@@ -307,9 +314,10 @@ def _flush_all_rules():
     results = []
     backend = FIREWALL_BACKEND
     if backend in ('auto', 'nft') and shutil.which('nft'):
-        ok, _ = _run_cmd(['nft', 'list', 'table', *NFT_TABLE])
-        if ok:
-            results.append(_run_cmd(['nft', 'delete', 'table', *NFT_TABLE]))
+        for table in (NFT_TABLE, BRIDGE_TABLE):
+            ok, _ = _run_cmd(['nft', 'list', 'table', *table])
+            if ok:
+                results.append(_run_cmd(['nft', 'delete', 'table', *table]))
     if backend in ('auto', 'iptables'):
         for tool in IPTABLES_TOOLS.values():
             if not shutil.which(tool):
@@ -417,6 +425,11 @@ def add_block(ip: str, ttl: int = None, reason: str = ''):
     policy = get_policy()
     if ip in set(policy.get('whitelist', [])):
         raise ValueError(f"refusing to block whitelisted IP: {ip}")
+    from enforcement.protected import why_protected
+    reason_protected = why_protected(ip)
+    if reason_protected:
+        # gateway, DNS, DHCP, the appliance itself, management hosts
+        raise ValueError(f"refusing to block protected host {ip} ({reason_protected})")
     ttl = _resolve_ttl(ttl, policy)
     rules = _read_rules()
     now = int(time.time())
@@ -472,9 +485,201 @@ def rollback_blocks(reason: str = 'operator_rollback'):
         # catch kernel rules the state file no longer knows about
         _flush_all_rules()
     _write_rules([r for r in rules if not r.get('blocked')])
-    _log_action({'action': 'rollback', 'count': len(active), 'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
-    return {'removed': len(active), 'rules_left': 0}
+    restricted = _read_restrictions()
+    if restricted:
+        for r in restricted:
+            _remove_restriction_kernel(r)
+        _write_restrictions([])
+    _log_action({'action': 'rollback', 'count': len(active), 'restrictions': len(restricted),
+                 'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
+    return {'removed': len(active), 'restrictions_removed': len(restricted), 'rules_left': 0}
 
 def list_rules():
     expire_rules()
     return _read_rules()
+
+
+# ---------- Phase 3: quarantine, rate limiting, inline bridge ----------
+#
+# Separate chains in the same table, rebuilt atomically on every apply
+# (flush + add inside one nft transaction), so set contents survive.
+# A quarantined host may only use DNS, DHCP and the console's quarantine page
+# (and replies to its existing connections); a rate-limited host is limited
+# per source address. With inline placement the same sets and rules are
+# mirrored into a `bridge` table, which sees bridged frames that the `inet`
+# hooks never do.
+
+RESTRICTION_SETS = {
+    'quarantine': {4: 'quarantine', 6: 'quarantine6'},
+    'ratelimit': {4: 'ratelimit', 6: 'ratelimit6'},
+}
+BRIDGE_TABLE = ('bridge', 'sentinel')
+
+
+def _restrictions_file():
+    return os.path.join(ROOT, 'firewall_restrictions.json')
+
+
+def _read_restrictions():
+    try:
+        with open(_restrictions_file(), 'r') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _write_restrictions(items):
+    _ensure_files()
+    fd, tmp = tempfile.mkstemp(dir=ROOT, prefix='.restrictions-')
+    with os.fdopen(fd, 'w') as f:
+        json.dump(items, f, indent=2)
+    os.replace(tmp, _restrictions_file())
+
+
+def bridge_enabled():
+    if os.environ.get('SENTINEL_BRIDGE') in ('0', '1'):
+        return os.environ['SENTINEL_BRIDGE'] == '1'
+    try:
+        from core import setup as device_setup
+        return device_setup.load().get('placement') == 'inline'
+    except Exception:
+        return False
+
+
+def _enforcement_script(bridge=None):
+    captive = int(os.environ.get('SENTINEL_PORT', '9000'))
+    pps = int(os.environ.get('SENTINEL_RATELIMIT_PPS', '100'))
+    burst = max(pps * 2, 10)
+    fam, tbl = NFT_TABLE
+    t = f'{fam} {tbl}'
+    lines = [f'add table {t}']
+    for sets in RESTRICTION_SETS.values():
+        lines.append(f'add set {t} {sets[4]} {{ type ipv4_addr ; }}')
+        lines.append(f'add set {t} {sets[6]} {{ type ipv6_addr ; }}')
+    lines += [
+        f'add set {t} rlmeter {{ type ipv4_addr ; flags dynamic ; timeout 1m ; }}',
+        f'add set {t} rlmeter6 {{ type ipv6_addr ; flags dynamic ; timeout 1m ; }}',
+        f'add chain {t} quarantine_check',
+        f'flush chain {t} quarantine_check',
+        f'add rule {t} quarantine_check udp dport {{ 53, 67, 68 }} return',
+        f'add rule {t} quarantine_check tcp dport {{ 53, {captive} }} return',
+        f'add rule {t} quarantine_check ct state established,related return',
+        f'add rule {t} quarantine_check drop',
+    ]
+    limit4 = f'update @rlmeter {{ ip saddr limit rate over {pps}/second burst {burst} packets }} drop'
+    limit6 = f'update @rlmeter6 {{ ip6 saddr limit rate over {pps}/second burst {burst} packets }} drop'
+    for chain, hook in (('enf_input', 'input'), ('enf_forward', 'forward')):
+        lines += [
+            f'add chain {t} {chain} {{ type filter hook {hook} priority -20 ; policy accept ; }}',
+            f'flush chain {t} {chain}',
+            f'add rule {t} {chain} ip saddr @quarantine jump quarantine_check',
+            f'add rule {t} {chain} ip6 saddr @quarantine6 jump quarantine_check',
+            f'add rule {t} {chain} ip saddr @ratelimit {limit4}',
+            f'add rule {t} {chain} ip6 saddr @ratelimit6 {limit6}',
+        ]
+        if hook == 'forward':
+            # nothing new may reach a quarantined host
+            lines += [f'add rule {t} {chain} ip daddr @quarantine ct state new drop',
+                      f'add rule {t} {chain} ip6 daddr @quarantine6 ct state new drop']
+    if bridge if bridge is not None else bridge_enabled():
+        b = ' '.join(BRIDGE_TABLE)
+        lines += [f'add table {b}',
+                  f'add set {b} blacklist {{ type ipv4_addr ; }}', f'add set {b} blacklist6 {{ type ipv6_addr ; }}',
+                  f'add set {b} quarantine {{ type ipv4_addr ; }}', f'add set {b} quarantine6 {{ type ipv6_addr ; }}',
+                  f'add set {b} qmac {{ type ether_addr ; }}',
+                  f'add chain {b} forward {{ type filter hook forward priority -10 ; policy accept ; }}',
+                  f'flush chain {b} forward']
+        lines += [f'add rule {b} forward {r}' for r in (
+            'ip saddr @blacklist drop', 'ip daddr @blacklist drop',
+            'ip6 saddr @blacklist6 drop', 'ip6 daddr @blacklist6 drop',
+            'ether saddr @qmac udp dport { 53, 67, 68 } accept',
+            'ether saddr @qmac drop',
+            'ip saddr @quarantine udp dport { 53, 67, 68 } accept',
+            'ip saddr @quarantine drop', 'ip6 saddr @quarantine6 drop',
+        )]
+    return '\n'.join(lines) + '\n'
+
+
+def _run_nft_script(script):
+    fd, path = tempfile.mkstemp(prefix='sentinel-nft-', suffix='.nft')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(script)
+        return _run_cmd(['nft', '-f', path])
+    finally:
+        os.unlink(path)
+
+
+def _set_element(op, table, name, value):
+    return _run_cmd(['nft', op, 'element', *table, name, '{', value, '}'])
+
+
+def _expire_restrictions(now=None):
+    now = int(now or time.time())
+    items = _read_restrictions()
+    keep = [r for r in items if not r.get('expires') or int(r['expires']) > now]
+    for r in items:
+        if r not in keep:
+            _remove_restriction_kernel(r)
+            _log_action({'action': f"{r['kind']}_expire", 'ip': r['ip'], 'dry_run': FIREWALL_DRY_RUN})
+    if len(keep) != len(items):
+        _write_restrictions(keep)
+    return keep
+
+
+def _remove_restriction_kernel(r):
+    if FIREWALL_DRY_RUN or not shutil.which('nft'):
+        return
+    name = RESTRICTION_SETS[r['kind']][_ip_version(r['ip'])]
+    _set_element('delete', NFT_TABLE, name, r['ip'])
+    if r['kind'] == 'quarantine' and bridge_enabled():
+        _set_element('delete', BRIDGE_TABLE, name, r['ip'])
+        if r.get('mac'):
+            _set_element('delete', BRIDGE_TABLE, 'qmac', r['mac'])
+
+
+def add_restriction(kind, ip, ttl=None, reason='', mac=None):
+    """Quarantine or rate-limit `ip` (refused for whitelisted and protected hosts)."""
+    if kind not in RESTRICTION_SETS:
+        raise ValueError('kind must be quarantine or ratelimit')
+    ip = _validate_ip(ip)
+    policy = get_policy()
+    if ip in set(policy.get('whitelist', [])):
+        raise ValueError(f'refusing to {kind} whitelisted IP: {ip}')
+    from enforcement.protected import why_protected
+    reason_protected = why_protected(ip)
+    if reason_protected:
+        raise ValueError(f'refusing to {kind} protected host {ip} ({reason_protected})')
+    ttl = _resolve_ttl(ttl, policy)
+    now = int(time.time())
+    item = {'kind': kind, 'ip': ip, 'mac': mac, 'created': now, 'expires': (now + ttl) if ttl else None,
+            'reason': reason, 'dry_run': FIREWALL_DRY_RUN}
+    if not FIREWALL_DRY_RUN:
+        ok, out = _run_nft_script(_enforcement_script())
+        if ok:
+            ok, out = _set_element('add', NFT_TABLE, RESTRICTION_SETS[kind][_ip_version(ip)], ip)
+        if ok and kind == 'quarantine' and bridge_enabled():
+            _set_element('add', BRIDGE_TABLE, RESTRICTION_SETS[kind][_ip_version(ip)], ip)
+            if mac:
+                _set_element('add', BRIDGE_TABLE, 'qmac', mac)
+        item['applied'], item['apply_output'] = ok, out
+    items = [r for r in _expire_restrictions() if not (r['kind'] == kind and r['ip'] == ip)]
+    items.append(item)
+    _write_restrictions(items)
+    _log_action({'action': kind, 'ip': ip, 'ttl': ttl, 'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
+    return item
+
+
+def remove_restriction(kind, ip):
+    ip = _validate_ip(ip)
+    items = _expire_restrictions()
+    removed = [r for r in items if r['kind'] == kind and r['ip'] == ip]
+    for r in removed:
+        _remove_restriction_kernel(r)
+    _write_restrictions([r for r in items if r not in removed])
+    _log_action({'action': f'{kind}_release', 'ip': ip, 'count': len(removed), 'dry_run': FIREWALL_DRY_RUN})
+    return {'removed': len(removed)}
+
+
+def list_restrictions():
+    return _expire_restrictions()

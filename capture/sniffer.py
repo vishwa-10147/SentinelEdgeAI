@@ -1,4 +1,4 @@
-from scapy.all import sniff, IP, TCP, UDP
+from scapy.all import sniff, IP, TCP, UDP, ARP
 import json
 import time
 import logging
@@ -18,6 +18,7 @@ from core.health import HealthMonitor
 from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
 import core.audit as audit
+from enforcement import identity
 import core.firewall as firewall
 import asyncio
 import threading
@@ -100,6 +101,9 @@ SYSTEM_METRICS = {
 def process_packet(packet):
 
     try:
+        # device identity (MAC, vendor, DHCP fingerprint) from ARP and DHCP
+        if ARP in packet or (UDP in packet and packet[UDP].dport in (67, 68)):
+            identity.observe_packet(packet)
         if IP not in packet:
             return
 
@@ -310,21 +314,10 @@ def _start_ingest_loop():
 
                     try:
                         policy = firewall.get_policy()
-                        if (
-                            policy.get("response_mode") == "auto_block"
-                            and final_risk >= int(policy.get("auto_block_min_risk", 75))
-                        ):
-                            rule = firewall.add_block(
-                                flow.initiator_ip,
-                                ttl=policy.get("default_ttl"),
-                                reason=f"auto_response:{attack_type}"
-                            )
-                            audit.record(
-                                "firewall_block", actor="engine", actor_kind="engine",
-                                target=flow.initiator_ip,
-                                details={"reason": f"auto_response:{attack_type}", "risk": final_risk,
-                                         "dry_run": rule.get("dry_run")},
-                            )
+                        if policy.get("response_mode") == "auto_block":
+                            # graduated: alert -> rate limit -> block -> quarantine, with approval gates
+                            from enforcement.playbook import get_playbook
+                            get_playbook().evaluate(flow.initiator_ip, final_risk, reason=str(attack_type))
                     except Exception:
                         logger.debug("Auto-response evaluation failed", exc_info=True)
 

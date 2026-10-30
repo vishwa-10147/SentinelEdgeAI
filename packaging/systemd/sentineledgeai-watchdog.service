@@ -1,0 +1,19 @@
+[Unit]
+Description=SentinelEdgeAI fail-open watchdog (removes enforcement rules if the enforcer is down)
+Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
+
+[Service]
+Type=oneshot
+User=sentinel
+Group=sentinel
+WorkingDirectory=/opt/sentineledgeai/current
+EnvironmentFile=/etc/sentinel/sentinel.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m enforcement.watchdog
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel
