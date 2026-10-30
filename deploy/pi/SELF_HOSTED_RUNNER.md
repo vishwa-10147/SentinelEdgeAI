@@ -46,11 +46,11 @@ WantedBy=multi-user.target
 ```
 
 Runner labels and security
-- Use labels `privileged` or `net-admin` for jobs that need NET_ADMIN. Restrict which workflows can use these labels.
+- Register the runner with the labels `self-hosted,linux,docker`; every privileged workflow targets exactly these. Restrict which workflows can use this runner.
 - Run the runner on isolated infrastructure (not the same host that contains secrets or production workloads).
 - Limit runner IAM and network access; rotate tokens and use ephemeral VMs when possible.
 
-Workflow example uses `runs-on: [self-hosted, privileged]` in `.github/workflows/privileged-integration.yml`.
+Workflows that use it: `privileged-integration.yml` (pushes to `main`, manual runs) and `containerized-firewall-integration.yml` (pull requests), both with `runs-on: [self-hosted, linux, docker]`.
 Self-hosted GitHub Actions Runner for Privileged Firewall Integration
 
 Purpose

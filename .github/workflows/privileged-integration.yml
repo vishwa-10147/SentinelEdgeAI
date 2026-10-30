@@ -1,52 +1,22 @@
 name: Privileged Integration (self-hosted)
 
-on:
-  workflow_dispatch: {}
-  workflow_call: {}
-  push:
-    branches:
-      - main
-
-jobs:
-  privileged-integration:
-    name: Privileged Integration Tests
-    runs-on: [self-hosted, privileged]
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install prerequisites
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
-
-      - name: Start docker-compose
-        run: |
-          docker-compose -f docker-compose.yml up -d --build
-
-      - name: Run integration tests
-        run: |
-          pytest -q
-
-      - name: Tear down services
-        if: always()
-        run: |
-          docker-compose -f docker-compose.yml down --volumes
-name: Privileged Integration Tests
-
+# Real-kernel firewall tests: block, unblock and rollback against actual
+# nftables/iptables inside a container with NET_ADMIN. Needs a self-hosted
+# runner labelled `self-hosted, linux, docker` (see docs/SELF_HOSTED_RUNNER.md).
+# Pull requests run the same container test via containerized-firewall-integration.yml.
 on:
   workflow_dispatch:
+    inputs:
+      run_rollback_validation:
+        description: Also validate the firewall rollback guard
+        type: boolean
+        default: false
   push:
+    branches: [ main ]
     paths:
-      - 'tests/**'
       - 'core/**'
+      - 'tests/**'
+      - '.github/workflows/privileged-integration.yml'
 
 permissions:
   contents: read
@@ -54,46 +24,44 @@ permissions:
 jobs:
   firewall-integration:
     name: Run privileged firewall integration tests
-    # This job is intended to run on a self-hosted runner with Docker and NET_ADMIN capability.
     runs-on: [self-hosted, linux, docker]
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      - name: Install deps
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt || true
+          pip install -r requirements-dev.txt
+
       - name: Build and run privileged firewall integration tests
         env:
           SENTINEL_RUN_FIREWALL_CONTAINER_TESTS: '1'
-        run: |
-          pytest -q tests/test_firewall_container_integration.py
+        run: pytest -q tests/test_firewall_container_integration.py
 
   rollback-guard-validation:
     name: Rollback guard validation (optional)
-    if: ${{ github.event.inputs != null && github.event.inputs.run_rollback_validation == 'true' }}
-    runs-on: [self-hosted, linux, docker]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_rollback_validation }}
     needs: firewall-integration
+    runs-on: [self-hosted, linux, docker]
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      - name: Install deps
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt || true
-      - name: Validate rollback guard behavior
+          pip install -r requirements-dev.txt
+
+      - name: Validate rollback guard behaviour
         env:
           VENV_PYTHON: python
-        run: |
-          python scripts/validate_rollback_guard.py
-
-  notes:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "This workflow must be executed on a self-hosted runner with Docker and NET_ADMIN. See deploy/pi/README.md for setup instructions."
+        run: python scripts/validate_rollback_guard.py
