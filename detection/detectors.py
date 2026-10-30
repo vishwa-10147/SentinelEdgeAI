@@ -14,7 +14,12 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
-AUTH_PORTS = {21, 22, 23, 110, 143, 389, 445, 993, 995, 1433, 3306, 3389, 5432, 5900, 6379, 8080, 8443}
+# services that authenticate per connection; Redis and HTTP-alternate ports are left out because
+# applications reconnect to them constantly (seen live: a container hitting Redis every ~4 s)
+AUTH_PORTS = {21, 22, 23, 110, 143, 389, 445, 993, 995, 1433, 3306, 3389, 5432, 5900}
+# interactive logins: nothing legitimate reconnects every few seconds, so any fast cadence counts;
+# on the other auth ports applications do reconnect on a timer, so only fast or irregular cadence counts
+INTERACTIVE_PORTS = {21, 22, 23, 3389, 5900}
 
 
 @dataclass
@@ -109,11 +114,13 @@ class PortScanDetector:
 class BruteForceDetector:
     """Repeated short, small sessions to an authentication service."""
 
-    def __init__(self, window=120, attempts=10, max_duration=5.0, max_bytes=5000, max_median_gap=5.0):
+    def __init__(self, window=120, attempts=10, max_duration=5.0, max_bytes=5000, max_median_gap=5.0,
+                 fast_gap=1.0, min_jitter=0.3):
         self.w = _Window(window)
         self.attempts, self.max_duration, self.max_bytes = attempts, max_duration, max_bytes
-        # password guessing is fast; health checks and pooled clients reconnect every ~10 s or slower
-        self.max_median_gap = max_median_gap
+        # guessing is either very fast (< fast_gap s apart) or irregular; scheduled clients
+        # (health checks, reconnecting apps) repeat on a near-fixed timer
+        self.max_median_gap, self.fast_gap, self.min_jitter = max_median_gap, fast_gap, min_jitter
         self.cooldown = Cooldown()
 
     def observe(self, f):
@@ -127,9 +134,17 @@ class BruteForceDetector:
         if len(q) < self.attempts:
             return []
         starts = sorted(v for _, v in q)
-        gaps = sorted(b - a for a, b in zip(starts, starts[1:]))
-        fast = gaps and gaps[len(gaps) // 2] <= self.max_median_gap
-        if (fast or len(q) >= self.attempts * 3) and self.cooldown.ready(('brute_force',) + key, f['ts']):
+        gaps = [b - a for a, b in zip(starts, starts[1:])]
+        if not gaps:
+            return []
+        median = sorted(gaps)[len(gaps) // 2]
+        mean = sum(gaps) / len(gaps)
+        jitter = statistics.pstdev(gaps) / mean if mean > 0 else 0.0
+        if f['dport'] in INTERACTIVE_PORTS:
+            attack_like = median <= self.max_median_gap
+        else:
+            attack_like = median <= self.fast_gap or (median <= self.max_median_gap and jitter >= self.min_jitter)
+        if attack_like and self.cooldown.ready(('brute_force',) + key, f['ts']):
             return [Finding('brute_force', f['src'], min(92, 65 + len(q)), 0.9, 'T1110',
                             f'{len(q)} short sessions to {f["dst"]}:{f["dport"]} within {self.w.seconds}s',
                             {'target': f['dst'], 'port': f['dport'], 'attempts': len(q)}, ts=f['ts'])]

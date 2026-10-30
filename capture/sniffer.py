@@ -362,7 +362,9 @@ def _start_ingest_loop():
                         "mitre_technique_name": mitre_info.get("technique_name"),
                         "confidence": result.get("confidence"),
                         "confirmed": bool(fused and fused['confirmed']),
-                        "explanation": (fused or {}).get('explanation', []),
+                        "explanation": ((fused or {}).get('explanation', []) if (fused or {}).get('new_findings')
+                                        else [f"earlier finding for this source: {e}"
+                                              for e in (fused or {}).get('explanation', [])[:2]]),
                         "findings": (fused or {}).get('findings', []),
                     }
                     if fused and fused.get('technique') and not alert.get("mitre_technique_id"):

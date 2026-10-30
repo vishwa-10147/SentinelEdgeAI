@@ -262,7 +262,17 @@ def test_health_check_reconnects_are_not_brute_force():
     hits = [f for i in range(40) for f in d.observe(flow(T0 + i * 10, src='10.0.2.5', dst='10.0.2.2', dport=6379,
                                                           duration=0.05, out_b=300, in_b=300))]
     assert hits == []
-    d = BruteForceDetector()                    # the same volume at password-guessing speed is caught
-    hits = [f for i in range(12) for f in d.observe(flow(T0 + i * 1.5, src='10.0.2.6', dst='10.0.2.2', dport=6379,
+    d = BruteForceDetector()                    # every ~4 s, 30 per 2 minutes, on a database port: still a client
+    hits = [f for i in range(60) for f in d.observe(flow(T0 + i * 4 + (i % 3) * 0.05, src='10.0.2.5', dst='10.0.2.3',
+                                                          dport=5432, duration=0.05, out_b=300, in_b=300))]
+    assert hits == []
+    d = BruteForceDetector()                    # sub-second guessing is caught even when regular
+    hits = [f for i in range(12) for f in d.observe(flow(T0 + i * 0.5, src='10.0.2.6', dst='10.0.2.2', dport=22,
                                                           duration=0.05, out_b=300, in_b=300))]
+    assert [f.kind for f in hits] == ['brute_force']
+    rng = random.Random(9)                      # and slower, irregular guessing too
+    d, t, hits = BruteForceDetector(), T0, []
+    for _ in range(15):
+        hits += d.observe(flow(t, src='10.0.2.7', dst='10.0.2.2', dport=3389, duration=1, out_b=1500, in_b=1500))
+        t += rng.uniform(0.5, 5)
     assert [f.kind for f in hits] == ['brute_force']
