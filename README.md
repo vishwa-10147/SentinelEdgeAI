@@ -224,7 +224,7 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 
 4. Open `http://<pi-address>:9000` and sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. Add other users from the **Users** panel.
 
-   Automation can still use the API key in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`). Users can also be managed on the device:
+   For scripts and integrations, create an API token in the **Users** panel (or with `create-token` below) and send it as `Authorization: Bearer <token>`. The older shared key in `/etc/sentinel/sentinel.env` (`DASHBOARD_API_KEY`) still works. Users and tokens can also be managed on the device:
 
    ```bash
    cd /opt/sentineledgeai/current
@@ -232,6 +232,8 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
    sudo -u sentinel .venv/bin/python -m core.auth create-user --username alice --role operator
    sudo -u sentinel .venv/bin/python -m core.auth reset-password --username alice --must-change-password
    sudo -u sentinel .venv/bin/python -m core.auth reset-mfa --username alice   # lost phone
+   sudo -u sentinel .venv/bin/python -m core.auth create-token --owner admin --name grafana --role viewer --days 90
+   sudo -u sentinel .venv/bin/python -m core.auth list-tokens
    ```
 
 **Upgrades and rollback**
@@ -317,7 +319,7 @@ Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
 
 ## API
 
-Every endpoint except sign-in requires authentication: a console access token (`Authorization: Bearer …`) or the API key. Each endpoint has a minimum role.
+Every endpoint except sign-in requires authentication: a console access token or an API token (`Authorization: Bearer …`), or the shared API key. Each endpoint has a minimum role.
 
 | Role | Can |
 |---|---|
@@ -333,6 +335,7 @@ Operators and Admins must set up two-step sign-in (an authenticator app) at thei
 | `GET /api/auth/status`, `POST /api/auth/login`, `/refresh`, `/logout`, `/password`, `GET /api/auth/me` | Sign-in and sessions |
 | `GET /api/auth/mfa`, `POST /api/auth/mfa/setup`, `/mfa/enable` | Two-step sign-in status and enrolment |
 | `GET/POST /api/users`, `PATCH/DELETE /api/users/{username}` | User management (Admin) |
+| `GET/POST /api/tokens`, `DELETE /api/tokens/{id}` | API tokens (signed-in Admin) |
 | `GET /api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/risk_timeline`, `/api/live_stats` | Detection data |
 | `GET /api/incidents/timeline`, `/api/reports/security`, `POST /api/alerts/explain` | Investigation and reporting |
 | `GET /api/device/{id}/logs` | Per-device history |
