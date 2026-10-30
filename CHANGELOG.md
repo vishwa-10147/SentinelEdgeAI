@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **API rate limits** per client address: 600 reads and 60 writes (`POST`, `PUT`, `PATCH`, `DELETE`) per minute on `/api/*`, answered with `429` and `Retry-After`. Tune with `SENTINEL_RATE_LIMIT_READ` / `SENTINEL_RATE_LIMIT_WRITE` (`0` turns a limit off). The stricter login throttle still applies.
+
 ## [1.2.0] - 2026-10-30
 
 First Phase 1 release: the console now has its own user accounts, roles and two-step sign-in, and the firewall can block IPv6 addresses. Single-node ("Lite") deployment on a Raspberry Pi.

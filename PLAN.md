@@ -116,7 +116,7 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 - [x] WebSocket stream requires authentication (token in the first message).
 - [x] CORS locked to configured origins (`SENTINEL_CORS_ORIGINS`); the console calls its own origin in production.
 - [x] TOTP two-step sign-in, required for Operator and Admin (`SENTINEL_MFA_ROLES`), with QR enrolment, replay protection, 10 single-use recovery codes and admin reset.
-- [ ] General API rate limits.
+- [x] General API rate limits: 600 reads and 60 writes per client per minute on `/api/*`, configurable, `429` with `Retry-After`.
 - [ ] Service accounts and API tokens (scoped, expiring) for automation, replacing the single shared key.
 - [ ] HTTPS by default: certificate generated at install, with the option to import an organisation's own certificate; HSTS; secure WebSocket (WSS).
 - [ ] Security headers: CSP, X-Frame-Options, Referrer-Policy.

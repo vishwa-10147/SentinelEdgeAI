@@ -13,7 +13,8 @@ import hashlib
 import re
 import ipaddress
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+import core.auth as auth_core
 from core.product_intelligence import (
     build_incident_timeline,
     build_security_report,
@@ -121,6 +122,35 @@ async def prometheus_middleware(request: Request, call_next):
         except Exception:
             logger.exception('metrics update failed')
     return resp
+
+# General API rate limits per client address, on top of the stricter login
+# throttle. One open console polls about 80 requests a minute. 0 disables.
+RATE_LIMIT_READ = int(os.environ.get('SENTINEL_RATE_LIMIT_READ', '600'))
+RATE_LIMIT_WRITE = int(os.environ.get('SENTINEL_RATE_LIMIT_WRITE', '60'))
+RATE_LIMIT_WINDOW = 60
+WRITE_METHODS = ('POST', 'PUT', 'PATCH', 'DELETE')
+read_limiter = auth_core.SlidingWindowLimiter(RATE_LIMIT_READ, RATE_LIMIT_WINDOW)
+write_limiter = auth_core.SlidingWindowLimiter(RATE_LIMIT_WRITE, RATE_LIMIT_WINDOW)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    path = request.url.path
+    if not path.startswith('/api/') or request.method == 'OPTIONS':
+        return await call_next(request)
+    if request.method in WRITE_METHODS:
+        limiter, limit = write_limiter, RATE_LIMIT_WRITE
+    else:
+        limiter, limit = read_limiter, RATE_LIMIT_READ
+    client = request.client.host if request.client else 'unknown'
+    if limit > 0 and not limiter.allow(client):
+        logger.warning('rate limit exceeded for %s on %s %s', client, request.method, path)
+        return JSONResponse(
+            {'detail': 'rate limit exceeded; try again later'},
+            status_code=429,
+            headers={'Retry-After': str(limiter.retry_after(client))},
+        )
+    return await call_next(request)
 
 # The console is normally served by this API (same origin). Cross-origin
 # access is only for the Vite dev server or a separately hosted console.
