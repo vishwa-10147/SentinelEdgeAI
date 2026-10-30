@@ -152,42 +152,6 @@ def process_packet(packet):
                 except Exception:
                     logger.exception("Fallback sync processing also failed")
 
-            # -------- Update Live Stats --------
-            # -------- Update Live Stats --------
-            try:
-                with open(LIVE_STATS_FILE, "r") as f:
-                    stats = json.load(f)
-            except Exception:
-                stats = {}
-
-            # Ensure required keys exist
-            stats.setdefault("total_flows", 0)
-            stats.setdefault("unique_ips", [])
-            stats.setdefault("flow_history", [])
-
-            stats["total_flows"] += 1
-
-            if flow.initiator_ip not in stats["unique_ips"]:
-                stats["unique_ips"].append(flow.initiator_ip)
-
-            try:
-                stats["flow_history"].append({
-                    "timestamp": time.time(),
-                    "score": final_risk
-                })
-            except Exception:
-                stats["flow_history"] = [{
-                    "timestamp": time.time(),
-                    "score": final_risk
-                }]
-
-            # Keep only last N entries
-            history_limit = config.get("persistence", "history_limit")
-            stats["flow_history"] = stats["flow_history"][-history_limit:]
-
-            with open(LIVE_STATS_FILE, "w") as f:
-                json.dump(stats, f)
-
             # -------- Update Health Status --------
             try:
                 with open(HEALTH_FILE, "w") as f:
@@ -254,6 +218,10 @@ def _start_ingest_loop():
                 processing_time_ms = round((end_time - start_time) * 1000, 3)
 
                 final_risk = result.get("final_risk", 0)
+                try:
+                    _record_flow_stats(flow, final_risk)
+                except Exception:
+                    logger.debug("Failed to update live stats", exc_info=True)
                 attack_type = result.get("attack_type")
                 drift_flag = result.get("drift")
                 drift_reason = result.get("drift_reason")
@@ -402,6 +370,27 @@ def _start_ingest_loop():
     asyncio.run_coroutine_threadsafe(ingest_queue.start(), ingest_loop)
 
 
+def _record_flow_stats(flow, risk):
+    """Append a finished flow and its risk score to the live stats file."""
+    try:
+        with open(LIVE_STATS_FILE, "r") as f:
+            stats = json.load(f)
+    except Exception:
+        stats = {}
+    stats.setdefault("total_flows", 0)
+    stats.setdefault("unique_ips", [])
+    if not isinstance(stats.get("flow_history"), list):
+        stats["flow_history"] = []
+    stats["total_flows"] += 1
+    if flow.initiator_ip not in stats["unique_ips"]:
+        stats["unique_ips"].append(flow.initiator_ip)
+    stats["flow_history"].append({"timestamp": time.time(), "score": risk})
+    history_limit = config.get("persistence", "history_limit")
+    stats["flow_history"] = stats["flow_history"][-history_limit:]
+    with open(LIVE_STATS_FILE, "w") as f:
+        json.dump(stats, f)
+
+
 def _process_flow_sync(flow):
     # fallback synchronous processor (keeps original behavior minimally)
     try:
@@ -413,5 +402,6 @@ def _process_flow_sync(flow):
         ENGINE_METRICS["flows_processed"] += 1
         ENGINE_METRICS["total_processing_time_ms"] += processing_time_ms
         health_monitor.update_flows()
+        _record_flow_stats(flow, result.get("final_risk", 0))
     except Exception:
         logger.exception("Synchronous flow processing failed")
