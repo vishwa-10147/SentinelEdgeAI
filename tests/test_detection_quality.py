@@ -296,3 +296,14 @@ def test_alert_explanation_labels_only_earlier_findings():
                                          'earlier finding for this source: random domains']
     fused['new_findings'] = [old]
     assert _alert_explanation(fused)[0] == 'random domains'
+
+
+def test_flood_needs_a_high_packet_rate():
+    from types import SimpleNamespace
+    from detection.attack_classifier import AttackClassifier
+    c = AttackClassifier()
+    base = dict(forward_bytes=1000, backward_bytes=1000, responder_ip='10.0.2.2', responder_port=6379)
+    busy = SimpleNamespace(duration=300, forward_packets=3000, backward_packets=3000, **base)   # 20 packets/s
+    flood = SimpleNamespace(duration=2, forward_packets=9000, backward_packets=100, **base)     # 4,550 packets/s
+    assert c.classify(busy, 3) != 'TRAFFIC_FLOOD'
+    assert c.classify(flood, 3) == 'TRAFFIC_FLOOD'

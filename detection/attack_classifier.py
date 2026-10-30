@@ -17,8 +17,9 @@ class AttackClassifier:
         if flow.duration > 30 and is_external(flow.responder_ip):
             return "LONG_SUSPICIOUS_SESSION"
 
-        # Large traffic burst
-        if flow.forward_packets + flow.backward_packets > 500:
+        # Traffic flood: a high packet *rate* (a long, busy connection is not a flood)
+        packets = flow.forward_packets + flow.backward_packets
+        if packets > 500 and packets / max(flow.duration, 1.0) > 1000:
             return "TRAFFIC_FLOOD"
 
         # Common scan ports
