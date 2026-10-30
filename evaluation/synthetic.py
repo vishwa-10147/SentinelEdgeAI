@@ -76,6 +76,11 @@ def benign(rng, hours=6, hosts=25):
                 events.append(_flow(t + k * 600 - 3000 + 60, c, servers['backup'], 443, duration=30,
                                     out_b=2_000_000, in_b=50_000))
             events.append(_flow(t + 1800, c, servers['backup'], 443, duration=600, out_b=900_000_000, in_b=400_000))
+    t = BASE + 30
+    while t < end:                                       # containerised app reconnecting to Redis/Postgres (seen live)
+        events.append(_flow(t, '10.0.2.5', '10.0.2.2', 6379, duration=0.05, out_b=300, in_b=300))
+        events.append(_flow(t + 1, '10.0.2.5', '10.0.2.3', 5432, duration=0.2, out_b=900, in_b=1200))
+        t += rng.uniform(9, 11)
     t = BASE + 1800
     while t < end:                                       # monitoring tool polls the printer's services
         for port in (80, 161, 443, 515, 631, 9100):

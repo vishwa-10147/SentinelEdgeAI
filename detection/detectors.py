@@ -109,9 +109,11 @@ class PortScanDetector:
 class BruteForceDetector:
     """Repeated short, small sessions to an authentication service."""
 
-    def __init__(self, window=120, attempts=10, max_duration=5.0, max_bytes=5000):
+    def __init__(self, window=120, attempts=10, max_duration=5.0, max_bytes=5000, max_median_gap=5.0):
         self.w = _Window(window)
         self.attempts, self.max_duration, self.max_bytes = attempts, max_duration, max_bytes
+        # password guessing is fast; health checks and pooled clients reconnect every ~10 s or slower
+        self.max_median_gap = max_median_gap
         self.cooldown = Cooldown()
 
     def observe(self, f):
@@ -121,8 +123,13 @@ class BruteForceDetector:
         if (f.get('duration') or 0) > self.max_duration or size > self.max_bytes:
             return []
         key = (f['src'], f['dst'], f['dport'])
-        q = self.w.add(key, f['ts'], 1)
-        if len(q) >= self.attempts and self.cooldown.ready(('brute_force',) + key, f['ts']):
+        q = self.w.add(key, f['ts'], f.get('start') or f['ts'])
+        if len(q) < self.attempts:
+            return []
+        starts = sorted(v for _, v in q)
+        gaps = sorted(b - a for a, b in zip(starts, starts[1:]))
+        fast = gaps and gaps[len(gaps) // 2] <= self.max_median_gap
+        if (fast or len(q) >= self.attempts * 3) and self.cooldown.ready(('brute_force',) + key, f['ts']):
             return [Finding('brute_force', f['src'], min(92, 65 + len(q)), 0.9, 'T1110',
                             f'{len(q)} short sessions to {f["dst"]}:{f["dport"]} within {self.w.seconds}s',
                             {'target': f['dst'], 'port': f['dport'], 'attempts': len(q)}, ts=f['ts'])]

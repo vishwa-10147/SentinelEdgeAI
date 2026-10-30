@@ -257,7 +257,9 @@ def _start_ingest_loop():
                     from detection.pipeline import get_pipeline
                     record = flow_record(flow, result, features)
                     fused = get_pipeline().observe_flow(record, result)
-                    if fused['risk'] > (result.get("final_risk") or 0):
+                    # raise this flow's risk only when the flow itself produced a finding; earlier
+                    # findings for the source still count toward confirmation, without re-alerting
+                    if fused['new_findings'] and fused['risk'] > (result.get("final_risk") or 0):
                         result["final_risk"] = fused['risk']
                         if fused['attack_type']:
                             result["attack_type"] = fused['attack_type']

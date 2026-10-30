@@ -254,3 +254,15 @@ def test_evaluation_meets_phase4_targets_on_synthetic_data():
     assert r['detection_rate'] >= 0.9, r['classes']
     assert r['false_positive_rate'] <= 0.01
     assert r['latency_ms']['p99'] < 1000
+
+
+def test_health_check_reconnects_are_not_brute_force():
+    # live false positive: a container reconnecting to Redis every ~10 s
+    d = BruteForceDetector()
+    hits = [f for i in range(40) for f in d.observe(flow(T0 + i * 10, src='10.0.2.5', dst='10.0.2.2', dport=6379,
+                                                          duration=0.05, out_b=300, in_b=300))]
+    assert hits == []
+    d = BruteForceDetector()                    # the same volume at password-guessing speed is caught
+    hits = [f for i in range(12) for f in d.observe(flow(T0 + i * 1.5, src='10.0.2.6', dst='10.0.2.2', dport=6379,
+                                                          duration=0.05, out_b=300, in_b=300))]
+    assert [f.kind for f in hits] == ['brute_force']
