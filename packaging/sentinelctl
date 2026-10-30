@@ -81,6 +81,8 @@ ensure_config() {
   if [ ! -f "$env_file" ]; then
     local api_key
     api_key="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    local old_umask
+    old_umask="$(umask)"
     umask 027
     cat > "$env_file" <<EOF
 # SentinelEdgeAI runtime settings. Created by sentinelctl; upgrades never overwrite it.
@@ -96,6 +98,7 @@ SENTINEL_DB_PATH=data/sentinel.db
 # Firewall rollback guard (timer): set to 1 once enforcement is enabled.
 ENABLE_ROLLBACK_GUARD=0
 EOF
+    umask "$old_umask"
     chown root:"$SERVICE_USER" "$env_file"
     chmod 640 "$env_file"
     log "created $env_file with a new random DASHBOARD_API_KEY"
@@ -316,6 +319,7 @@ cmd_install() {
   build_venv "$release"
   # code is root-owned and read-only to the service; state links are added after
   chown -R root:root "$release"
+  chmod -R u+rwX,go+rX,go-w "$release"
   link_state "$release"
   ensure_admin_user "$release"
   install_units "$release"
