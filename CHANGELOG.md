@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- The project is now licensed under the **Apache License 2.0** (`LICENSE`, `NOTICE`). Previously no licence had been chosen.
+
 ## [1.1.0] - 2026-10-30
 
 First release built by the automated release pipeline. Single-node ("Lite") deployment on a Raspberry Pi.

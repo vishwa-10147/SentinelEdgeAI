@@ -98,7 +98,7 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 - [x] Package installer no longer deletes the device's database, firewall state or keys on upgrade.
 - [x] **Release pipeline:** a `vX.Y.Z` tag runs tests, the model-signature check and a dependency audit, then publishes the Pi package with an offline wheelhouse, checksum, SBOM and build-provenance attestation.
 - [x] **Device lifecycle:** `sentinelctl install | upgrade | rollback | status` with versioned releases under `/opt/sentineledgeai/releases`, config in `/etc/sentinel`, state in `/var/lib/sentinel`, automatic rollback when the new version fails its health check, and hardened systemd units running as an unprivileged `sentinel` user.
-- [ ] Choose a licence (Apache-2.0 recommended for an open-core product; or proprietary).
+- [x] Licence: Apache-2.0 (`LICENSE`, `NOTICE`).
 - [x] Delete the empty stubs `flow/timeout_manager.py` and `utils/config.py`.
 - [x] Move superseded docs (`README_LOCAL.md`, `README_DEPLOY.md`, `BUILD_SUMMARY.md`, `SECURITY_AUDIT.md`, `docs/BUILD_PLAN.md`, `notes.txt`) to `docs/archive/`.
 
