@@ -23,7 +23,7 @@ def test_security_headers_on_every_response(path):
     assert 'camera=()' in r.headers['permissions-policy']
     assert r.headers['cross-origin-embedder-policy'] == 'require-corp'
     assert r.headers['cross-origin-resource-policy'] == 'same-origin'
-    assert r.headers['cache-control'] == 'no-store'
+    assert r.headers['cache-control'] == api.NO_CACHE
 
 
 def test_csp_is_strict():
@@ -47,4 +47,4 @@ def test_fingerprinted_assets_are_cacheable(tmp_path, monkeypatch):
     sub.middleware('http')(api.security_headers_middleware)
     c = TestClient(sub)
     assert c.get('/assets/index-abc123.js').headers['cache-control'] == api.ASSET_CACHE
-    assert c.get('/assets/missing.js').headers['cache-control'] == 'no-store'
+    assert c.get('/assets/missing.js').headers['cache-control'] == api.NO_CACHE
