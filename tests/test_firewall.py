@@ -99,28 +99,35 @@ class FakeKernel:
     def __init__(self):
         self.calls = []
         self.iptables = []          # list of (chain, tuple(spec))
-        self.nft_chains = set()
+        self.ip6tables = []
+        self.nft_rules = {}         # chain -> list of rule strings
         self.nft_table = False
-        self.nft_set = set()
+        self.nft_set = set()        # IPv4 blacklist
+        self.nft_set6 = set()       # IPv6 blacklist6
         self.nft_scripts = []
+
+    @property
+    def nft_chains(self):
+        return set(self.nft_rules)
 
     def __call__(self, cmd):
         self.calls.append(list(cmd))
         prog, args = cmd[0], list(cmd[1:])
-        if prog == 'iptables':
+        if prog in ('iptables', 'ip6tables'):
+            rules = self.iptables if prog == 'iptables' else self.ip6tables
             op = args[0]
             if op == '-S':
-                lines = [f"-A {c} {' '.join(s)}" for c, s in self.iptables if c == args[1]]
+                lines = [f"-A {c} {' '.join(s)}" for c, s in rules if c == args[1]]
                 return True, '\n'.join(lines)
             chain, spec = args[1], tuple(args[2:])
             if op == '-C':
-                return (chain, spec) in self.iptables, ''
+                return (chain, spec) in rules, ''
             if op == '-I':
-                self.iptables.insert(0, (chain, spec))
+                rules.insert(0, (chain, spec))
                 return True, ''
             if op == '-D':
-                if (chain, spec) in self.iptables:
-                    self.iptables.remove((chain, spec))
+                if (chain, spec) in rules:
+                    rules.remove((chain, spec))
                     return True, ''
                 return False, 'Bad rule'
         if prog == 'nft':
@@ -130,21 +137,30 @@ class FakeKernel:
                 self.nft_scripts.append(script)
                 self.nft_table = True
                 for line in script.splitlines():
+                    words = line.split()
                     if line.startswith('add chain'):
-                        self.nft_chains.add(line.split()[4])
+                        self.nft_rules.setdefault(words[4], [])
+                    elif line.startswith('add rule'):
+                        self.nft_rules[words[4]].append(' '.join(words[5:]))
                 return True, ''
             if args[:2] == ['list', 'chain']:
-                return args[4] in self.nft_chains, ''
+                chain = args[4]
+                if chain not in self.nft_rules:
+                    return False, 'No such file or directory'
+                return True, '\n'.join(self.nft_rules[chain])
             if args[:2] == ['list', 'table']:
                 return self.nft_table, ''
+            sets = {'blacklist': self.nft_set, 'blacklist6': self.nft_set6}
             if args[:2] == ['add', 'element']:
-                self.nft_set.add(args[6])
+                sets[args[4]].add(args[6])
                 return True, ''
             if args[:2] == ['delete', 'element']:
-                self.nft_set.discard(args[6])
+                sets[args[4]].discard(args[6])
                 return True, ''
             if args[:2] == ['delete', 'table']:
-                self.nft_table, self.nft_chains, self.nft_set = False, set(), set()
+                self.nft_table, self.nft_rules = False, {}
+                self.nft_set.clear()
+                self.nft_set6.clear()
                 return True, ''
         return False, 'unexpected command'
 
@@ -229,3 +245,69 @@ def test_run_cmd_refuses_non_firewall_binaries():
 def test_run_cmd_refuses_shell_metacharacters():
     ok, out = fw._run_cmd(['iptables', '-L', ';', 'reboot'])
     assert ok is False
+
+
+def test_ipv6_addresses_are_normalised():
+    rule = fw.add_block('2001:DB8:0:0::5', ttl=60)
+    assert rule['ip'] == '2001:db8::5'
+    assert fw.remove_block('2001:db8::5')['removed'] == 1
+
+
+def test_ipv4_mapped_ipv6_is_treated_as_ipv4():
+    rule = fw.add_block('::ffff:203.0.113.40', ttl=60)
+    assert rule['ip'] == '203.0.113.40'
+
+
+def test_ipv6_loopback_is_whitelisted_by_default():
+    with pytest.raises(ValueError, match='whitelisted'):
+        fw.add_block('::1', ttl=60)
+
+
+def test_nft_ipv6_block_uses_ipv6_set(kernel, monkeypatch):
+    monkeypatch.setattr(fw, 'FIREWALL_BACKEND', 'nft')
+    rule = fw.add_block('2001:db8::20', ttl=60)
+    assert rule['applied'] is True
+    script = kernel.nft_scripts[0]
+    assert 'add set inet sentinel blacklist6 { type ipv6_addr ; }' in script
+    assert 'add rule inet sentinel input ip6 saddr @blacklist6 drop' in script
+    assert 'add rule inet sentinel forward ip6 daddr @blacklist6 drop' in script
+    assert kernel.nft_set6 == {'2001:db8::20'}
+    assert kernel.nft_set == set()
+    fw.remove_block('2001:db8::20')
+    assert kernel.nft_set6 == set()
+
+
+def test_nft_upgrade_adds_only_missing_ipv6_rules(kernel, monkeypatch):
+    monkeypatch.setattr(fw, 'FIREWALL_BACKEND', 'nft')
+    # chains as created by v1.1.0 (IPv4 only)
+    kernel.nft_table = True
+    kernel.nft_rules = {
+        'input': ['ip saddr @blacklist drop'],
+        'forward': ['ip saddr @blacklist drop', 'ip daddr @blacklist drop'],
+    }
+    fw.add_block('203.0.113.24', ttl=60)
+    assert kernel.nft_rules['input'] == ['ip saddr @blacklist drop', 'ip6 saddr @blacklist6 drop']
+    assert kernel.nft_rules['forward'].count('ip saddr @blacklist drop') == 1
+    assert 'ip6 daddr @blacklist6 drop' in kernel.nft_rules['forward']
+    assert 'add chain' not in kernel.nft_scripts[0]
+
+
+def test_ip6tables_block_and_unblock(kernel, monkeypatch):
+    monkeypatch.setattr(fw, 'FIREWALL_BACKEND', 'iptables')
+    rule = fw.add_block('2001:db8::30', ttl=60)
+    assert rule['applied'] is True
+    assert kernel.iptables == []
+    chains = sorted((c, s[0]) for c, s in kernel.ip6tables)
+    assert chains == [('FORWARD', '-d'), ('FORWARD', '-s'), ('INPUT', '-s')]
+    fw.remove_block('2001:db8::30')
+    assert kernel.ip6tables == []
+
+
+def test_rollback_flushes_ip6tables_rules(kernel, monkeypatch):
+    monkeypatch.setattr(fw, 'FIREWALL_BACKEND', 'iptables')
+    fw.add_block('203.0.113.34', ttl=60)
+    fw.add_block('2001:db8::34', ttl=60)
+    kernel.ip6tables.append(('INPUT', ('-s', '2001:db8::99/128', '-m', 'comment', '--comment', 'SentinelEdgeAI', '-j', 'DROP')))
+    fw.rollback_blocks()
+    assert kernel.iptables == []
+    assert kernel.ip6tables == []

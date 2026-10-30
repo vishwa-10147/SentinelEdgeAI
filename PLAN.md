@@ -92,7 +92,7 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 - [x] **Fix iptables removal** so it matches the inserted rule (including the comment); cover `INPUT` and `FORWARD`; no duplicate rules on re-block.
 - [x] Rollback flushes every SentinelEdgeAI kernel rule, including ones missing from the state file.
 - [x] Container integration test checks the kernel ruleset after block, unblock and rollback.
-- [ ] IPv6 blocking (`ipv6_addr` set and `ip6tables`).
+- [x] IPv6 blocking: `blacklist6` (`ipv6_addr`) set and `ip6` rules in nftables, `ip6tables` for the iptables backend; existing v1.1.0 rulesets are upgraded in place.
 - [x] Split dependencies: `requirements.txt` (runtime), `requirements-dev.txt` (pytest, bandit, pip-audit), `requirements-streamlit.txt` (legacy dashboard); upgrade `uvicorn` 0.23 → 0.54.
 - [x] Pi package is built from `git archive HEAD` (no untracked secrets), includes the built web console, refuses secret-like files, and ships a SHA-256 checksum.
 - [x] Package installer no longer deletes the device's database, firewall state or keys on upgrade.

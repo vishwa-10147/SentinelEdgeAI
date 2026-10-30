@@ -483,7 +483,7 @@ function FirewallPolicyModal({ open, onClose, rules, onChanged }){
           </div>
           <div className="policy-card">
             <label>Whitelist management</label>
-            <input value={whitelistIp} onChange={e=>setWhitelistIp(e.target.value)} placeholder="Add IP address" />
+            <input value={whitelistIp} onChange={e=>setWhitelistIp(e.target.value)} placeholder="Add IP address (IPv4 or IPv6)" />
             <button disabled={busy || !whitelistIp} className="ghost-button" onClick={whitelist}>Add whitelist</button>
           </div>
           <div className="policy-card danger-zone">
