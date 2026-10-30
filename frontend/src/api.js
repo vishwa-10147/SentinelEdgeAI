@@ -78,9 +78,19 @@ export async function authStatus(){
   return res.data
 }
 
-export async function login(username, password){
-  const res = await client.post('/api/auth/login', { username, password })
+export async function login(username, password, otp){
+  const res = await client.post('/api/auth/login', { username, password, ...(otp ? { otp } : {}) })
   return accept(res.data)
+}
+
+export async function startMfaSetup(){
+  const res = await client.post('/api/auth/mfa/setup')
+  return res.data
+}
+
+export async function enableMfa(code){
+  const res = await client.post('/api/auth/mfa/enable', { code })
+  return res.data
 }
 
 export function refreshSession(){

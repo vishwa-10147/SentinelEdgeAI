@@ -19,6 +19,7 @@ joblib==1.5.3
 
 # Console accounts (Argon2id password hashing)
 argon2-cffi==25.1.0
+segno==1.6.6
 
 # Storage, config, metrics
 psycopg2-binary==2.9.10
