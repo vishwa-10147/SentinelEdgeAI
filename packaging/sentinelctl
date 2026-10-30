@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+# sentinelctl — install, upgrade, roll back and inspect SentinelEdgeAI on a device.
+#
+#   sudo ./sentinelctl install  sentineledgeai-pi-1.1.0.tar.gz   # first install
+#   sudo sentinelctl upgrade    sentineledgeai-pi-1.2.0.tar.gz   # later versions
+#   sudo sentinelctl rollback                                     # back to the previous version
+#   sentinelctl status | versions
+#
+# On-device layout (code is replaceable, state is never touched by upgrades):
+#   /opt/sentineledgeai/releases/<version>/   code + its own Python venv
+#   /opt/sentineledgeai/current  -> releases/<version>   (active version)
+#   /opt/sentineledgeai/previous -> releases/<version>   (rollback target)
+#   /etc/sentinel/      sentinel.env, config.yaml, model_signing.key
+#   /var/lib/sentinel/  database, firewall state, alerts, profiles
+#   /var/log/sentinel/  logs
+set -euo pipefail
+
+PREFIX="${SENTINEL_PREFIX:-/opt/sentineledgeai}"
+ETC_DIR="${SENTINEL_ETC_DIR:-/etc/sentinel}"
+STATE_DIR="${SENTINEL_STATE_DIR:-/var/lib/sentinel}"
+LOG_DIR="${SENTINEL_LOG_DIR:-/var/log/sentinel}"
+SERVICE_USER="${SENTINEL_USER:-sentinel}"
+KEEP_RELEASES="${SENTINEL_KEEP_RELEASES:-3}"
+HEALTH_TIMEOUT="${SENTINEL_HEALTH_TIMEOUT:-90}"
+SYSTEMD_DIR="${SENTINEL_SYSTEMD_DIR:-/etc/systemd/system}"
+SBIN_DIR="${SENTINEL_SBIN_DIR:-/usr/local/sbin}"
+SERVICES=(sentineledgeai-engine.service sentineledgeai-api.service)
+MIN_PYTHON="3.11"
+
+# Runtime files the application writes relative to its working directory.
+# Each becomes a symlink from the release directory into STATE_DIR.
+STATE_FILES=(alerts.json device_profiles.json risk_timeline.json live_stats.json
+             live_events.jsonl health.json flows.csv flows_history.jsonl
+             firewall_rules.json firewall_policy.json)
+
+log()  { printf '[sentinelctl] %s\n' "$*"; }
+die()  { printf '[sentinelctl] ERROR: %s\n' "$*" >&2; exit 1; }
+
+require_root() { [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"; }
+
+usage() {
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+check_python() {
+  command -v python3 >/dev/null || die "python3 not found (apt install python3 python3-venv)"
+  python3 -c "import sys; sys.exit(0 if sys.version_info >= tuple(map(int, '$MIN_PYTHON'.split('.'))) else 1)" \
+    || die "Python >= $MIN_PYTHON required, found $(python3 -V 2>&1)"
+  python3 -c "import venv, ensurepip" 2>/dev/null || die "python3-venv missing (apt install python3-venv)"
+}
+
+verify_checksum() {
+  local tarball="$1" sum="$1.sha256"
+  if [ -f "$sum" ]; then
+    (cd "$(dirname "$tarball")" && sha256sum -c "$(basename "$sum")" >/dev/null) \
+      || die "checksum mismatch for $tarball"
+    log "checksum OK"
+  elif [ "${SENTINEL_ALLOW_UNVERIFIED:-0}" = "1" ]; then
+    log "WARNING: no $sum found; continuing because SENTINEL_ALLOW_UNVERIFIED=1"
+  else
+    die "missing $sum (download it with the package, or set SENTINEL_ALLOW_UNVERIFIED=1)"
+  fi
+}
+
+ensure_user_and_dirs() {
+  if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+    useradd --system --home-dir "$STATE_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
+    log "created system user $SERVICE_USER"
+  fi
+  install -d -m 755 "$PREFIX" "$PREFIX/releases"
+  install -d -m 750 -o root -g "$SERVICE_USER" "$ETC_DIR"
+  install -d -m 750 -o "$SERVICE_USER" -g "$SERVICE_USER" "$STATE_DIR" "$STATE_DIR/data" "$LOG_DIR"
+}
+
+ensure_config() {
+  local release="$1" env_file="$ETC_DIR/sentinel.env"
+  if [ ! -f "$env_file" ]; then
+    local api_key
+    api_key="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    umask 027
+    cat > "$env_file" <<EOF
+# SentinelEdgeAI runtime settings. Created by sentinelctl; upgrades never overwrite it.
+SENTINEL_HOST=0.0.0.0
+SENTINEL_PORT=9000
+# Required for every API call from another machine (header X-API-Key).
+DASHBOARD_API_KEY=$api_key
+# 1 = record firewall actions only. Set 0 to enforce, then restart the services.
+FIREWALL_DRY_RUN=1
+SENTINEL_FIREWALL_BACKEND=auto
+SENTINEL_MODEL_SIGNING_KEY_FILE=$ETC_DIR/model_signing.key
+SENTINEL_DB_PATH=data/sentinel.db
+# Firewall rollback guard (timer): set to 1 once enforcement is enabled.
+ENABLE_ROLLBACK_GUARD=0
+EOF
+    chown root:"$SERVICE_USER" "$env_file"
+    chmod 640 "$env_file"
+    log "created $env_file with a new random DASHBOARD_API_KEY"
+  fi
+  if [ ! -f "$ETC_DIR/config.yaml" ]; then
+    install -m 640 -o root -g "$SERVICE_USER" "$release/config.yaml" "$ETC_DIR/config.yaml"
+    log "created $ETC_DIR/config.yaml from the release defaults"
+  fi
+  local key="$ETC_DIR/model_signing.key"
+  if [ -f "$key" ]; then
+    chown root:"$SERVICE_USER" "$key"
+    chmod 640 "$key"
+  elif ! grep -q '^SENTINEL_ALLOW_UNSIGNED_MODELS=1' "$env_file"; then
+    die "model signing key missing: install it with
+       sudo bash $release/deploy/pi/provision_key.sh /path/to/model_signing.key
+     then run this command again."
+  fi
+}
+
+link_state() {
+  local release="$1" name
+  rm -rf "$release/data" "$release/logs" "$release/config.yaml"
+  ln -s "$STATE_DIR/data" "$release/data"
+  ln -s "$LOG_DIR" "$release/logs"
+  ln -s "$ETC_DIR/config.yaml" "$release/config.yaml"
+  for name in "${STATE_FILES[@]}"; do
+    rm -f "$release/$name"
+    ln -s "$STATE_DIR/$name" "$release/$name"
+  done
+}
+
+build_venv() {
+  local release="$1"
+  python3 -m venv "$release/.venv"
+  if [ -d "$release/wheels" ]; then
+    "$release/.venv/bin/pip" install --quiet --no-index --find-links "$release/wheels" -r "$release/requirements.txt"
+  elif [ "${SENTINEL_ALLOW_ONLINE_INSTALL:-0}" = "1" ]; then
+    log "no bundled wheels; installing dependencies from the internet"
+    "$release/.venv/bin/pip" install --quiet -r "$release/requirements.txt"
+  else
+    die "package has no wheels/ directory (set SENTINEL_ALLOW_ONLINE_INSTALL=1 to download dependencies)"
+  fi
+}
+
+install_units() {
+  local release="$1" unit
+  for unit in "$release"/packaging/systemd/*.service "$release"/packaging/systemd/*.timer; do
+    install -m 644 "$unit" "$SYSTEMD_DIR/$(basename "$unit")"
+  done
+  install -m 755 "$release/packaging/sentinelctl" "$SBIN_DIR/sentinelctl"
+  systemctl daemon-reload
+  systemctl enable "${SERVICES[@]}" sentineledgeai-rollback-guard.timer >/dev/null
+}
+
+switch_to() {
+  # Atomically point `current` at $1 and remember the old target as `previous`.
+  local target="$1" old
+  old="$(readlink "$PREFIX/current" 2>/dev/null || true)"
+  if [ -n "$old" ] && [ "$old" != "$target" ]; then
+    ln -sfn "$old" "$PREFIX/previous.tmp" && mv -Tf "$PREFIX/previous.tmp" "$PREFIX/previous"
+  fi
+  ln -sfn "$target" "$PREFIX/current.tmp" && mv -Tf "$PREFIX/current.tmp" "$PREFIX/current"
+}
+
+api_key() {
+  sed -n 's/^DASHBOARD_API_KEY=//p' "$ETC_DIR/sentinel.env" | tail -1
+}
+
+healthy() {
+  local deadline=$((SECONDS + HEALTH_TIMEOUT)) port code svc
+  port="$(sed -n 's/^SENTINEL_PORT=//p' "$ETC_DIR/sentinel.env" | tail -1)"
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    sleep 3
+    for svc in "${SERVICES[@]}"; do
+      systemctl is-active --quiet "$svc" || continue 2
+    done
+    code="$(curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: $(api_key)" \
+             "http://127.0.0.1:${port:-9000}/openapi.json" || true)"
+    [ "$code" = "200" ] && return 0
+  done
+  return 1
+}
+
+restart_and_check() {
+  systemctl restart "${SERVICES[@]}"
+  healthy
+}
+
+prune_releases() {
+  local current previous dir kept=0
+  current="$(readlink "$PREFIX/current" 2>/dev/null || true)"
+  previous="$(readlink "$PREFIX/previous" 2>/dev/null || true)"
+  # newest first; always keep current and previous
+  for dir in $(ls -1dt "$PREFIX"/releases/*/ 2>/dev/null); do
+    dir="${dir%/}"
+    if [ "$dir" = "$current" ] || [ "$dir" = "$previous" ]; then continue; fi
+    kept=$((kept + 1))
+    if [ "$kept" -gt $((KEEP_RELEASES - 2)) ]; then
+      rm -rf "$dir"
+      log "removed old release $(basename "$dir")"
+    fi
+  done
+}
+
+cmd_install() {
+  require_root
+  local tarball="${1:-}"
+  [ -n "$tarball" ] && [ -f "$tarball" ] || usage 1
+  tarball="$(cd "$(dirname "$tarball")" && pwd)/$(basename "$tarball")"
+  check_python
+  verify_checksum "$tarball"
+
+  local tmp version release
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  tar -xzf "$tarball" -C "$tmp"
+  local src
+  src="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -1)"
+  [ -f "$src/VERSION" ] || die "package has no VERSION file"
+  version="$(tr -d '[:space:]' < "$src/VERSION")"
+  release="$PREFIX/releases/$version"
+
+  if [ "$(readlink "$PREFIX/current" 2>/dev/null || true)" = "$release" ]; then
+    die "version $version is already active"
+  fi
+
+  log "installing SentinelEdgeAI $version"
+  ensure_user_and_dirs
+  rm -rf "$release"
+  mv "$src" "$release"
+  ensure_config "$release"
+  build_venv "$release"
+  # code is root-owned and read-only to the service; state links are added after
+  chown -R root:root "$release"
+  link_state "$release"
+  install_units "$release"
+
+  switch_to "$release"
+  if restart_and_check; then
+    log "SentinelEdgeAI $version is running"
+    prune_releases
+    return 0
+  fi
+
+  log "health check failed for $version"
+  local previous
+  previous="$(readlink "$PREFIX/previous" 2>/dev/null || true)"
+  if [ -n "$previous" ] && [ -d "$previous" ]; then
+    log "rolling back to $(basename "$previous")"
+    ln -sfn "$previous" "$PREFIX/current.tmp" && mv -Tf "$PREFIX/current.tmp" "$PREFIX/current"
+    rm -f "$PREFIX/previous"
+    install_units "$previous"
+    if restart_and_check; then
+      log "rolled back to $(basename "$previous"); $version left in $release for inspection"
+    else
+      log "previous version is also unhealthy; check: journalctl -u sentineledgeai-engine -u sentineledgeai-api"
+    fi
+  else
+    log "no previous version to roll back to; check: journalctl -u sentineledgeai-engine -u sentineledgeai-api"
+  fi
+  exit 1
+}
+
+cmd_rollback() {
+  require_root
+  local previous current
+  previous="$(readlink "$PREFIX/previous" 2>/dev/null || true)"
+  current="$(readlink "$PREFIX/current" 2>/dev/null || true)"
+  [ -n "$previous" ] && [ -d "$previous" ] || die "no previous release to roll back to"
+  log "rolling back $(basename "$current") -> $(basename "$previous")"
+  switch_to "$previous"
+  install_units "$previous"
+  if restart_and_check; then
+    log "now running $(basename "$previous")"
+  else
+    die "services unhealthy after rollback; check journalctl -u sentineledgeai-engine -u sentineledgeai-api"
+  fi
+}
+
+cmd_status() {
+  local current previous svc
+  current="$(readlink "$PREFIX/current" 2>/dev/null || true)"
+  previous="$(readlink "$PREFIX/previous" 2>/dev/null || true)"
+  echo "current:  ${current:+$(basename "$current")}"
+  echo "previous: ${previous:+$(basename "$previous")}"
+  for svc in "${SERVICES[@]}" sentineledgeai-rollback-guard.timer; do
+    printf '%-40s %s\n' "$svc" "$(systemctl is-active "$svc" 2>/dev/null || true)"
+  done
+}
+
+cmd_versions() {
+  local current dir
+  current="$(readlink "$PREFIX/current" 2>/dev/null || true)"
+  for dir in "$PREFIX"/releases/*/; do
+    [ -d "$dir" ] || continue
+    dir="${dir%/}"
+    if [ "$dir" = "$current" ]; then echo "* $(basename "$dir")"; else echo "  $(basename "$dir")"; fi
+  done
+}
+
+case "${1:-}" in
+  install|upgrade) shift; cmd_install "$@" ;;
+  rollback)        cmd_rollback ;;
+  status)          cmd_status ;;
+  versions)        cmd_versions ;;
+  -h|--help|help)  usage 0 ;;
+  *)               usage 1 ;;
+esac

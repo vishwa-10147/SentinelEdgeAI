@@ -25,7 +25,7 @@ This is the single source of truth for what we are building, in what order, and 
 
 ---
 
-## 2. Target architecture (v1.0)
+## 2. Target architecture (v2.0)
 
 ```text
            Pi 5 "Sensor" (one per network segment)            Jetson Orin Nano "Brain"
@@ -65,20 +65,22 @@ This is the single source of truth for what we are building, in what order, and 
 
 | Release | Theme | Phases |
 |---|---|---|
-| **v0.9.x** | Correctness and hygiene | 0 |
-| **v0.10** | Secure management plane | 1 |
-| **v0.11** | Two-node architecture | 2 |
-| **v0.12** | Enforcement you can trust | 3 |
-| **v0.13** | Detection quality | 4 |
-| **v0.14** | Integrations and operations | 5 |
-| **v1.0** | Production release | 6 |
-| **v1.x+** | Scale and advanced intelligence | 7 |
+| **v1.1** | Correctness, hygiene, release pipeline | 0 |
+| **v1.2** | Secure management plane | 1 |
+| **v1.3** | Two-node architecture | 2 |
+| **v1.4** | Enforcement you can trust | 3 |
+| **v1.5** | Detection quality | 4 |
+| **v1.6** | Integrations and operations | 5 |
+| **v2.0** | Production release | 6 |
+| **v2.x+** | Scale and advanced intelligence | 7 |
 
 Each phase ends with a working, tested, merged build. The **exit criteria** must all be met before the phase is called done.
 
+Version numbers continue from the first prototype release, `v1.0.0` (February 2026). Releases follow Semantic Versioning and are published by pushing a `vX.Y.Z` tag that matches the `VERSION` file (see `.github/workflows/release.yml`).
+
 ---
 
-## Phase 0 — Correctness and hygiene (v0.9.x)
+## Phase 0 — Correctness and hygiene (v1.1)
 
 **Goal:** fix what is broken or unsafe in the current code before building on it.
 
@@ -94,6 +96,8 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 - [x] Split dependencies: `requirements.txt` (runtime), `requirements-dev.txt` (pytest, bandit, pip-audit), `requirements-streamlit.txt` (legacy dashboard); upgrade `uvicorn` 0.23 → 0.54.
 - [x] Pi package is built from `git archive HEAD` (no untracked secrets), includes the built web console, refuses secret-like files, and ships a SHA-256 checksum.
 - [x] Package installer no longer deletes the device's database, firewall state or keys on upgrade.
+- [x] **Release pipeline:** a `vX.Y.Z` tag runs tests, the model-signature check and a dependency audit, then publishes the Pi package with an offline wheelhouse, checksum, SBOM and build-provenance attestation.
+- [x] **Device lifecycle:** `sentinelctl install | upgrade | rollback | status` with versioned releases under `/opt/sentineledgeai/releases`, config in `/etc/sentinel`, state in `/var/lib/sentinel`, automatic rollback when the new version fails its health check, and hardened systemd units running as an unprivileged `sentinel` user.
 - [ ] Choose a licence (Apache-2.0 recommended for an open-core product; or proprietary).
 - [x] Delete the empty stubs `flow/timeout_manager.py` and `utils/config.py`.
 - [x] Move superseded docs (`README_LOCAL.md`, `README_DEPLOY.md`, `BUILD_SUMMARY.md`, `SECURITY_AUDIT.md`, `docs/BUILD_PLAN.md`, `notes.txt`) to `docs/archive/`.
@@ -102,7 +106,7 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 
 ---
 
-## Phase 1 — Secure management plane (v0.10)
+## Phase 1 — Secure management plane (v1.2)
 
 **Goal:** the console and API are safe to expose on a management network.
 
@@ -119,7 +123,7 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 
 ---
 
-## Phase 2 — Two-node architecture (v0.11)
+## Phase 2 — Two-node architecture (v1.3)
 
 **Goal:** the Pi senses and enforces; the Jetson does all AI work and management.
 
@@ -129,13 +133,14 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 - Sensor disk buffer and replay after reconnect; degraded mode with the local detector.
 - Event bus inside the brain replacing file polling; WebSocket heartbeat, reconnect with resync cursor, server-side throttling.
 - Move storage to PostgreSQL on the Jetson; keep SQLite for the Lite profile.
-- Jetson installer (JetPack 6.x) and Pi installer; "Lite" profile keeps everything on one Pi.
+- Jetson installer (JetPack 6.x) and Pi installer; "Lite" profile keeps everything on one Pi. JetPack 6 ships Python 3.10 while the runtime needs ≥ 3.11 (numpy 2.4), so the brain package must bring its own interpreter (e.g. a `uv`-managed CPython 3.11) or run in an L4T container.
+- `sentinelctl` gains a `brain` package type; the brain distributes sensor upgrades to its Pis.
 
 **Exit criteria:** unplugging the Jetson for an hour loses no flow data and causes no network impact; a forged or replayed command is rejected; one Jetson handles 3 sensors at the target load.
 
 ---
 
-## Phase 3 — Enforcement you can trust (v0.12)
+## Phase 3 — Enforcement you can trust (v1.4)
 
 **Goal:** blocking and quarantine are safe, precise and reversible in inline mode.
 
@@ -150,7 +155,7 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 
 ---
 
-## Phase 4 — Detection quality (v0.13)
+## Phase 4 — Detection quality (v1.5)
 
 **Goal:** catch more real attacks with fewer false alarms, and prove it with numbers.
 
@@ -167,7 +172,7 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 
 ---
 
-## Phase 5 — Integrations and operations (v0.14)
+## Phase 5 — Integrations and operations (v1.6)
 
 - SIEM export: syslog (RFC 5424) and CEF, HTTPS webhooks (signed), JSON lines for Filebeat/Splunk UF, Microsoft Sentinel via syslog/AMA; Slack, Teams and email notifications.
 - Threat intelligence: offline import of STIX/TAXII feeds and IP/domain blocklists, with scheduled updates where the site allows.
@@ -180,7 +185,7 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 
 ---
 
-## Phase 6 — Production release (v1.0)
+## Phase 6 — Production release (v2.0)
 
 - One-command installers and pre-built OS images for Pi and Jetson; configuration presets (Home, Office, OT/Industrial, Enterprise segment).
 - Signed releases (Sigstore/cosign), SBOM (CycloneDX) per release, reproducible builds; minimal non-root container images.
@@ -194,7 +199,7 @@ Each phase ends with a working, tested, merged build. The **exit criteria** must
 
 ---
 
-## Phase 7 — Scale and advanced intelligence (v1.x and later)
+## Phase 7 — Scale and advanced intelligence (v2.x and later)
 
 - **Fleet manager:** central console for many sites (self-hosted), configuration templates, staged rollouts.
 - **Zero-trust micro-segmentation:** per-device trust score drives allowed peers and ports; learned "allow-lists" for IoT/OT devices.

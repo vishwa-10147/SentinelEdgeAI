@@ -1,0 +1,5 @@
+# Scripts and unit files run on Linux devices; keep LF line endings everywhere.
+*.sh text eol=lf
+packaging/sentinelctl text eol=lf
+*.service text eol=lf
+*.timer text eol=lf

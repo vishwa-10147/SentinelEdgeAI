@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the SentinelEdgeAI firewall rollback guard every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=sentineledgeai-rollback-guard.service
+
+[Install]
+WantedBy=timers.target

@@ -8,7 +8,6 @@ starlette==1.0.1
 pydantic==2.13.4
 uvicorn==0.54.0
 httptools==0.7.1
-uvloop==0.22.1; sys_platform != "win32"
 websockets==16.0
 
 # Capture, detection and ML
