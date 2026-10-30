@@ -65,3 +65,13 @@ def test_retry_after():
     assert not limiter.allow('a', now=120.0)
     assert limiter.retry_after('a', now=120.0) == 40
     assert limiter.retry_after('b', now=120.0) == 0
+
+
+def test_rate_limited_responses_carry_security_headers(monkeypatch):
+    limit(monkeypatch, read=1)
+    client = TestClient(api.app, client=('203.0.113.10', 50000))
+    client.get('/api/auth/status')
+    r = client.get('/api/auth/status')
+    assert r.status_code == 429
+    assert r.headers['x-frame-options'] == 'DENY'
+    assert 'content-security-policy' in r.headers

@@ -152,6 +152,40 @@ async def rate_limit_middleware(request: Request, call_next):
         )
     return await call_next(request)
 
+# Browser hardening headers on every response. The built console loads only
+# same-origin scripts and styles; the TOTP QR code is a data: image. 'self' in
+# connect-src covers the same-origin WebSocket. Override the CSP with
+# SENTINEL_CSP if the console is hosted elsewhere. Registered after the rate
+# limiter so it wraps it and 429 responses carry the headers too.
+DEFAULT_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+SECURITY_HEADERS = {
+    'Content-Security-Policy': os.environ.get('SENTINEL_CSP', DEFAULT_CSP),
+    'X-Frame-Options': 'DENY',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+}
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    resp = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        resp.headers.setdefault(name, value)
+    return resp
+
 # The console is normally served by this API (same origin). Cross-origin
 # access is only for the Vite dev server or a separately hosted console.
 CORS_ORIGINS = [
