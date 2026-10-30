@@ -64,7 +64,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░�
 
 | Phase | Release | Goal | Status |
 |---|---|---|---|
-| 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: IPv6 blocking, licence choice, privileged-runner CI proof |
+| 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: licence choice, privileged-runner CI proof |
 | 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | 🔜 Next |
 | 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🔜 |
 | 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🔜 |
@@ -117,10 +117,9 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 
 | Capability | Status |
 |---|---|
-| Block and unblock via nftables or iptables on `INPUT` and `FORWARD`, with TTL expiry | ✅ |
+| Block and unblock IPv4 and IPv6 addresses via nftables or iptables/ip6tables on `INPUT` and `FORWARD`, with TTL expiry | ✅ |
 | Whitelist, response modes (`monitor`, `alert`, `auto_block`), risk-threshold policy | ✅ |
 | Dry run by default, full rollback, systemd rollback guard | ✅ |
-| IPv6 blocking | 🔜 |
 | Inline bridge mode and MAC-based device quarantine | 🔜 |
 | Graduated playbooks (alert → rate-limit → block → quarantine) with approval gates | 🔜 |
 | Signed, authenticated commands from the AI node (mTLS) | 🔜 |
@@ -337,8 +336,7 @@ docs/         additional documentation and archived material
 
 1. **Single shared API key and no TLS.** Keep the API on a trusted management network until accounts and HTTPS ship in v1.2.
 2. **Single node only.** The Jetson is not used until v1.3.
-3. **IPv4 only.** IPv6 addresses cannot be blocked yet.
-4. **No inline bridge mode.** Blocks cover traffic to and routed through the appliance; bridge filtering and MAC quarantine arrive in v1.4.
+3. **No inline bridge mode.** Blocks cover traffic to and routed through the appliance; bridge filtering and MAC quarantine arrive in v1.4.
 
 ---
 

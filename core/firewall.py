@@ -35,7 +35,7 @@ def _ensure_files():
 
 def _default_policy():
     return {
-        'whitelist': ['127.0.0.1'],
+        'whitelist': ['127.0.0.1', '::1'],
         'default_ttl': 300,
         'max_ttl': 86400,
         'response_mode': 'monitor',
@@ -115,9 +115,14 @@ def _validate_ip(ip: str) -> str:
         parsed = ipaddress.ip_address(str(ip))
     except ValueError as exc:
         raise ValueError(f"invalid IP address: {ip}") from exc
-    if parsed.version != 4:
-        raise ValueError("only IPv4 addresses are currently supported")
+    if parsed.version == 6 and parsed.ipv4_mapped:
+        # ::ffff:a.b.c.d reaches the kernel as plain IPv4 traffic
+        parsed = parsed.ipv4_mapped
     return str(parsed)
+
+
+def _ip_version(ip: str) -> int:
+    return ipaddress.ip_address(ip).version
 
 def _validate_ttl(ttl, allow_none=True, max_ttl=86400):
     if ttl is None:
@@ -165,13 +170,28 @@ def _resolve_ttl(ttl, policy):
 RULE_COMMENT = 'SentinelEdgeAI'
 NFT_TABLE = ('inet', 'sentinel')
 NFT_SET = 'blacklist'
+NFT_SET6 = 'blacklist6'
+NFT_SETS = {NFT_SET: 'ipv4_addr', NFT_SET6: 'ipv6_addr'}
 
 # Each chain drops blacklisted sources; FORWARD also drops traffic *to* a
 # blocked host so a device behind the appliance (inline mode) is isolated.
 NFT_CHAINS = {
-    'input': ['ip saddr @blacklist drop'],
-    'forward': ['ip saddr @blacklist drop', 'ip daddr @blacklist drop'],
+    'input': ['ip saddr @blacklist drop', 'ip6 saddr @blacklist6 drop'],
+    'forward': [
+        'ip saddr @blacklist drop', 'ip daddr @blacklist drop',
+        'ip6 saddr @blacklist6 drop', 'ip6 daddr @blacklist6 drop',
+    ],
 }
+
+IPTABLES_TOOLS = {4: 'iptables', 6: 'ip6tables'}
+
+
+def _nft_set_for(ip):
+    return NFT_SET6 if _ip_version(ip) == 6 else NFT_SET
+
+
+def _iptables_tool(ip):
+    return IPTABLES_TOOLS[_ip_version(ip)]
 
 
 def _use_nft():
@@ -200,23 +220,28 @@ def _iptables_specs(ip):
 def _nft_ruleset_script():
     """nft script that creates whatever part of the sentinel table is missing.
 
-    `add table`/`add set` are idempotent; chains and their rules are only added
-    when the chain does not exist yet, so repeated calls never duplicate rules.
+    `add table`/`add set` are idempotent. A missing chain is created with all of
+    its rules; an existing chain only gets the rules it lacks (e.g. the IPv6
+    rules on a device upgraded from an IPv4-only release), so repeated calls
+    never duplicate rules.
     """
     family, table = NFT_TABLE
-    lines = [
-        f'add table {family} {table}',
-        f'add set {family} {table} {NFT_SET} {{ type ipv4_addr ; }}',
-    ]
+    lines = [f'add table {family} {table}']
+    lines.extend(
+        f'add set {family} {table} {name} {{ type {addr_type} ; }}'
+        for name, addr_type in NFT_SETS.items()
+    )
     for chain, rules in NFT_CHAINS.items():
-        ok, _ = _run_cmd(['nft', 'list', 'chain', family, table, chain])
-        if ok:
-            continue
-        lines.append(
-            f'add chain {family} {table} {chain} '
-            f'{{ type filter hook {chain} priority -10 ; policy accept ; }}'
-        )
-        lines.extend(f'add rule {family} {table} {chain} {rule}' for rule in rules)
+        exists, listing = _run_cmd(['nft', 'list', 'chain', family, table, chain])
+        if exists:
+            missing = [rule for rule in rules if rule not in listing]
+        else:
+            missing = rules
+            lines.append(
+                f'add chain {family} {table} {chain} '
+                f'{{ type filter hook {chain} priority -10 ; policy accept ; }}'
+            )
+        lines.extend(f'add rule {family} {table} {chain} {rule}' for rule in missing)
     return '\n'.join(lines) + '\n'
 
 
@@ -240,13 +265,14 @@ def _apply_block_rule(ip):
         ok, out = _ensure_nft_ruleset()
         if not ok:
             return False, out
-        return _run_cmd(['nft', 'add', 'element', *NFT_TABLE, NFT_SET, '{', ip, '}'])
+        return _run_cmd(['nft', 'add', 'element', *NFT_TABLE, _nft_set_for(ip), '{', ip, '}'])
+    tool = _iptables_tool(ip)
     outputs = []
     for chain, spec in _iptables_specs(ip):
-        exists, _ = _run_cmd(['iptables', '-C', chain] + spec)
+        exists, _ = _run_cmd([tool, '-C', chain] + spec)
         if exists:
             continue
-        ok, out = _run_cmd(['iptables', '-I', chain] + spec)
+        ok, out = _run_cmd([tool, '-I', chain] + spec)
         if not ok:
             return False, out
         outputs.append(out)
@@ -254,24 +280,25 @@ def _apply_block_rule(ip):
 
 
 def _remove_iptables_rule(ip):
+    tool = _iptables_tool(ip)
     results = []
     for chain, spec in _iptables_specs(ip):
         # also clears duplicates left by older versions that inserted blindly
         for _ in range(16):
-            exists, _ = _run_cmd(['iptables', '-C', chain] + spec)
+            exists, _ = _run_cmd([tool, '-C', chain] + spec)
             if not exists:
                 break
-            results.append(_run_cmd(['iptables', '-D', chain] + spec))
+            results.append(_run_cmd([tool, '-D', chain] + spec))
     return results
 
 
 def _remove_block_rule(ip):
     results = []
     backend = FIREWALL_BACKEND
-    if backend in ('auto', 'iptables') and shutil.which('iptables'):
+    if backend in ('auto', 'iptables') and shutil.which(_iptables_tool(ip)):
         results.extend(_remove_iptables_rule(ip))
     if backend in ('auto', 'nft') and shutil.which('nft'):
-        results.append(_run_cmd(['nft', 'delete', 'element', *NFT_TABLE, NFT_SET, '{', ip, '}']))
+        results.append(_run_cmd(['nft', 'delete', 'element', *NFT_TABLE, _nft_set_for(ip), '{', ip, '}']))
     return results
 
 
@@ -283,15 +310,18 @@ def _flush_all_rules():
         ok, _ = _run_cmd(['nft', 'list', 'table', *NFT_TABLE])
         if ok:
             results.append(_run_cmd(['nft', 'delete', 'table', *NFT_TABLE]))
-    if backend in ('auto', 'iptables') and shutil.which('iptables'):
-        for chain in ('INPUT', 'FORWARD'):
-            ok, listing = _run_cmd(['iptables', '-S', chain])
-            if not ok:
+    if backend in ('auto', 'iptables'):
+        for tool in IPTABLES_TOOLS.values():
+            if not shutil.which(tool):
                 continue
-            for line in listing.splitlines():
-                parts = line.split()
-                if len(parts) > 2 and parts[0] == '-A' and RULE_COMMENT in parts:
-                    results.append(_run_cmd(['iptables', '-D'] + parts[1:]))
+            for chain in ('INPUT', 'FORWARD'):
+                ok, listing = _run_cmd([tool, '-S', chain])
+                if not ok:
+                    continue
+                for line in listing.splitlines():
+                    parts = line.split()
+                    if len(parts) > 2 and parts[0] == '-A' and RULE_COMMENT in parts:
+                        results.append(_run_cmd([tool, '-D'] + parts[1:]))
     return results
 
 def _is_active(rule, now=None):
@@ -324,7 +354,7 @@ def expire_rules(now=None):
         _log_action({'action': 'expire', 'ip': ip, 'reason': 'ttl_expired', 'dry_run': FIREWALL_DRY_RUN})
     return {'expired': len(expired), 'rules_left': len(active)}
 
-ALLOWED_FIREWALL_COMMANDS = frozenset({'nft', 'iptables'})
+ALLOWED_FIREWALL_COMMANDS = frozenset({'nft', 'iptables', 'ip6tables'})
 
 
 def _run_cmd(cmd):
