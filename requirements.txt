@@ -18,7 +18,7 @@ scikit-learn==1.8.0
 joblib==1.5.3
 
 # Sensor/brain link: mTLS certificates and Ed25519 command signing
-cryptography==46.0.3
+cryptography==50.0.2
 
 # Console accounts (Argon2id password hashing)
 argon2-cffi==25.1.0

@@ -5,12 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-### Added
-- **OT protocol awareness (Phase 7).** Modbus/TCP, DNP3, BACnet/IP and OPC UA requests are parsed (`detection/ot.py`) from both capture paths. A per-controller learning period records which hosts command each controller and which functions they use; afterwards a new master (`ot_new_master`) or a first-time write/control function (`ot_new_write`) is reported. Restart, stop, listen-only and communication-control commands (`ot_device_stop`), OT traffic to or from the internet (`ot_external`) and Modbus unit-id sweeps (`ot_scan`) are always reported. Findings carry MITRE ATT&CK for ICS techniques.
-
 ## [2.0.0] - 2026-10-31
 
-First production-candidate release (Phases 2–6). The external penetration test, the 30-day beta, pre-built OS images and the Jetson hardware validation are still pending; see PLAN.md.
+First production-candidate release (Phases 2–6, plus the first Phase 7 feature: OT protocol awareness). The external penetration test, the 30-day beta, pre-built OS images and the Jetson hardware validation are still pending; see PLAN.md.
+
+### Security
+- `cryptography` upgraded 46.0.3 → 50.0.2 (PYSEC-2026-35, -36, -2141, -3552, -3553, -3554; GHSA-537c-gmf6-5ccf).
 
 ### Fixed
 - The console index route `GET /` is registered even when the console is not built, so the route table (and its tests) is the same in CI and on a device.
@@ -29,6 +29,7 @@ First production-candidate release (Phases 2–6). The external penetration test
 - Scripts that call the API on the device must use `https://`. The firewall rollback guard follows the setting automatically.
 
 ### Added
+- **OT protocol awareness (Phase 7).** Modbus/TCP, DNP3, BACnet/IP and OPC UA requests are parsed (`detection/ot.py`) from both capture paths. A per-controller learning period records which hosts command each controller and which functions they use; afterwards a new master (`ot_new_master`) or a first-time write/control function (`ot_new_write`) is reported. Restart, stop, listen-only and communication-control commands (`ot_device_stop`), OT traffic to or from the internet (`ot_external`) and Modbus unit-id sweeps (`ot_scan`) are always reported. Findings carry MITRE ATT&CK for ICS techniques.
 - **Production readiness (Phase 6).** One-command installer (`scripts/install.sh`) and presets (`sentinelctl preset home|office|ot|enterprise`); over-the-air updates (`sentinelctl update`, verified and health-checked with automatic rollback); reproducible, Sigstore-signed release packages; OS hardening script; minimal non-root container image; AF_PACKET fast-path capture and a compiled Isolation Forest scorer (capture ~25×, decisions ~31× faster on a Pi 5); admin guide, runbooks, troubleshooting, generated API reference, pen-test scope and beta plan.
 - **Integrations and operations (Phase 5).** SIEM export (syslog RFC 5424/CEF over UDP/TCP/TLS, signed webhooks, JSON lines, Slack, Teams, email) through a non-blocking dispatcher (`/api/integrations`); threat intelligence from STIX 2.1/TAXII 2.1 and plain lists, updated daily and matched on flows, DNS and TLS (`/api/intel`, `python -m intel`); Suricata `eve.json` as a detector input; new engine metrics, JSON logs, a Grafana operations dashboard and Prometheus alert rules; daily/weekly PDF summaries, per-device history and compliance exports (`/api/reports/summary`, `/api/devices/{ip}/history`, `/api/export/compliance`); encrypted backup and restore (`sentinelctl backup|restore`).
 - **Detection quality (Phase 4).** Detectors for port scans, internal host sweeps, brute force, beaconing, exfiltration, new devices, DNS tunnelling and DGA; JA3/JA4 and SNI from TLS ClientHellos; fusion with calibrated confidence, multi-stage confirmation before automatic response, and an explanation on every alert; per-protocol hour-of-day baselines; an Ed25519-signed model registry (shadow, canary, active, rollback, hot reload) with a CPU autoencoder; analyst feedback (`/api/alerts/feedback`) that recalibrates detectors; an evaluation harness (`python -m evaluation.harness`) with a labelled synthetic dataset and a CIC-IDS2017 loader. APIs: `/api/models`, `/api/models/{name}/{version}/stage`, `/api/models/{name}/rollback`, `/api/eval/latest`.
