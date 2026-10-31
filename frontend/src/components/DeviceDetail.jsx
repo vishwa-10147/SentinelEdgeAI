@@ -21,6 +21,9 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
   const [undoUntil, setUndoUntil] = useState(null)
   const [now, setNow] = useState(Date.now())
   const [busy, setBusy] = useState(false)
+  const [criticality, setCriticality] = useState('standard')
+  const [cves, setCves] = useState([])
+  const [ctxBusy, setCtxBusy] = useState(false)
 
   const device = useMemo(()=>{
     return devices.find(d=>d.id === deviceId || d.ip === deviceId || d.mac === deviceId) || {
@@ -62,6 +65,7 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
     let mounted = true
     apiGet(`/api/device/${encodeURIComponent(deviceId)}/logs`, [])
       .then(data=>{ if(mounted) setLogs(Array.isArray(data) ? data : []) })
+    loadAssetContext()
     return ()=>{ mounted = false }
   }, [deviceId])
 
@@ -69,6 +73,33 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
     const id = setInterval(()=>setNow(Date.now()), 1000)
     return ()=>clearInterval(id)
   }, [])
+
+  const loadAssetContext = async ()=>{
+    const ip = device.ip || device.id
+    try{
+      const [c, cveRes] = await Promise.all([
+        apiGet(`/api/assets/${encodeURIComponent(ip)}/criticality`, {criticality: 'standard'}),
+        apiGet(`/api/assets/${encodeURIComponent(ip)}/cves`, {cves: []})
+      ])
+      setCriticality(c?.criticality || 'standard')
+      setCves(Array.isArray(cveRes?.cves) ? cveRes.cves : [])
+    }catch(e){
+      // asset context endpoint may not exist on older deployments
+    }
+  }
+
+  const setAssetCriticality = async (level)=>{
+    const ip = device.ip || device.id
+    setCtxBusy(true)
+    try{
+      await apiPost(`/api/assets/${encodeURIComponent(ip)}/criticality`, {criticality: level})
+      setCriticality(level)
+    }catch(e){
+      window.dispatchEvent(new CustomEvent('se:toast', { detail: { type: 'error', message: `Criticality set failed: ${errorMessage(e)}` } }))
+    }finally{
+      setCtxBusy(false)
+    }
+  }
 
   const protocolSummary = Object.entries(device.protocol_usage || {}).sort((a,b)=>b[1]-a[1]).slice(0, 4)
   const behavior = device.behavior_summary || {}
@@ -174,7 +205,39 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
       </section>
 
       <section className="detail-section">
-        <h3>Last Packets</h3>
+        <h3>Asset Context</h3>
+        <div className="summary-grid">
+          <div>
+            <span>Criticality</span>
+            <select value={criticality} onChange={e=>setAssetCriticality(e.target.value)} disabled={ctxBusy}>
+              <option value="standard">Standard</option>
+              <option value="important">Important</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          {cves.length && (
+            <div>
+              <span>CVEs</span>
+              <strong style={{color:'#ef4444'}}>{cves.length} match{(cves.length !== 1 ? 'es' : '')}</strong>
+            </div>
+          )}
+        </div>
+        {cves.length && (
+          <div className="cve-list">
+            {cves.map(c=>(
+              <div key={c.id} className="cve-row">
+                <strong>{c.id}</strong>
+                <span className={`cve-sev ${c.severity.toLowerCase()}`}>{c.severity}</span>
+                <span>{c.cvss}</span>
+                <span>{c.summary}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {!cves.length && <p className="auth-hint">No CVE matches for this device fingerprint.</p>}
+      </section>
+
+      <section className="detail-section">
         <div className="packet-table">
           {[...relatedAlerts, ...logs].slice(0, 20).map((row, i)=>(
             <div key={i}>

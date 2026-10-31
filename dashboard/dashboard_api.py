@@ -1520,6 +1520,36 @@ def device_logs(device_id: str, limit: int = 200, principal: dict = Depends(requ
     return out
 
 
+@app.get('/api/assets/{ip}/criticality')
+def asset_criticality(ip: str, principal: dict = Depends(require_viewer)):
+    """Get device criticality (critical | important | standard)."""
+    from core.asset_context import get_asset_context
+    return {'ip': ip, 'criticality': get_asset_context().get_criticality(ip)}
+
+
+@app.post('/api/assets/{ip}/criticality')
+def set_asset_criticality(ip: str, payload: dict, principal: dict = Depends(require_admin)):
+    """Set device criticality (Admin only)."""
+    from core.asset_context import get_asset_context
+    level = payload.get('criticality', 'standard')
+    get_asset_context().set_criticality(ip, level, by=principal.get('username', 'admin'))
+    return {'ip': ip, 'criticality': level}
+
+
+@app.get('/api/assets/{ip}/cves')
+def asset_cves(ip: str, principal: dict = Depends(require_viewer)):
+    """Offline CVE matches for a device based on type/OS fingerprint."""
+    from core.asset_context import get_asset_context
+    return {'ip': ip, 'cves': get_asset_context().cves_for(ip)}
+
+
+@app.get('/api/assets')
+def list_assets(principal: dict = Depends(require_viewer)):
+    """List all tracked assets with criticality."""
+    from core.asset_context import get_asset_context
+    return {'assets': get_asset_context().all_assets()}
+
+
 def _event_bus():
     """The process's event bus; created here when the app runs without its lifespan (e.g. a bare TestClient)."""
     if getattr(app.state, 'bus', None) is None:
