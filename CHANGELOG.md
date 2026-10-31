@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Operations console** with tabs for the APIs that had no screen yet: approvals and active restrictions (approve, deny, release), the response policy as YAML with a checked diff before apply, two-node sensors (enrolment code, revoke, health), the model registry (promote, roll back), analyst feedback precision and the latest evaluation.
+- **Event bus for the live stream** (`core/events.py`). One poller reads alerts and live events by row id and fans them out to every WebSocket. Events are numbered, so a reconnecting console resumes from its cursor and gets exactly what it missed, or a `resync` after an API restart. Heartbeats come every 15 s, and the console reconnects after 45 s of silence. A stalled client is dropped instead of slowing the others.
+- **PostgreSQL for the brain store** (`SENTINEL_BRAIN_DATABASE_URL`, or `DATABASE_URL` as for the engine), tested against a real PostgreSQL 16.
+- **Sensor upgrades through the brain.** `python -m brain upgrade stage --version X.Y.Z` (or `--file`) and `POST /api/brain/upgrade` stage a verified release. Sensors download it over the mutual-TLS link, check the announced SHA-256 and stage it, and the root update timer installs it with the usual health check and rollback. Sensors now report their version.
+
+### Fixed
+- Live events stopped reaching the console after the first 200: the stream read the *oldest* 200 rows every second.
+- Two alerts in the same second could be dropped from the live stream (deduplication used whole-second timestamps).
+- Events published by the demo endpoints reached at most one connected console (a shared queue drained by whichever connection read it first).
+
 ## [2.4.1] - 2026-10-31
 
 ### Fixed

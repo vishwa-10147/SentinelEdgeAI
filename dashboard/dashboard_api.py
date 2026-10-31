@@ -40,8 +40,11 @@ from core.db_maintenance import start_background
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # provide an in-memory asyncio queue for live events
-    app.state.event_queue = asyncio.Queue()
+    # one event bus feeds every WebSocket (core.events)
+    from core.events import EventBus
+    app.state.bus = EventBus(sanitize=maybe_sanitize)
+    app.state.loop = asyncio.get_running_loop()
+    app.state.bus.start()
     # start optional DB maintenance background thread (vacuum + retention)
     try:
         app.state.db_maintenance = start_background()
@@ -55,7 +58,7 @@ async def lifespan(app: FastAPI):
 
             def pub(evt):
                 try:
-                    loop.call_soon_threadsafe(app.state.event_queue.put_nowait, evt)
+                    loop.call_soon_threadsafe(app.state.bus.publish, evt.get('type', 'event'), evt)
                 except Exception:
                     logger.exception('event publish failed')
 
@@ -70,6 +73,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await app.state.bus.stop()
         # attempt graceful shutdown of sniffer if supported
         try:
             sniffer = getattr(app.state, 'sniffer_module', None)
@@ -1054,6 +1058,37 @@ def brain_command(sensor_id: str, payload: dict, principal: dict = Depends(requi
     return env['payload']
 
 
+@app.get('/api/brain/upgrade')
+def brain_upgrade_status(principal: dict = Depends(require_viewer)):
+    """The release staged for this brain's sensors, and the version each sensor runs."""
+    _, m = _brain()
+    from brain import upgrades
+    return {'staged': upgrades.target(),
+            'sensors': [{'id': s['id'], 'name': s['name'], 'version': (s['health'] or {}).get('version')}
+                        for s in m.store().list_sensors() if not s['revoked']]}
+
+
+@app.post('/api/brain/upgrade')
+def brain_upgrade_stage(payload: dict, principal: dict = Depends(require_admin)):
+    """Download a published release (checksum verified) and offer it to every sensor of this brain."""
+    _brain()
+    from brain import upgrades
+    try:
+        t = upgrades.stage_release(str((payload or {}).get('version', '')), by=principal.get('username'))
+    except (ValueError, OSError) as exc:
+        audit_event(principal, 'sensor_upgrade_stage', outcome='rejected', details={'error': str(exc)[:300]})
+        raise HTTPException(status_code=400, detail=str(exc))
+    return t
+
+
+@app.post('/api/brain/upgrade/clear')
+def brain_upgrade_clear(principal: dict = Depends(require_admin)):
+    _brain()
+    from brain import upgrades
+    upgrades.clear(by=principal.get('username'))
+    return {'staged': None}
+
+
 @app.get('/api/brain/commands')
 def brain_commands(sensor_id: Optional[str] = None, principal: dict = Depends(require_viewer)):
     _, m = _brain()
@@ -1124,12 +1159,7 @@ def demo_run(payload: dict, principal: dict = Depends(require_operator)):
         raise HTTPException(status_code=500, detail=f'failed to start demo: {e}')
     # emit a lightweight event to connected websockets so UI updates immediately
     try:
-        evt = {'type':'demo','payload':{'ip': ip, 'simulate_type': sim, 'pid': p.pid, 'started': time.time()}}
-        if hasattr(app.state, 'event_queue'):
-            try:
-                app.state.event_queue.put_nowait(evt)
-            except Exception:
-                logger.exception('failed to enqueue event')
+        publish_event('demo', {'ip': ip, 'simulate_type': sim, 'pid': p.pid, 'started': time.time()})
     except Exception:
         logger.exception('failed to emit demo start event')
     audit_event(principal, 'demo_run', target=ip, details={'simulate_type': sim, 'pid': p.pid})
@@ -1166,12 +1196,7 @@ def demo_presenter(payload: dict = {}, principal: dict = Depends(require_operato
         ]
         # if ip provided, include it in payloads
         for name, msg in steps:
-            evt = {'type':'demo_step','payload':{'step': name, 'message': msg, 'ip': ip, 'simulate_type': sim, 'ts': time.time()}}
-            try:
-                if hasattr(app.state, 'event_queue'):
-                    app.state.event_queue.put_nowait(evt)
-            except Exception:
-                logger.exception('failed to enqueue demo step event')
+            publish_event('demo_step', {'step': name, 'message': msg, 'ip': ip, 'simulate_type': sim, 'ts': time.time()})
             time.sleep(step_delay)
 
     # start runner thread
@@ -1357,12 +1382,38 @@ def device_logs(device_id: str, limit: int = 200, principal: dict = Depends(requ
     return out
 
 
+def _event_bus():
+    """The process's event bus; created here when the app runs without its lifespan (e.g. a bare TestClient)."""
+    if getattr(app.state, 'bus', None) is None:
+        from core.events import EventBus
+        app.state.bus = EventBus(sanitize=maybe_sanitize)
+        app.state.loop = asyncio.get_running_loop()
+        app.state.bus.start()
+    return app.state.bus
+
+
+def publish_event(kind, payload):
+    """Publish to the live stream from any thread (endpoints run in a worker pool)."""
+    bus, loop = getattr(app.state, 'bus', None), getattr(app.state, 'loop', None)
+    if bus is None or loop is None:
+        return
+    try:
+        loop.call_soon_threadsafe(bus.publish, kind, payload)
+    except RuntimeError:
+        logger.debug('event loop closed; event dropped')
+
+
 @app.websocket("/ws/packets")
 async def websocket_packets(ws: WebSocket):
-    # simple websocket stream: polls alerts.json and live_stats.json and pushes new items
+    """Live alerts, flows and events from the event bus (core.events).
+
+    Browsers cannot set headers on a WebSocket, so the first message must be
+    {"type": "auth", "token": "<access token or API key>"} within 5 seconds. It may carry
+    "epoch" and "cursor" (the last event seen) to receive exactly the events missed while
+    disconnected; the server answers "resync" when that is impossible. Every event has
+    "seq" and "epoch"; a "heartbeat" with the current cursor comes every 15 seconds.
+    """
     await ws.accept()
-    # Browsers cannot set headers on a WebSocket, so the first message must be
-    # {"type": "auth", "token": "<access token or API key>"} within 5 seconds.
     try:
         first = json.loads(await asyncio.wait_for(ws.receive_text(), timeout=5))
         token = first.get('token') if isinstance(first, dict) and first.get('type') == 'auth' else None
@@ -1377,136 +1428,32 @@ async def websocket_packets(ws: WebSocket):
         except RuntimeError:
             pass
         return
-    await ws.send_text(json.dumps({'type': 'auth_ok', 'payload': {'role': principal['role']}}))
-    last_alert_mtime = 0
-    last_stats_mtime = 0
-    last_stats_payload = None
-    # tail position for live events file
-    last_events_pos = 0
+    from core.events import HEARTBEAT_SECONDS
+    bus = _event_bus()
+    cursor = first.get('cursor') if isinstance(first.get('cursor'), int) else None
+    q, backlog = bus.subscribe(first.get('epoch'), cursor)
+    await ws.send_text(json.dumps({'type': 'auth_ok', 'seq': bus.seq, 'epoch': bus.epoch,
+                                   'payload': {'role': principal['role']}}))
     try:
+        for event in backlog:
+            await ws.send_text(json.dumps(event, default=str))
         while True:
-            # alerts
-            # Alerts (from DB preferred)
             try:
-                from core.storage import get_storage
-                s = get_storage('data/sentinel.db')
-                s.connect()
-                rows = s.get_alerts(limit=10)
-                for item in reversed(rows):
-                    ts = item.get('timestamp', 0)
-                    if ts > last_alert_mtime:
-                        last_alert_mtime = ts
-                        await ws.send_text(json.dumps({'type':'alert','payload': maybe_sanitize(item)}))
-            except Exception:
-                logger.exception('failed to stream DB alerts; falling back to file')
-                # fallback to file-based alerts if compatibility mode enabled
-                if ENABLE_FILE_FALLBACK:
-                    a_path = os.path.join(ROOT, 'alerts.json')
-                    if os.path.exists(a_path):
-                        m = os.path.getmtime(a_path)
-                        if m > last_alert_mtime:
-                            last_alert_mtime = m
-                            try:
-                                with open(a_path,'r') as f:
-                                    data = json.load(f)
-                            except Exception:
-                                logger.exception('failed to read alerts.json')
-                                data = None
-                            if isinstance(data, list):
-                                for item in data[-10:]:
-                                    await ws.send_text(json.dumps({'type':'alert','payload': maybe_sanitize(item)}))
-            # live_stats (DB preferred)
-            try:
-                from core.storage import get_storage
-                s = get_storage('data/sentinel.db')
-                s.connect()
-                payload = s.get_live_stats()
-                try:
-                    payload = s.get_live_stats()
-                    if payload:
-                        payload_str = payload if isinstance(payload, str) else json.dumps(payload)
-                        if payload_str != last_stats_payload:
-                            last_stats_payload = payload_str
-                            try:
-                                data = json.loads(payload_str)
-                            except Exception:
-                                logger.exception('failed to decode live_stats payload')
-                                data = payload
-                            if isinstance(data, dict) and 'flows' in data:
-                                for fl in data['flows'][-20:]:
-                                    await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
-                except Exception:
-                    logger.exception('failed to stream DB live_stats; falling back to file')
-                    # fallback to file-based live_stats if compatibility mode enabled
-                    if ENABLE_FILE_FALLBACK:
-                        s_path = os.path.join(ROOT, 'live_stats.json')
-                        if os.path.exists(s_path):
-                            m = os.path.getmtime(s_path)
-                            if m > last_stats_mtime:
-                                last_stats_mtime = m
-                                try:
-                                    with open(s_path,'r') as f:
-                                        data = json.load(f)
-                                except Exception:
-                                    logger.exception('failed to read live_stats.json')
-                                    data = None
-                                if isinstance(data, dict) and 'flows' in data:
-                                    for fl in data['flows'][-20:]:
-                                        await ws.send_text(json.dumps({'type':'flow','payload': maybe_sanitize(fl)}))
-                from core.storage import get_storage
-                s = get_storage('data/sentinel.db')
-                s.connect()
-                rows = s.get_live_events(limit=200)
-                for ts, payload in rows:
-                    try:
-                        if ts > last_events_pos:
-                            last_events_pos = ts
-                            try:
-                                obj = json.loads(payload)
-                            except Exception:
-                                logger.exception('failed to parse live event payload')
-                                obj = payload
-                            await ws.send_text(json.dumps({'type': obj.get('type','event') if isinstance(obj, dict) else 'event', 'payload': maybe_sanitize(obj)}))
-                    except Exception:
-                        logger.exception('failed to send live event websocket message')
-                        continue
-            except Exception:
-                # fallback to file tailing if compatibility mode enabled
-                if ENABLE_FILE_FALLBACK:
-                    e_path = os.path.join(ROOT, 'live_events.jsonl')
-                    if os.path.exists(e_path):
-                        try:
-                            size = os.path.getsize(e_path)
-                            if size < last_events_pos:
-                                # rotated/truncated file
-                                last_events_pos = 0
-                            if size > last_events_pos:
-                                with open(e_path, 'r') as ef:
-                                    ef.seek(last_events_pos)
-                                    for line in ef:
-                                        line = line.strip()
-                                        if not line:
-                                            continue
-                                        try:
-                                            obj = json.loads(line)
-                                            await ws.send_text(json.dumps({'type': obj.get('type','event'), 'payload': maybe_sanitize(obj)}))
-                                        except Exception:
-                                            logger.exception('malformed live event line')
-                                            continue
-                                    last_events_pos = ef.tell()
-                        except Exception:
-                            logger.exception('failed to tail live events file')
-            # drain in-process queue if present
-            if hasattr(app.state, 'event_queue'):
-                try:
-                    while True:
-                        obj = app.state.event_queue.get_nowait()
-                        await ws.send_text(json.dumps({'type': obj.get('type','event'), 'payload': obj}))
-                except asyncio.QueueEmpty:
-                    pass
-            await asyncio.sleep(1)
-    except WebSocketDisconnect:
+                event = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_SECONDS)
+            except asyncio.TimeoutError:
+                if getattr(q, 'dropped', False):
+                    # this client fell too far behind; tell it to reload, then follow from now
+                    await ws.send_text(json.dumps({'type': 'resync', 'seq': bus.seq, 'epoch': bus.epoch,
+                                                   'payload': {'reason': 'too far behind'}}))
+                    bus.unsubscribe(q)
+                    q, _ = bus.subscribe()
+                await ws.send_text(json.dumps(bus.heartbeat()))
+                continue
+            await ws.send_text(json.dumps(event, default=str))
+    except (WebSocketDisconnect, RuntimeError):
         return
+    finally:
+        bus.unsubscribe(q)
 
 
 if os.path.isdir(DIST_DIR):

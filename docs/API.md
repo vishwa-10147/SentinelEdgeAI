@@ -94,6 +94,9 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/brain/sensors` | viewer |  |
 | `POST` | `/api/brain/sensors/{sensor_id}/commands` | operator |  |
 | `POST` | `/api/brain/sensors/{sensor_id}/revoke` | admin |  |
+| `GET` | `/api/brain/upgrade` | viewer | The release staged for this brain's sensors, and the version each sensor runs. |
+| `POST` | `/api/brain/upgrade` | admin | Download a published release (checksum verified) and offer it to every sensor of this brain. |
+| `POST` | `/api/brain/upgrade/clear` | admin |  |
 | `POST` | `/api/sensor/enroll` | admin |  |
 | `GET` | `/api/sensor/status` | viewer |  |
 

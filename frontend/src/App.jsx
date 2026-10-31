@@ -21,6 +21,7 @@ const AuditModal = lazy(() => import('./components/AuditModal'))
 const OtModal = lazy(() => import('./components/OtModal'))
 const TrustModal = lazy(() => import('./components/TrustModal'))
 const FleetModal = lazy(() => import('./components/FleetModal'))
+const OperationsModal = lazy(() => import('./components/OperationsModal'))
 const SetupWizard = lazy(() => import('./components/SetupWizard'))
 import { apiGet, apiPost, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
 import { ChangePasswordScreen, LoginScreen, MfaSetupScreen } from './components/AuthScreens'
@@ -223,7 +224,7 @@ function Sparkline({ values = [] }){
   )
 }
 
-function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onOt, onTrust, onFleet, onSetup, onChangePassword, onLogout }){
+function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onOt, onTrust, onFleet, onOps, onSetup, onChangePassword, onLogout }){
   const utc = useUtcClock()
   return (
     <header className={`top-nav ${criticalPulse ? 'critical-pulse' : ''}`}>
@@ -246,6 +247,7 @@ function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter
         <button className={`mode-badge ${enforcementMode === 'ENFORCING' ? 'enforcing' : ''}`} onClick={onOpenFirewall}>{enforcementMode}</button>
         {hasRole(user, 'operator') && <button className="primary-button" onClick={onPresenter}>Start Presenter Demo</button>}
         {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onUsers}>Users</button>}
+        <button className="ghost-button" onClick={onOps}>Operations</button>
         <button className="ghost-button" onClick={onTrust}>Trust</button>
         <button className="ghost-button" onClick={onFleet}>Fleet</button>
         <button className="ghost-button" onClick={onOt}>OT devices</button>
@@ -546,6 +548,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
   const [otOpen, setOtOpen] = useState(false)
   const [trustOpen, setTrustOpen] = useState(false)
   const [fleetOpen, setFleetOpen] = useState(false)
+  const [opsOpen, setOpsOpen] = useState(false)
   const [connected, setConnected] = useState(false)
   const [criticalPulse, setCriticalPulse] = useState(false)
   const [toast, setToast] = useState(null)
@@ -594,12 +597,21 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
   useEffect(()=>{
     let ws
     let reconnect
+    let watchdog
     let closed = false
+    // last event seen, so a reconnect replays exactly what was missed
+    const resume = { epoch: null, cursor: null }
+    const alive = ()=>{
+      clearTimeout(watchdog)
+      // heartbeats come every 15 s; three missed means the connection is dead
+      watchdog = setTimeout(()=>{ if(ws) ws.close() }, 45000)
+    }
     const connect = ()=>{
-      ws = openSocket('/ws/packets')
-      ws.onopen = ()=>setConnected(true)
+      ws = openSocket('/ws/packets', resume)
+      ws.onopen = ()=>{ setConnected(true); alive() }
       ws.onclose = (event)=>{
         setConnected(false)
+        clearTimeout(watchdog)
         if(closed) return
         // 4401: the access token expired or was revoked; renew it before reconnecting
         if(event.code === 4401) refreshSession().catch(()=>{})
@@ -610,7 +622,13 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
         try{
           const msg = JSON.parse(event.data)
           const payload = msg.payload || {}
-          if(msg.type === 'alert'){
+          alive()
+          // auth_ok precedes the replayed backlog, so only events and heartbeats move the cursor
+          if(msg.epoch && msg.type !== 'auth_ok'){ resume.epoch = msg.epoch; resume.cursor = msg.seq }
+          if(msg.type === 'resync'){
+            // the server could not replay what we missed (restart or too far behind): reload everything
+            loadAll()
+          }else if(msg.type === 'alert'){
             const normalized = normalizeAlerts([payload])[0]
             if(normalized && normalized.id !== lastAlertId.current){
               lastAlertId.current = normalized.id
@@ -639,7 +657,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
       }
     }
     connect()
-    return ()=>{ closed = true; if(reconnect) clearTimeout(reconnect); if(ws) ws.close() }
+    return ()=>{ closed = true; clearTimeout(watchdog); if(reconnect) clearTimeout(reconnect); if(ws) ws.close() }
   }, [loadAll])
 
   const showToast = (message, type = 'info')=>{
@@ -702,6 +720,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
         onOt={()=>setOtOpen(true)}
         onTrust={()=>setTrustOpen(true)}
         onFleet={()=>setFleetOpen(true)}
+        onOps={()=>setOpsOpen(true)}
         onSetup={onSetup}
         onChangePassword={onChangePassword}
         onLogout={onLogout}
@@ -766,6 +785,11 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
       {auditOpen && (
         <Suspense fallback={null}>
           <AuditModal open={auditOpen} onClose={()=>setAuditOpen(false)} />
+        </Suspense>
+      )}
+      {opsOpen && (
+        <Suspense fallback={null}>
+          <OperationsModal open={opsOpen} onClose={()=>setOpsOpen(false)} user={user} />
         </Suspense>
       )}
       {fleetOpen && (

@@ -67,9 +67,9 @@ Phase 7  Scale and advanced intelligence          v2.x+  ███████�
 |---|---|---|---|
 | 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released |
 | 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | ✅ Released; exit checks met (role test per endpoint, clean ZAP baseline) |
-| 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🟡 Built; brain outage, forged/replayed commands and 3 sensors verified in simulation and on the Pi. Pending: Jetson hardware, event bus, brain PostgreSQL, sensor upgrades, sensors console panel |
-| 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🟡 Built; 22/22 real-kernel checks (routed and bridged), rollback ~100 ms. Pending: 72 h inline soak, console panels for quarantine, approvals and policy |
-| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built; 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models, console views |
+| 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🟡 Built, including the event bus, brain PostgreSQL, brain-distributed sensor upgrades and the sensors panel (v2.5); brain outage, forged/replayed commands and 3 sensors verified in simulation and on the Pi. Pending: Jetson hardware |
+| 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🟡 Built, with console panels for approvals, restrictions and policy (v2.5); 22/22 real-kernel checks (routed and bridged), rollback ~100 ms. Pending: 72 h inline soak |
+| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built, with console views for models, feedback and evaluation (v2.5); 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models |
 | 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
 | 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Released as v2.0; installer, OTA, reproducible Sigstore-signed builds, hardening, container, docs, 25–31× faster capture and decisions. Pending: OS images, pen test, beta |
 | 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3) and the fleet manager (v2.4) done; 4 themes to go |
@@ -80,7 +80,8 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 
 | Version | Highlights |
 |---|---|
-| **v2.4.0** | Fleet manager: many sites in one console, configuration templates, staged rollouts that pause on failure |
+| **v2.5.0** | Operations console, live-stream event bus (resume, resync, heartbeats), brain on PostgreSQL, sensor upgrades through the brain |
+| v2.4.0 | Fleet manager: many sites in one console, configuration templates, staged rollouts that pause on failure |
 | v2.3.1 | Trust scores calibrated on live traffic (one penalty per alert kind; protected hosts and loopback handled) |
 | v2.3.0 | Device trust scores (0–100, with reasons), learned peer profiles, `contain` response (keep only normal peers) |
 | v2.2.0 | OT micro-segmentation from learned allow-lists (off / monitor / enforce) |
@@ -150,8 +151,10 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 
 | Capability | Status |
 |---|---|
-| FastAPI REST API (99 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
-| React console: topology, device detail, analytics, firewall, trust, OT devices, fleet, users, audit, setup | ✅ |
+| Live stream: event bus with cursors, resume after reconnect, heartbeats | ✅ |
+| Storage: SQLite by default, PostgreSQL for the engine and the brain | ✅ |
+| FastAPI REST API (102 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
+| React console: topology, device detail, analytics, firewall, operations (approvals, restrictions, policy, sensors, models, evaluation), trust, OT devices, fleet, users, audit, setup | ✅ |
 | User accounts (Argon2id), four roles, TOTP two-step sign-in, scoped API tokens, login lockout | ✅ |
 | HTTPS by default, security headers, API rate limits, hash-chained audit log | ✅ |
 | SIEM export: syslog/CEF (UDP/TCP/TLS), signed webhooks, JSON lines, Slack, Teams, email | ✅ |
@@ -350,7 +353,7 @@ Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
 
 ## API
 
-Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 99 endpoints is in **[docs/API.md](docs/API.md)**.
+Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 102 endpoints is in **[docs/API.md](docs/API.md)**.
 
 | Role | Can |
 |---|---|
@@ -368,7 +371,7 @@ Operators and Admins must set up two-step sign-in (an authenticator app) at thei
 | Devices and trust | `/api/devices/identity`, `/api/trust`, `/api/devices/{ip}/peers`, `/api/devices/{ip}/history` |
 | Response | `/api/firewall/block`, `/unblock`, `/quarantine`, `/ratelimit`, `/contain`, `/release`, `/rollback`, `/api/playbook/pending`, `/api/policy` |
 | OT | `/api/ot/assets`, `/api/ot/segmentation` (+ `/allow`, `/refresh`) |
-| Two-node | `/api/brain/*`, `/api/sensor/*` |
+| Two-node | `/api/brain/*` (incl. `/api/brain/upgrade`), `/api/sensor/*` |
 | Fleet | `/api/fleet`, `/api/fleet/codes`, `/sites/{id}/revoke`, `/templates`, `/groups`, `/groups/{name}/rollout`, `/api/fleet/agent` |
 | Models and evaluation | `/api/models`, `/api/eval/latest` |
 | Integrations and reports | `/api/integrations`, `/api/intel`, `/api/reports/*`, `/api/export/compliance` |

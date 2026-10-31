@@ -173,6 +173,31 @@ class PostgresStorage:
         rows = cur.fetchall()
         return [(r[0], r[1]) for r in rows]
 
+    def alerts_after(self, after_id: int = 0, limit: int = 200):
+        """Alerts with id > after_id, oldest first, each with its id (the event bus cursor)."""
+        self.connect()
+        cur = self.conn.cursor()
+        cur.execute("SELECT id, ts, src_ip, dst_ip, src_port, dst_port, proto, score, confidence, details FROM alerts "
+                    "WHERE id > %s ORDER BY id ASC LIMIT %s", (int(after_id), int(limit)))
+        keys = ("id", "timestamp", "src_ip", "dst_ip", "src_port", "dst_port", "protocol", "score", "confidence", "details")
+        return [dict(zip(keys, r)) for r in cur.fetchall()]
+
+    def live_events_after(self, after_id: int = 0, limit: int = 200):
+        """(id, payload) of live events with id > after_id, oldest first."""
+        self.connect()
+        cur = self.conn.cursor()
+        cur.execute("SELECT id, payload FROM live_events WHERE id > %s ORDER BY id ASC LIMIT %s", (int(after_id), int(limit)))
+        return [(r[0], r[1]) for r in cur.fetchall()]
+
+    def last_ids(self):
+        """(max alert id, max live event id), where a new event bus starts reading."""
+        self.connect()
+        cur = self.conn.cursor()
+        cur.execute("SELECT COALESCE(MAX(id), 0) FROM alerts")
+        a = cur.fetchone()[0]
+        cur.execute("SELECT COALESCE(MAX(id), 0) FROM live_events")
+        return int(a), int(cur.fetchone()[0])
+
     def get_device_profiles(self):
         self.connect()
         cur = self.conn.cursor()

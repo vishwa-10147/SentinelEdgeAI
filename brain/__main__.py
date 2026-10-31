@@ -22,6 +22,10 @@ def main(argv=None):
     p.add_argument('--ip')
     p.add_argument('--ttl', type=int)
     p.add_argument('--reason', default='operator')
+    p = sub.add_parser('upgrade', help='stage a release for this brain\'s sensors (they download it over the link)')
+    p.add_argument('action', choices=['status', 'stage', 'clear'])
+    p.add_argument('--file', help='a local sentineledgeai-pi-X.Y.Z.tar.gz (its .sha256 next to it)')
+    p.add_argument('--version', help='download this published release instead')
     args = parser.parse_args(argv)
 
     if args.command == 'init':
@@ -43,13 +47,28 @@ def main(argv=None):
         elif args.command == 'revoke':
             manage.store().revoke_sensor(args.sensor_id)
             print(f'revoked {args.sensor_id}')
+        elif args.command == 'upgrade':
+            from brain import upgrades
+            if args.action == 'stage':
+                if not (args.file or args.version):
+                    print('stage needs --file or --version', file=sys.stderr)
+                    return 2
+                t = upgrades.stage_file(args.file) if args.file else upgrades.stage_release(args.version)
+                print(f"staged {t['version']} (sha256 {t['sha256'][:16]}…); sensors pick it up within 15 minutes")
+            elif args.action == 'clear':
+                upgrades.clear()
+                print('no upgrade staged')
+            else:
+                print(json.dumps({'staged': upgrades.target(), 'sensors': [
+                    {'id': s['id'], 'name': s['name'], 'version': (s['health'] or {}).get('version')}
+                    for s in manage.store().list_sensors() if not s['revoked']]}, indent=2))
         elif args.command == 'command':
             env = manage.issue_command(args.sensor_id, args.action, args.ip, args.ttl, args.reason)
             print(f"queued command {env['payload']['seq']} for {args.sensor_id}")
     except KeyError as exc:
         print(f'no such sensor: {exc.args[0]}', file=sys.stderr)
         return 1
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     return 0

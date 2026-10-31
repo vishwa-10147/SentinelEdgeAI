@@ -1,6 +1,7 @@
 """Brain-side state: enrolled sensors, enrolment codes, received flows, commands.
 
-SQLite for the Lite and test setups; the flow table is append-only and
+SQLite by default; PostgreSQL when SENTINEL_BRAIN_DATABASE_URL (or DATABASE_URL,
+as for the engine) is set, for brains with many sensors. The flow table is append-only and
 deduplicated on (sensor_id, rid) so a batch the sensor re-sends after a lost
 acknowledgement is stored once.
 """
@@ -16,6 +17,65 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 CODE_TTL = 3600
 
 
+PG_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS sensors (
+        id TEXT PRIMARY KEY, name TEXT, cert_fp TEXT NOT NULL, enrolled BIGINT NOT NULL,
+        last_seen BIGINT, health TEXT, revoked INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS enroll_codes (
+        code_hash TEXT PRIMARY KEY, created BIGINT NOT NULL, expires BIGINT NOT NULL, used_by TEXT);
+    CREATE TABLE IF NOT EXISTS flows (
+        id BIGSERIAL PRIMARY KEY, sensor_id TEXT NOT NULL, rid BIGINT NOT NULL,
+        received BIGINT NOT NULL, record TEXT NOT NULL, UNIQUE(sensor_id, rid));
+    CREATE INDEX IF NOT EXISTS flows_sensor ON flows(sensor_id, id);
+    CREATE TABLE IF NOT EXISTS commands (
+        sensor_id TEXT NOT NULL, seq BIGINT NOT NULL, envelope TEXT NOT NULL,
+        created BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', result TEXT,
+        PRIMARY KEY (sensor_id, seq));
+"""
+
+
+def database_url():
+    """PostgreSQL URL for the brain, if one is configured (otherwise SQLite)."""
+    return os.environ.get('SENTINEL_BRAIN_DATABASE_URL') or os.environ.get('DATABASE_URL') or None
+
+
+class _PgConnection:
+    """Just enough of sqlite3.Connection for BrainStore, on PostgreSQL (psycopg2)."""
+
+    def __init__(self, url):
+        import psycopg2
+        import psycopg2.extras
+        self._extras = psycopg2.extras
+        self.conn = psycopg2.connect(url)
+        self.conn.autocommit = True
+        self.total_changes = 0
+
+    @staticmethod
+    def _sql(sql):
+        if sql.strip().upper() == 'BEGIN IMMEDIATE':
+            return 'BEGIN'
+        if sql.lstrip().upper().startswith('INSERT OR IGNORE'):
+            sql = sql.replace('INSERT OR IGNORE', 'INSERT', 1) + ' ON CONFLICT DO NOTHING'
+        return sql.replace('?', '%s')
+
+    def execute(self, sql, params=()):
+        cur = self.conn.cursor(cursor_factory=self._extras.RealDictCursor)
+        cur.execute(self._sql(sql), tuple(params))
+        if cur.rowcount and cur.rowcount > 0 and not sql.lstrip().upper().startswith('SELECT'):
+            self.total_changes += cur.rowcount
+        return cur
+
+    def executemany(self, sql, rows):
+        for row in rows:
+            self.execute(sql, row)
+
+    def executescript(self, script):
+        self.conn.cursor().execute(script)
+
+    def close(self):
+        self.conn.close()
+
+
 def default_path():
     return os.environ.get('SENTINEL_BRAIN_DB') or os.path.join(ROOT, 'data', 'brain.db')
 
@@ -25,12 +85,18 @@ def _hash(code):
 
 
 class BrainStore:
-    def __init__(self, path=None):
-        self.path = path or default_path()
+    def __init__(self, path=None, url=None):
+        self.url = url or (None if path else database_url())
+        # `path` identifies the store (brain.manage compares it); for PostgreSQL it is the URL
+        self.path = self.url or path or default_path()
         self._lock = threading.Lock()
         self._conn = None
 
     def _db(self):
+        if self._conn is None and self.url:
+            conn = _PgConnection(self.url)
+            conn.executescript(PG_SCHEMA)
+            self._conn = conn
         if self._conn is None:
             os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
             fresh = not os.path.exists(self.path)

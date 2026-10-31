@@ -1,5 +1,5 @@
 [Unit]
-Description=SentinelEdgeAI: Install the version the fleet rollout asks for (schedule)
+Description=SentinelEdgeAI: Install a pending fleet or brain-staged update (schedule)
 
 [Timer]
 OnBootSec=10min

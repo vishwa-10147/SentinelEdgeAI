@@ -12,9 +12,11 @@ engine keeps detecting, flows pile up in the disk buffer, and nothing is
 lost; the buffer is replayed oldest-first when the brain is back. The
 sensor never auto-blocks on its own because the brain is down.
 """
+import hashlib
 import json
 import logging
 import os
+import re
 import socket
 import threading
 import time
@@ -30,6 +32,14 @@ from sensor.enforcer import Enforcer
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 logger = logging.getLogger('sentinel.sensor')
 BATCH = 500
+
+
+def local_version():
+    try:
+        with open(os.path.join(ROOT, 'VERSION'), 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return 'unknown'
 
 
 def sensor_dir():
@@ -159,22 +169,79 @@ class Uplink:
                     pass  # the brain sees it on the next poll; the sequence is already consumed
         return results
 
+    def check_upgrade(self):
+        """Download and verify the release the brain offers; stage it for the root update timer.
+
+        Returns the staged version, or None. The install itself (health check, rollback)
+        is `sentinelctl fleet-update`, run as root by sentineledgeai-fleet-update.timer.
+        """
+        mine = local_version()
+        try:
+            r = self.session.get(f'{self.url}/v1/upgrade', params={'version': mine}, timeout=self.timeout)
+            r.raise_for_status()
+            offer = r.json()
+        except (requests.RequestException, ValueError):
+            return None
+        version = offer.get('version')
+        if not version or version == mine or not re.match(r'^\d+\.\d+\.\d+$', str(version)):
+            return None
+        up = os.path.join(sensor_dir(), 'upgrade')
+        ready = os.path.join(up, 'ready.json')
+        try:
+            with open(ready, 'r', encoding='utf-8') as f:
+                if json.load(f).get('sha256') == offer.get('sha256'):
+                    return version                      # already staged
+        except (OSError, ValueError):
+            pass
+        os.makedirs(up, mode=0o750, exist_ok=True)
+        name = f'sentineledgeai-pi-{version}.tar.gz'
+        tmp = os.path.join(up, name + '.part')
+        h = hashlib.sha256()
+        try:
+            with self.session.get(f'{self.url}/v1/upgrade/package', timeout=600, stream=True) as resp:
+                resp.raise_for_status()
+                with open(tmp, 'wb') as f:
+                    for chunk in resp.iter_content(1 << 20):
+                        h.update(chunk)
+                        f.write(chunk)
+        except requests.RequestException as exc:
+            logger.warning('upgrade download failed: %s', exc)
+            return None
+        if h.hexdigest() != offer.get('sha256'):
+            os.remove(tmp)
+            logger.error('upgrade %s from the brain failed its checksum; discarded', version)
+            return None
+        for old in os.listdir(up):
+            if old.endswith(('.tar.gz', '.sha256')):
+                os.remove(os.path.join(up, old))
+        os.replace(tmp, os.path.join(up, name))
+        with open(os.path.join(up, name + '.sha256'), 'w', encoding='ascii') as f:
+            f.write(f'{h.hexdigest()}  {name}\n')
+        with open(ready + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump({'version': version, 'file': name, 'sha256': h.hexdigest(), 'staged': int(time.time())}, f)
+        os.replace(ready + '.tmp', ready)
+        logger.warning('upgrade %s staged from the brain; it installs on the next update timer run', version)
+        return version
+
     def send_health(self, extra=None):
         health = {'buffered': len(self.buffer), 'dropped': self.buffer.dropped(), 'sent': self.sent,
-                  'connected': self.connected, 'time': time.time(), **(extra or {})}
+                  'connected': self.connected, 'time': time.time(), 'version': local_version(), **(extra or {})}
         try:
             self._post('/v1/health', health)
         except requests.RequestException as exc:
             self._set_connected(False, str(exc)[:200])
 
-    def run(self, health_every=30, idle_sleep=1.0):
-        backoff, last_health = 1.0, 0.0
+    def run(self, health_every=30, idle_sleep=1.0, upgrade_every=900):
+        backoff, last_health, last_upgrade = 1.0, 0.0, 0.0
         while not self._stop.is_set():
             sent = self.flush_once()
             self.poll_commands()
             if time.time() - last_health > health_every:
                 self.send_health()
                 last_health = time.time()
+            if self.connected and time.time() - last_upgrade > upgrade_every:
+                self.check_upgrade()
+                last_upgrade = time.time()
             if not self.connected:
                 self._stop.wait(backoff)
                 backoff = min(backoff * 2, 30.0)

@@ -1,7 +1,9 @@
 [Unit]
-Description=SentinelEdgeAI: Install the version the fleet rollout asks for (verified, health-checked, auto-rollback)
+Description=SentinelEdgeAI: Install a pending update (fleet rollout or brain-staged sensor package; verified, health-checked, auto-rollback)
 Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
-ConditionPathExists=/var/lib/sentinel/data/fleet_agent/desired_version
+# either one is enough (the | prefix makes these conditions OR)
+ConditionPathExists=|/var/lib/sentinel/data/fleet_agent/desired_version
+ConditionPathExists=|/var/lib/sentinel/data/sensor/upgrade/ready.json
 
 [Service]
 Type=oneshot

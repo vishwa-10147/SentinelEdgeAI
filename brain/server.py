@@ -113,6 +113,23 @@ def receive_health(health: dict, sensor: dict = Depends(sensor_identity)):
     return {'status': 'ok'}
 
 
+@app.get('/v1/upgrade')
+def upgrade_offer(version: str = '', sensor: dict = Depends(sensor_identity)):
+    """The release the brain has staged for its sensors, if this sensor is not on it."""
+    from brain import upgrades
+    return upgrades.offer(version)
+
+
+@app.get('/v1/upgrade/package')
+def upgrade_package(sensor: dict = Depends(sensor_identity)):
+    from fastapi.responses import FileResponse
+    from brain import upgrades
+    t = upgrades.target()
+    if not t:
+        raise HTTPException(status_code=404, detail='no upgrade staged')
+    return FileResponse(os.path.join(upgrades.releases_dir(), t['file']), media_type='application/gzip', filename=t['file'])
+
+
 @app.get('/v1/commands')
 def commands(after: int = 0, sensor: dict = Depends(sensor_identity)):
     store().touch(sensor['id'])

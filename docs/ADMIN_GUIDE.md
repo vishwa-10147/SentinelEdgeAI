@@ -108,6 +108,22 @@ Every change is in the audit log. The real-kernel test is `sudo bash tests/firew
 
 Sensors buffer flows on disk while the brain is unreachable and replay them afterwards; they never block on their own in that state. Revoke a sensor with `python -m brain revoke <id>`.
 
+### Upgrading sensors through the brain
+
+Sensors often have no internet access. Stage a release on the brain and every sensor picks it up within 15 minutes:
+
+```bash
+cd /opt/sentineledgeai/current
+sudo -u sentinel .venv/bin/python -m brain upgrade stage --version 2.5.0   # downloads + checks the SHA-256
+sudo -u sentinel .venv/bin/python -m brain upgrade status                  # staged release and each sensor's version
+```
+
+Each sensor downloads the package over its mutual-TLS link and checks it against the SHA-256 the brain announced. The root `sentineledgeai-fleet-update.timer` then installs it: hourly, with the usual health check and automatic rollback. With no internet on the brain either, use `--file sentineledgeai-pi-X.Y.Z.tar.gz`, with its `.sha256` next to it.
+
+### Brain database
+
+The brain keeps sensors, flows and commands in SQLite. For brains with many sensors, set `SENTINEL_BRAIN_DATABASE_URL=postgresql://user:pass@host/db` in `/etc/sentinel/sentinel.env`, or `DATABASE_URL`, which the engine also uses.
+
 ## 7a. Fleet manager (many sites, one console)
 
 Any appliance can also be the **fleet server**. Sites report to it over mutual TLS (port 9444, its own CA), and it gives each group of sites a configuration template and a target version.

@@ -155,10 +155,10 @@ Version numbers continue from the first prototype release, `v1.0.0` (February 20
 - [x] Sensor disk buffer (SQLite WAL, 2 M records) with acknowledged delivery and replay; degraded mode keeps local detection and never auto-blocks on its own.
 - [x] Lite profile unchanged (Standalone role); Sensor and Brain roles in the setup wizard and console API (`/api/brain/*`, `/api/sensor/*`).
 - [x] Jetson installer (`deploy/jetson/install_brain.sh`): private uv-managed CPython 3.11, offline wheels; `sentinelctl` takes the interpreter from `/etc/sentinel/python`. **Not yet run on a Jetson.**
-- [ ] Event bus in the brain replacing file polling; WebSocket heartbeat and resync cursor.
-- [ ] PostgreSQL for the brain's flow store (the brain uses SQLite today; the engine's PostgreSQL backend exists).
-- [ ] Brain distributes sensor upgrades.
-- [ ] Console panel for sensors (the API and CLI exist).
+- [x] Event bus (`core/events.py`) replacing per-connection file and table polling: one poller reads alerts and live events by row id (nothing skipped or repeated within a second; fixes live events stopping after the first 200), numbered events in a ring buffer, WebSocket resume from a cursor, `resync` after an API restart or when too far behind, heartbeats every 15 s, stalled clients dropped instead of slowing others; the console resumes and reloads on resync.
+- [x] PostgreSQL for the brain store (`SENTINEL_BRAIN_DATABASE_URL`, or `DATABASE_URL` like the engine); same tests on SQLite and on a real PostgreSQL 16, and the full sensor ↔ brain mutual-TLS suite passes with the brain on PostgreSQL.
+- [x] Brain distributes sensor upgrades: `python -m brain upgrade stage --version X|--file`, `POST /api/brain/upgrade`; sensors fetch the package over the mutual-TLS link, verify the announced SHA-256, stage it, and the root `sentineledgeai-fleet-update.timer` installs it (health check, automatic rollback). Sensors report their version.
+- [x] Console panel for sensors (**Operations → Sensors**).
 
 Exit criteria evidence so far:
 - Outage: `tests/test_brain_link.py` stops the brain while 1,500 flows queue and gets all 1,600 back in order with no duplicates; on the Pi (brain and sensor on one device) a 2-minute brain outage buffered 103 real flows, replayed them and stored 0 duplicates. **The one-hour Jetson unplug is pending hardware.**
@@ -189,7 +189,7 @@ Exit criteria evidence so far:
 - [x] Protected hosts found automatically (gateway, DNS, DHCP, the appliance's own addresses, loopback) plus management hosts and the whitelist; every block, quarantine and rate limit refuses them.
 - [x] Policy as code (`python -m enforcement policy export|validate|diff|apply`, `/api/policy`): versioned YAML, validation with conflict and duplicate warnings, dry-run diff, history in `data/policy_history/`, audited.
 - [ ] Optional VLAN reassignment through managed-switch APIs (later, as planned).
-- [ ] Console panels for quarantine, approvals and policy editing (API and CLI exist).
+- [x] Console panels for restrictions, approvals and policy editing with a checked diff before apply (**Operations → Response / Policy**).
 
 Exit criteria evidence so far (`sudo bash tests/firewall_netns/run_enforcement_netns.sh`, 22 checks, real nftables): block, quarantine and rate limit behave as specified on live traffic, routed and bridged; rollback took ~100 ms; the appliance refuses to block itself; rollback leaves no rules. Fail-open: the watchdog removes all rules when the enforcer is down (unit-tested). **The 72-hour inline soak with two NICs is pending hardware.**
 
@@ -220,7 +220,7 @@ Exit criteria evidence so far (`sudo bash tests/firewall_netns/run_enforcement_n
 - [x] Evaluation harness (`python -m evaluation.harness`, `--cicids file.csv`), reports in `reports/eval/`.
 - [ ] GPU models on the Jetson (TensorRT autoencoder, sequence and graph models) — pending hardware.
 - [ ] Evaluation on CIC-IDS2017 / UNSW-NB15 / CIC-IoT2023 and captured lab attacks; Suricata comparison — the loader exists, datasets not yet run.
-- [ ] Console views for feedback, models and evaluation (API exists).
+- [x] Console views for analyst feedback, the model registry (promote, roll back) and the latest evaluation (**Operations → Models & evaluation**).
 
 Evidence on the labelled synthetic set (7 attack classes × 6 instances, 25 hosts, realistic false-positive bait such as NTP, backups, CDN browsing, management polling; 5 seeds and a 24-hour run): **100% detection, 0.0% false positives, p99 0.15 ms per event**. The harness was checked by an over-sensitive configuration, which it correctly scores at 1.4% false positives. These are upper-bound numbers on synthetic data; **the targets count as met only after the public datasets and lab captures.**
 

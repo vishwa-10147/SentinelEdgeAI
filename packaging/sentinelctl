@@ -596,7 +596,20 @@ cmd_update() {
 }
 
 cmd_fleet_update() {
-  # the fleet agent (unprivileged) writes the version its group's rollout wants; install it here
+  # Pending updates staged by unprivileged services, installed here as root:
+  #  - a sensor's package downloaded (and checksummed) from its brain: data/sensor/upgrade/ready.json
+  #  - the version a fleet rollout asks for: data/fleet_agent/desired_version (downloaded from the release source)
+  local up="$STATE_DIR/data/sensor/upgrade"
+  if [ -f "$up/ready.json" ]; then
+    local file
+    file="$("$PYTHON_BIN" -c 'import json, re, sys; f = json.load(open(sys.argv[1]))["file"]; assert re.match(r"^sentineledgeai-pi-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz$", f); print(f)' "$up/ready.json")" \
+      || die "invalid staged upgrade in $up/ready.json"
+    log "installing $file staged by the brain"
+    rm -f "$up/ready.json"
+    cmd_install "$up/$file"
+    rm -f "$up/$file" "$up/$file.sha256"
+    return 0
+  fi
   local dir="$STATE_DIR/data/fleet_agent" want current ok=true msg
   [ -f "$dir/desired_version" ] || { log "no fleet rollout pending"; return 0; }
   want="$(tr -d '[:space:]' < "$dir/desired_version")"

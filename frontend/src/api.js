@@ -141,10 +141,11 @@ export async function apiDelete(path){
 }
 
 // WebSockets cannot send headers: connect, then authenticate with the first message.
-export function openSocket(path){
+// resume = { epoch, cursor } of the last event seen: the server replays what was missed (or says "resync")
+export function openSocket(path, resume){
   const ws = new WebSocket(API_BASE.replace(/^http/, 'ws') + path)
   ws.addEventListener('open', ()=>{
-    ws.send(JSON.stringify({ type: 'auth', token: accessToken || '' }))
+    ws.send(JSON.stringify({ type: 'auth', token: accessToken || '', ...(resume && resume.epoch ? { epoch: resume.epoch, cursor: resume.cursor } : {}) }))
   })
   return ws
 }
