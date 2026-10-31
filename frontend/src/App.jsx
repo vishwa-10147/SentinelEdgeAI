@@ -118,6 +118,7 @@ function normalizeAlerts(raw){
       src: a.initiator_ip || a.src_ip || a.src || a.device || 'unknown',
       dst: a.responder_ip || a.dst_ip || a.dst || 'unknown',
       protocol: a.protocol || a.proto || '',
+      dst_port: a.dst_port || a.dport || '',
       attack_type: a.attack_type || a.summary || a.reason || 'Anomalous flow',
       explanation: a.explanation || null,
       risk,
@@ -358,6 +359,40 @@ function MitrePanel({ alerts }){
             <small>{row.src} · {formatFullTime(row.timestamp)}</small>
           </a>
         ))}
+      </div>
+    </section>
+  )
+}
+
+function LateralMovementPanel({ alerts }){
+  // Lateral movement indicators: SMB (445), RDP (3389), Kerberos (88),
+  // LDAP (389), admin shares ($), pass-the-hash patterns
+  const LM_PORTS = { 445: 'SMB', 3389: 'RDP', 88: 'Kerberos', 389: 'LDAP', 5985: 'WinRM', 5986: 'WinRM' }
+  const lmAlerts = alerts.filter(a=>{
+    const text = `${a.attack_type} ${a.src} ${a.dst} ${a.protocol}`.toLowerCase()
+    const isLmPort = a.dst_port && LM_PORTS[a.dst_port]
+    const isAdminShare = /\$\b/.test(a.attack_type || '') || /\$\b/.test(a.dst || '')
+    const isPth = /pass.?the.?hash|ntlm|ntlmv2/.test(text)
+    return isLmPort || isAdminShare || isPth || /lateral/.test(a.attack_type || '')
+  }).slice(-20).reverse()
+
+  return (
+    <section className="panel mitre-panel">
+      <div className="panel-header compact">
+        <h2>Lateral Movement</h2>
+        <p>SMB, RDP, Kerberos, LDAP, WinRM and admin-share indicators</p>
+      </div>
+      <div className="mitre-table">
+        {lmAlerts.map((row, i)=>(
+          <a key={`${row.id}-${i}`} className={`mitre-row tactic-lateral`}>
+            <span>{formatFullTime(row.timestamp)}</span>
+            <strong>{row.attack_type || 'lateral movement'}</strong>
+            <em>{row.src} → {row.dst}</em>
+            <span className="mitre-chip">{LM_PORTS[row.dst_port] || row.protocol || '—'}</span>
+            <span className="alert-risk">Risk {row.risk}</span>
+          </a>
+        ))}
+        {lmAlerts.length === 0 && <p className="auth-hint">No lateral movement indicators.</p>}
       </div>
     </section>
   )
@@ -795,6 +830,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
               onExport={exportAlerts}
             />
             <MitrePanel alerts={alerts} />
+            <LateralMovementPanel alerts={alerts} />
             <IncidentTimeline events={incidentEvents} onSelectDevice={(id)=>{ setSelected(id); topologyApi?.zoomToDevice?.(id) }} />
           </aside>
         </section>

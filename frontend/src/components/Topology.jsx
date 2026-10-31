@@ -19,6 +19,11 @@ function severityFromRisk(risk){
   return 'normal'
 }
 
+function sanitizeId(id){
+  // Cytoscape node IDs can't contain colons; IPv6 addresses have them
+  return String(id || '').replace(/:/g, '_').replace(/\s/g, '_')
+}
+
 function iconFor(type){
   if(type === 'external') return '🌐'
   if(type === 'gateway') return '◆'
@@ -59,7 +64,7 @@ export default function Topology({ devices = [], flows = [], firewallRules = [],
       const severity = blocked ? 'blocked' : severityFromRisk(device.risk)
       nodes.push({
         data: {
-          id: device.id,
+          id: sanitizeId(device.id),
           label: `${iconFor(device.type)} ${device.hostname || device.ip || device.id}`,
           risk: device.risk || 0,
           type: device.type,
@@ -82,8 +87,8 @@ export default function Topology({ devices = [], flows = [], firewallRules = [],
       return {
         data: {
           id: flow.id || `edge-${i}`,
-          source: flow.src,
-          target: flow.dst,
+          source: sanitizeId(flow.src),
+          target: sanitizeId(flow.dst),
           risk: flow.risk || 0,
           packets: flow.packets || 1,
           severity,
