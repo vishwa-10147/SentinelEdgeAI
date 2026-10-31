@@ -1356,13 +1356,14 @@ if os.path.isdir(DIST_DIR):
     if os.path.isdir(assets_dir):
         app.mount('/assets', StaticFiles(directory=assets_dir), name='assets')
 
-    # Serve other static files and the SPA index for non-API paths
-    @app.get('/')
-    async def _serve_index():
-        index = os.path.join(DIST_DIR, 'index.html')
-        if os.path.exists(index):
-            return FileResponse(index)
-        raise HTTPException(status_code=404, detail='Not Found')
+
+# The SPA index; registered even without a built console so the route table is the same everywhere
+@app.get('/')
+async def _serve_index():
+    index = os.path.join(DIST_DIR, 'index.html')
+    if os.path.exists(index):
+        return FileResponse(index)
+    raise HTTPException(status_code=404, detail='Not Found')
 
 if __name__ == "__main__":
     # same as python -m dashboard.serve (HTTPS when SENTINEL_TLS_CERT/KEY are set)
