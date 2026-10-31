@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-31
+
+First production-candidate release (Phases 2–6). The external penetration test, the 30-day beta, pre-built OS images and the Jetson hardware validation are still pending; see PLAN.md.
+
 ### Fixed
 - Flows idle for more than a day never expired (`timedelta.seconds` ignores days).
 - The expired-flow scan ran on every packet (12 ms per scan at 20,000 flows); it now runs once per second.
