@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-31
+
 ### Added
 - **Federated learning (Phase 7).** Sites keep a reservoir sample of their normal flows (`data/samples.db`, flows that raised no finding), train the flow autoencoder locally, starting from the current global model, and send the fleet server only model weights, input-scaler statistics and counts. Flows and feature vectors never leave the site. The server validates each update (layer shapes, finite values, matching features) and aggregates a round by FedAvg weighted by samples, with an exact mean/variance merge. Every site rebuilds the global model, recalibrates its threshold on its own traffic and registers it as a signed **shadow** model: it is scored but never acted on until an Admin promotes it. Updates are clipped around the global model, and noise can be added. Start rounds from **Fleet → Federated learning**, `POST /api/fleet/federated` or `python -m fleet federated start --min-sites N`.
 
