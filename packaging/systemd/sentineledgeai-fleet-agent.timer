@@ -1,0 +1,10 @@
+[Unit]
+Description=SentinelEdgeAI: Report to the fleet server (schedule)
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

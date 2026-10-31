@@ -73,6 +73,15 @@ ROUTES = {
     ('GET', '/api/devices/identity'): 'viewer',
     ('GET', '/api/ot/assets'): 'viewer',
     ('GET', '/api/trust'): 'viewer',
+    ('GET', '/api/fleet'): 'viewer',
+    ('GET', '/api/fleet/sites/{site_id}/history'): 'viewer',
+    ('POST', '/api/fleet/codes'): 'admin',
+    ('POST', '/api/fleet/sites/{site_id}/revoke'): 'admin',
+    ('POST', '/api/fleet/sites/{site_id}/group'): 'admin',
+    ('POST', '/api/fleet/templates'): 'admin',
+    ('POST', '/api/fleet/groups'): 'admin',
+    ('POST', '/api/fleet/groups/{name}/rollout'): 'admin',
+    ('GET', '/api/fleet/agent'): 'viewer',
     ('GET', '/api/devices/{ip}/peers'): 'viewer',
     ('POST', '/api/firewall/contain'): 'operator',
     ('GET', '/api/ot/segmentation'): 'viewer',
@@ -135,7 +144,7 @@ def declared_minimum(route):
 
 
 def concrete(path):
-    return path.replace('{ip}', '192.0.2.1').replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope')
+    return path.replace('{ip}', '192.0.2.1').replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope').replace('{site_id}', 'site-0')
 
 
 @pytest.fixture(autouse=True)

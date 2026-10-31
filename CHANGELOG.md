@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Fleet manager (Phase 7).** Any appliance can be a fleet server (`python -m fleet init`): own CA, mutual TLS on port 9444, one-time enrolment codes bound to a group. Sites pin the CA by fingerprint and report a compact status every 5 minutes (`sentineledgeai-fleet-agent.timer`): version, health, alerts by severity, trust levels, restrictions, OT and segmentation state, never flows or packets. Groups carry a configuration template (response policy or preset, validated on both ends) and a target version that rolls out in stages: stable-hash canaries, by default 10% at once, 50% after 24 h and 100% after 48 h. A failed site update pauses the rollout. The unprivileged agent records the target, and the root `sentineledgeai-fleet-update.timer` installs it with the verified, health-checked `sentinelctl fleet-update`. Console **Fleet** panel, `/api/fleet/*` (9 endpoints), CLI `python -m fleet init|code|sites|revoke|template|group|groups|rollout|enroll|report|status`.
+- `sentinelctl update --to X.Y.Z` installs a specific release (downgrades are refused).
+
 ## [2.3.1] - 2026-10-31
 
 ### Fixed

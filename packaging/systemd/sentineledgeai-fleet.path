@@ -1,0 +1,9 @@
+[Unit]
+Description=Start the SentinelEdgeAI fleet server when this device is one (python -m fleet init)
+
+[Path]
+PathExists=/var/lib/sentinel/data/fleet/enabled
+Unit=sentineledgeai-fleet.service
+
+[Install]
+WantedBy=multi-user.target

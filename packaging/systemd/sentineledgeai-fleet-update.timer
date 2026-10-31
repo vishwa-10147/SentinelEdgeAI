@@ -1,0 +1,10 @@
+[Unit]
+Description=SentinelEdgeAI: Install the version the fleet rollout asks for (schedule)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

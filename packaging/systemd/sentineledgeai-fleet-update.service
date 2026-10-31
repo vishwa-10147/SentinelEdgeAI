@@ -1,0 +1,8 @@
+[Unit]
+Description=SentinelEdgeAI: Install the version the fleet rollout asks for (verified, health-checked, auto-rollback)
+Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
+ConditionPathExists=/var/lib/sentinel/data/fleet_agent/desired_version
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/sentinelctl fleet-update

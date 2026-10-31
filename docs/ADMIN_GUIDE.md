@@ -108,6 +108,34 @@ Every change is in the audit log. The real-kernel test is `sudo bash tests/firew
 
 Sensors buffer flows on disk while the brain is unreachable and replay them afterwards; they never block on their own in that state. Revoke a sensor with `python -m brain revoke <id>`.
 
+## 7a. Fleet manager (many sites, one console)
+
+Any appliance can also be the **fleet server**. Sites report to it over mutual TLS (port 9444, its own CA), and it gives each group of sites a configuration template and a target version.
+
+On the fleet server:
+
+```bash
+cd /opt/sentineledgeai/current
+sudo -u sentinel .venv/bin/python -m fleet init                  # keys; sentineledgeai-fleet.path starts the service
+sudo -u sentinel .venv/bin/python -m fleet code --group default  # one-time code (1 hour) + the command for the site
+```
+
+On each site, run the printed command:
+
+```bash
+sudo -u sentinel .venv/bin/python -m fleet enroll https://<fleet>:9444 <CODE> <CA-FINGERPRINT>
+```
+
+The site pins the fleet CA by fingerprint, and its private key never leaves it. From then on it reports every 5 minutes: version, health, alerts by severity, trust levels, restrictions, OT and segmentation state. Flows and packet data are never sent.
+
+Everything else happens in **Fleet** in the console (or `/api/fleet/*`, or `python -m fleet ...`):
+
+- **Templates:** a response policy (YAML, or one of the presets), validated before it is stored and again on every site before it is applied.
+- **Groups:** a template and a target version per group. A new target version rolls out in stages. By default that's 10% of sites at once, 50% after 24 h and 100% after 48 h. The same sites are always the canaries.
+- **Rollouts:** sites record the target version, and a root timer (`sentineledgeai-fleet-update.timer`, hourly) installs it with `sentinelctl fleet-update`. That's the normal verified, health-checked update with automatic rollback. A site whose update fails pauses its group's rollout until an Admin resumes it. Downgrades are refused.
+
+`sentinelctl update --to X.Y.Z` installs a specific release by hand.
+
 ## 8. Integrations and threat intelligence
 
 * SIEM and notifications: `PUT /api/integrations` with sinks of type `syslog` (RFC 5424 or CEF, UDP/TCP/TLS), `webhook` (HMAC-signed), `jsonl`, `slack`, `teams` or `email`; `POST /api/integrations/test` sends a test alert.

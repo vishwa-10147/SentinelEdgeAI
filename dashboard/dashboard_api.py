@@ -722,6 +722,88 @@ def devices_identity(principal: dict = Depends(require_viewer)):
     return identity.get_registry().list()
 
 
+def _fleet(principal, action, fn, *args, **kwargs):
+    try:
+        return fn(*args, by=principal.get('username'), **kwargs)
+    except ValueError as exc:
+        audit_event(principal, action, outcome='rejected', details={'error': str(exc)[:300]})
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get('/api/fleet')
+def fleet_overview(principal: dict = Depends(require_viewer)):
+    """Fleet server view: sites with their latest reports, groups with rollout progress, templates."""
+    from fleet import manage
+    return manage.overview()
+
+
+@app.get('/api/fleet/sites/{site_id}/history')
+def fleet_site_history(site_id: str, principal: dict = Depends(require_viewer)):
+    from fleet.store import FleetStore
+    return {'site_id': site_id, 'reports': FleetStore().history(site_id, limit=288)}
+
+
+@app.post('/api/fleet/codes')
+def fleet_code(payload: dict = {}, principal: dict = Depends(require_admin)):
+    """A one-time enrolment code for a new site (valid for an hour)."""
+    from fleet import manage
+    return _fleet(principal, 'fleet_code', manage.enrolment_code, (payload or {}).get('group') or 'default')
+
+
+@app.post('/api/fleet/sites/{site_id}/revoke')
+def fleet_revoke(site_id: str, principal: dict = Depends(require_admin)):
+    from fleet.store import FleetStore
+    if not FleetStore().revoke_site(site_id):
+        raise HTTPException(status_code=404, detail='no such site')
+    audit_event(principal, 'fleet_revoke', target=site_id)
+    return {'revoked': site_id}
+
+
+@app.post('/api/fleet/sites/{site_id}/group')
+def fleet_site_group(site_id: str, payload: dict, principal: dict = Depends(require_admin)):
+    from fleet.store import FleetStore
+    try:
+        ok = FleetStore().set_site_group(site_id, str((payload or {}).get('group', '')))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail='no such site')
+    audit_event(principal, 'fleet_site_group', target=site_id, details={'group': payload.get('group')})
+    return {'site_id': site_id, 'group': payload.get('group')}
+
+
+@app.post('/api/fleet/templates')
+def fleet_template(payload: dict, principal: dict = Depends(require_admin)):
+    """Store a configuration template: response policy YAML, or one of the presets."""
+    from fleet import manage
+    p = payload or {}
+    return {'version': _fleet(principal, 'fleet_template_put', manage.put_template, str(p.get('name', '')),
+                              p.get('yaml'), p.get('preset'))}
+
+
+@app.post('/api/fleet/groups')
+def fleet_group(payload: dict, principal: dict = Depends(require_admin)):
+    """Create or update a group: its template, target version and rollout stages."""
+    from fleet import manage
+    p = payload or {}
+    return _fleet(principal, 'fleet_group_put', manage.put_group, str(p.get('name', '')), p.get('template'),
+                  p.get('target_version'), p.get('stages'))
+
+
+@app.post('/api/fleet/groups/{name}/rollout')
+def fleet_rollout(name: str, payload: dict, principal: dict = Depends(require_admin)):
+    """Pause or resume a group's rollout."""
+    from fleet import manage
+    return _fleet(principal, 'fleet_rollout', manage.set_rollout, name, str((payload or {}).get('action', '')))
+
+
+@app.get('/api/fleet/agent')
+def fleet_agent_status(principal: dict = Depends(require_viewer)):
+    """This site's own fleet status: enrolment, last report, applied template, pending version."""
+    from fleet import agent
+    return agent.status()
+
+
 @app.get('/api/trust')
 def trust_scores(principal: dict = Depends(require_viewer)):
     """Trust score (0-100), level, reasons and recommended response for every known device, least trusted first."""

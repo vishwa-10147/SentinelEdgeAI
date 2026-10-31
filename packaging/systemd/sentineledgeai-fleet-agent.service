@@ -1,0 +1,19 @@
+[Unit]
+Description=SentinelEdgeAI: Report to the fleet server and apply its desired state
+Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
+ConditionPathExists=/var/lib/sentinel/data/fleet_agent/site.json
+
+[Service]
+Type=oneshot
+User=sentinel
+Group=sentinel
+WorkingDirectory=/opt/sentineledgeai/current
+EnvironmentFile=/etc/sentinel/sentinel.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m fleet report
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel

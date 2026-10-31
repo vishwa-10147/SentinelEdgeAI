@@ -58,7 +58,7 @@ Phase 3  Enforcement you can trust                v1.4   ███████�
 Phase 4  Detection quality                        v1.5   ███████████████░░░░░  built; public datasets + GPU pending
 Phase 5  Integrations and operations              v1.6   ██████████████████░░  built; real SIEM test pending
 Phase 6  Production release                       v2.0   ██████████████░░░░░░  released; OS images, pen test, beta pending
-Phase 7  Scale and advanced intelligence          v2.x+  ██████░░░░░░░░░░░░░░  2 of 7 themes done (OT, zero-trust)
+Phase 7  Scale and advanced intelligence          v2.x+  █████████░░░░░░░░░░░  3 of 7 themes done (fleet, OT, zero-trust)
 ```
 
 **v2.0 is released and Phase 7 is under way.** Phases 2–6 are built and tested in simulation, in real-kernel network-namespace tests and on the Pi itself. What remains of them needs hardware, outside people or time rather than code: Jetson validation, a 72-hour inline soak, public-dataset evaluation and GPU models, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta. Each phase's evidence and open items are listed in [PLAN.md](PLAN.md).
@@ -72,7 +72,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ██████░�
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built; 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models, console views |
 | 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
 | 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Released as v2.0; installer, OTA, reproducible Sigstore-signed builds, hardening, container, docs, 25–31× faster capture and decisions. Pending: OS images, pen test, beta |
-| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2) and device trust scores with containment (v2.3) done; 5 themes to go |
+| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3) and the fleet manager (v2.4) done; 4 themes to go |
 
 Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked done when all of them are met.
 
@@ -80,7 +80,8 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 
 | Version | Highlights |
 |---|---|
-| **v2.3.1** | Trust scores calibrated on live traffic (one penalty per alert kind; protected hosts and loopback handled) |
+| **v2.4.0** | Fleet manager: many sites in one console, configuration templates, staged rollouts that pause on failure |
+| v2.3.1 | Trust scores calibrated on live traffic (one penalty per alert kind; protected hosts and loopback handled) |
 | v2.3.0 | Device trust scores (0–100, with reasons), learned peer profiles, `contain` response (keep only normal peers) |
 | v2.2.0 | OT micro-segmentation from learned allow-lists (off / monitor / enforce) |
 | v2.1.0 | OT asset inventory (API and console), learning survives restarts |
@@ -102,7 +103,7 @@ All releases: [Releases](https://github.com/vishwa-10147/SentinelEdgeAI/releases
 | **Healthcare clinics** | Unpatchable medical devices, sensitive data leaving the network |
 | **Schools, hostels, hotels and guest Wi-Fi** | Infected guest devices, scanning, network abuse |
 | **Branch offices** | One sensor per branch reporting to a central brain over mutual TLS |
-| **Managed service providers** | One appliance per customer site; fleet console 🔜 |
+| **Managed service providers** | One appliance per customer site, all in one self-hosted fleet console |
 | **Security training labs** | Explainable detection with a built-in attack demo |
 | **Home labs** | The single-Pi "Lite" profile |
 
@@ -149,8 +150,8 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 
 | Capability | Status |
 |---|---|
-| FastAPI REST API (90 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
-| React console: topology, device detail, analytics, firewall, trust, OT devices, users, audit, setup | ✅ |
+| FastAPI REST API (99 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
+| React console: topology, device detail, analytics, firewall, trust, OT devices, fleet, users, audit, setup | ✅ |
 | User accounts (Argon2id), four roles, TOTP two-step sign-in, scoped API tokens, login lockout | ✅ |
 | HTTPS by default, security headers, API rate limits, hash-chained audit log | ✅ |
 | SIEM export: syslog/CEF (UDP/TCP/TLS), signed webhooks, JSON lines, Slack, Teams, email | ✅ |
@@ -160,7 +161,7 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | One-command installer, presets (Home, Office, OT, Enterprise), hardened OS script | ✅ |
 | Over-the-air updates: SHA-256 and cosign verified, health-checked, automatic rollback | ✅ |
 | Releases: reproducible, Sigstore-signed, CycloneDX SBOM, build provenance | ✅ |
-| Multi-site fleet console | 🔜 Phase 7 |
+| Fleet manager: many sites, configuration templates, staged rollouts with automatic pause | ✅ |
 
 ---
 
@@ -200,7 +201,7 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | **Lite** | 1 × Raspberry Pi 5 | Home labs, very small offices, evaluation | ✅ v1.1 |
 | **Standard** | 1 × Pi 5 + 1 × Jetson Orin Nano | SMBs, clinics, OT cells (reference deployment) | 🟡 v2.0 (Jetson untested) |
 | **Multi-sensor** | N × Pi 5 + 1 × Jetson | Several segments or floors | 🟡 v2.0 (Jetson untested) |
-| **Fleet** | Many sites + central console | MSPs and multi-branch organisations | 🔜 v2.x |
+| **Fleet** | Many sites + central console | MSPs and multi-branch organisations | ✅ v2.4 |
 
 ### Network placement
 
@@ -349,14 +350,14 @@ Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
 
 ## API
 
-Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 90 endpoints is in **[docs/API.md](docs/API.md)**.
+Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 99 endpoints is in **[docs/API.md](docs/API.md)**.
 
 | Role | Can |
 |---|---|
 | Viewer | Read dashboards, alerts, devices, trust scores, OT inventory, firewall state, reports |
 | Analyst | Viewer + label alerts (true/false positive) and request explanations |
 | Operator | Analyst + block, quarantine, rate-limit, contain, release, approve playbook actions, rollback |
-| Admin | Operator + users, setup, response policy, integrations, threat intel, models, OT segmentation, audit log |
+| Admin | Operator + users, setup, response policy, integrations, threat intel, models, OT segmentation, fleet, audit log |
 
 Operators and Admins must set up two-step sign-in (an authenticator app) at their next sign-in. The first admin does this right after choosing a new password, so have a phone with an authenticator app ready.
 
@@ -368,6 +369,7 @@ Operators and Admins must set up two-step sign-in (an authenticator app) at thei
 | Response | `/api/firewall/block`, `/unblock`, `/quarantine`, `/ratelimit`, `/contain`, `/release`, `/rollback`, `/api/playbook/pending`, `/api/policy` |
 | OT | `/api/ot/assets`, `/api/ot/segmentation` (+ `/allow`, `/refresh`) |
 | Two-node | `/api/brain/*`, `/api/sensor/*` |
+| Fleet | `/api/fleet`, `/api/fleet/codes`, `/sites/{id}/revoke`, `/templates`, `/groups`, `/groups/{name}/rollout`, `/api/fleet/agent` |
 | Models and evaluation | `/api/models`, `/api/eval/latest` |
 | Integrations and reports | `/api/integrations`, `/api/intel`, `/api/reports/*`, `/api/export/compliance` |
 | Health | `/api/health`, `/metrics`, `WS /ws/packets` (send `{"type": "auth", "token": "…"}` first) |
@@ -390,6 +392,7 @@ core/         engine, firewall (nftables/iptables), auth, audit, storage, setup,
 brain/        two-node brain: CA, enrolment, sensor registry, signed commands
 sensor/       two-node sensor: link client, disk buffer, command executor
 common/       link protocol and PKI shared by brain and sensor
+fleet/        fleet server, site agent, staged rollouts, configuration templates
 integrations/ SIEM export, webhooks, chat and email, Suricata input
 intel/        threat-intelligence feeds (STIX/TAXII, lists)
 reporting/    PDF and JSON reports

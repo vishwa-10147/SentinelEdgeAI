@@ -128,6 +128,15 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | Method | Path | Minimum role | Notes |
 |---|---|---|---|
 | `GET` | `/` | public |  |
+| `GET` | `/api/fleet` | viewer | Fleet server view: sites with their latest reports, groups with rollout progress, templates. |
+| `GET` | `/api/fleet/agent` | viewer | This site's own fleet status: enrolment, last report, applied template, pending version. |
+| `POST` | `/api/fleet/codes` | admin | A one-time enrolment code for a new site (valid for an hour). |
+| `POST` | `/api/fleet/groups` | admin | Create or update a group: its template, target version and rollout stages. |
+| `POST` | `/api/fleet/groups/{name}/rollout` | admin | Pause or resume a group's rollout. |
+| `POST` | `/api/fleet/sites/{site_id}/group` | admin |  |
+| `GET` | `/api/fleet/sites/{site_id}/history` | viewer |  |
+| `POST` | `/api/fleet/sites/{site_id}/revoke` | admin |  |
+| `POST` | `/api/fleet/templates` | admin | Store a configuration template: response policy YAML, or one of the presets. |
 | `GET` | `/api/ot/assets` | viewer | Industrial controllers seen on the network, the hosts that command them and the functions they use. |
 | `GET` | `/api/ot/segmentation` | viewer |  |
 | `POST` | `/api/ot/segmentation` | admin | Set OT segmentation to off, monitor or enforce (enforce needs inline placement). |

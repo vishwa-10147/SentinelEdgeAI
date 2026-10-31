@@ -1,0 +1,30 @@
+[Unit]
+Description=SentinelEdgeAI fleet server (site-facing mutual TLS service)
+Documentation=https://github.com/vishwa-10147/SentinelEdgeAI
+After=network-online.target
+Wants=network-online.target
+# started by sentineledgeai-fleet.path once `python -m fleet init` ran
+ConditionPathExists=/var/lib/sentinel/data/fleet/enabled
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+WorkingDirectory=/opt/sentineledgeai/current
+EnvironmentFile=/etc/sentinel/sentinel.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m fleet.server
+Restart=on-failure
+RestartSec=5
+# exit 78: the device is no longer a fleet server
+RestartPreventExitStatus=78
+
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel
+
+[Install]
+WantedBy=multi-user.target

@@ -10,7 +10,8 @@
 #   sentinelctl tls show                           # certificate details and fingerprint
 #   sudo sentinelctl backup  /root/sentinel.seab   # encrypted backup of config, keys, policy, data
 #   sudo sentinelctl restore /root/sentinel.seab   # onto this device (install first on a fresh one)
-#   sudo sentinelctl update [--check]              # over-the-air: verified download, health-checked, auto-rollback
+#   sudo sentinelctl update [--check] [--to X.Y.Z] # over-the-air: verified download, health-checked, auto-rollback
+#   sudo sentinelctl fleet-update                  # install the version a fleet rollout asks for (run by a timer)
 #   sudo sentinelctl preset home|office|ot|enterprise
 #
 # On-device layout (code is replaceable, state is never touched by upgrades):
@@ -32,8 +33,8 @@ HEALTH_TIMEOUT="${SENTINEL_HEALTH_TIMEOUT:-90}"
 SYSTEMD_DIR="${SENTINEL_SYSTEMD_DIR:-/etc/systemd/system}"
 SBIN_DIR="${SENTINEL_SBIN_DIR:-/usr/local/sbin}"
 SERVICES=(sentineledgeai-engine.service sentineledgeai-api.service)
-ROLE_PATHS=(sentineledgeai-brain.path sentineledgeai-sensor.path)
-ROLE_SERVICES=(sentineledgeai-brain.service sentineledgeai-sensor.service)
+ROLE_PATHS=(sentineledgeai-brain.path sentineledgeai-sensor.path sentineledgeai-fleet.path sentineledgeai-fleet-agent.path)
+ROLE_SERVICES=(sentineledgeai-brain.service sentineledgeai-sensor.service sentineledgeai-fleet.service)
 MIN_PYTHON="3.11"
 # interpreter for the release venv; the Jetson installer points this at a uv-managed CPython 3.11
 PYTHON_BIN="${SENTINEL_PYTHON:-$(cat "$ETC_DIR/python" 2>/dev/null || echo python3)}"
@@ -252,7 +253,7 @@ install_units() {
   systemctl daemon-reload
   systemctl enable "${SERVICES[@]}" sentineledgeai-rollback-guard.timer >/dev/null
   systemctl enable --now sentineledgeai-watchdog.timer sentineledgeai-intel.timer sentineledgeai-report.timer \
-    >/dev/null 2>&1 || true
+    sentineledgeai-fleet-update.timer >/dev/null 2>&1 || true
   # two-node services start only once the device has that role (see the .path units)
   for unit in "${ROLE_PATHS[@]}"; do
     if [ -f "$SYSTEMD_DIR/$unit" ]; then
@@ -516,11 +517,15 @@ current_version() {
 
 latest_release() {
   # prints "<version> <tarball url>"; a file:// mirror holds latest.json {"version", "tarball"}
-  local json
-  if [[ "$UPDATE_URL" == file://* ]]; then
-    json="$(cat "${UPDATE_URL#file://}/latest.json")" || return 1
+  # with a version argument, the GitHub release of that tag (a mirror only serves its latest)
+  local json url="$UPDATE_URL"
+  if [ -n "${1:-}" ] && [[ "$url" == */releases/latest ]]; then
+    url="${url%/latest}/tags/v$1"
+  fi
+  if [[ "$url" == file://* ]]; then
+    json="$(cat "${url#file://}/latest.json")" || return 1
   else
-    json="$(curl -fsSL --max-time 30 "$UPDATE_URL")" || return 1
+    json="$(curl -fsSL --max-time 30 "$url")" || return 1
   fi
   printf '%s' "$json" | "$PYTHON_BIN" -c '
 import json, sys
@@ -538,10 +543,18 @@ fetch() {  # fetch <url> <dest>
 }
 
 cmd_update() {
-  local check_only=0 latest url current tmp file
-  [ "${1:-}" = "--check" ] && check_only=1
-  read -r latest url < <(latest_release) || die "could not read the latest release from $UPDATE_URL"
+  local check_only=0 want="" latest url current tmp file
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --check) check_only=1 ;;
+      --to) shift; want="${1:-}"; [[ "$want" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "--to needs a version like 2.4.0" ;;
+      *) die "unknown update option: $1" ;;
+    esac
+    shift
+  done
+  read -r latest url < <(latest_release "$want") || die "could not read release ${want:-latest} from $UPDATE_URL"
   [ -n "$latest" ] && [ -n "$url" ] || die "no release found at $UPDATE_URL"
+  [ -z "$want" ] || [ "$latest" = "$want" ] || die "release $want is not available (the source offers $latest)"
   current="$(current_version)"
   # compare X.Y.Z; a dev suffix (e.g. -dev.<commit>) cannot be ordered, so any different
   # build of the same or a newer base version counts as an update
@@ -571,6 +584,30 @@ cmd_update() {
   fi
   # same path as a manual upgrade: checksum, health check, automatic rollback
   cmd_install "$file"
+}
+
+cmd_fleet_update() {
+  # the fleet agent (unprivileged) writes the version its group's rollout wants; install it here
+  local dir="$STATE_DIR/data/fleet_agent" want current ok=true msg
+  [ -f "$dir/desired_version" ] || { log "no fleet rollout pending"; return 0; }
+  want="$(tr -d '[:space:]' < "$dir/desired_version")"
+  [[ "$want" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid desired version: $want"
+  current="$(current_version)"
+  if [ "$current" = "$want" ]; then
+    log "already on $want"
+    return 0
+  fi
+  if [ "$(printf '%s\n%s\n' "$want" "${current%%-*}" | sort -V | tail -1)" = "${current%%-*}" ] && [ "${current%%-*}" != "$want" ]; then
+    log "refusing to downgrade from $current to $want"
+    return 0
+  fi
+  if msg="$( (cmd_update --to "$want") 2>&1 )"; then ok=true; else ok=false; fi
+  printf '%s\n' "$msg"
+  "$PYTHON_BIN" -c 'import json, sys, time
+print(json.dumps({"version": sys.argv[1], "ok": sys.argv[2] == "true", "at": int(time.time()), "message": sys.argv[3][-500:]}))' \
+    "$want" "$ok" "$msg" > "$dir/update_result.json"
+  chown "$SERVICE_USER:$SERVICE_USER" "$dir/update_result.json"
+  [ "$ok" = true ]
 }
 
 cmd_preset() {
@@ -612,6 +649,7 @@ case "${1:-}" in
   tls)             shift; cmd_tls "$@" ;;
   backup)          shift; cmd_backup "$@" ;;
   update)          shift; cmd_update "$@" ;;
+  fleet-update)    cmd_fleet_update ;;
   preset)          shift; cmd_preset "$@" ;;
   restore)         shift; cmd_restore "$@" ;;
   -h|--help|help)  usage 0 ;;

@@ -1,0 +1,9 @@
+[Unit]
+Description=Start reporting to the fleet server once this site is enrolled
+
+[Path]
+PathExists=/var/lib/sentinel/data/fleet_agent/site.json
+Unit=sentineledgeai-fleet-agent.timer
+
+[Install]
+WantedBy=multi-user.target
