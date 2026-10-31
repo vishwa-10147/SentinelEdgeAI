@@ -1,17 +1,11 @@
-# Streamlit Dashboard
+# Streamlit dashboard (legacy)
 
-Quick instructions to run the in-repo Streamlit dashboard which reads from Postgres when `DATABASE_URL` is set, otherwise falls back to JSON files.
+`dashboard/streamlit_app.py` is the original prototype dashboard. The supported console is the React web console served by the API (`https://<device>:9000`, see `frontend/README.md`). Streamlit isn't installed on devices.
 
-Run with the repo virtualenv (recommended):
+For development only:
 
 ```bash
-# ensure venv is active or use the helper script
-source venv/bin/activate
-# use local Postgres container credentials (adjust if needed)
-export DATABASE_URL=postgresql://sentinel:sentinel@127.0.0.1:5432/sentinel
-bash scripts/run_streamlit.sh
+pip install -r requirements-streamlit.txt
+export DATABASE_URL=postgresql://sentinel:sentinel@127.0.0.1:5432/sentinel   # optional; otherwise it reads the JSON files
+bash scripts/run_streamlit.sh                                               # http://localhost:8501
 ```
-
-The dashboard is available at http://localhost:8501 by default.
-
-If you prefer Grafana for visualization, I can add a `docker-compose` snippet to run Grafana and a starter dashboard.

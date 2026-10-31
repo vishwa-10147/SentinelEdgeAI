@@ -5,6 +5,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Documentation
+- **Roadmap beyond v2.9** (PLAN.md):
+  - Phase 8, proven in the field: pen test, beta, soak, Jetson, OS images
+  - Phase 9, deeper visibility: lateral-movement protocols, more OT, a forensic packet buffer, IPv6
+  - Phase 10, assisted operations: incidents, an optional read-only local assistant with strict rules, SSO, mobile
+  - Phase 11, platform: multi-tenant MSP fleet, x86 10 Gb/s, certification
+
+  PLAN.md also says how far each hardware option scales and who the product is for.
+- README: who it is for, how the "AI" works (no language model), roadmap phases 8–11, current configuration variables and ports, updated known limitations.
+- EXPLAIN.md, SECURITY.md (threat model, supported versions, known issues, deployment checklist), the admin guide (capacity and flood safety), runbooks (containment, capture overload, paused rollouts, brain failover, federated rounds), troubleshooting, performance (flood results), pen-test scope and beta plan brought up to date.
+- Deploy, dashboard, frontend, packaging and scripts READMEs now describe the current `sentinelctl` setup and mark the older development helpers as legacy. `updates.md` is now a how-to for putting the Pi inline between the router and the switch.
+- Archived superseded documents (old release notes, agent notes, project history and snapshot, a May PR draft, Render secrets, the first runner guide) in `docs/archive/`, and removed the `update_project_history` workflow, whose push to `main` had silently failed on every release.
+
+### Added
+- Prometheus alert `SentinelCaptureOverloaded`.
+
 ## [2.9.3] - 2026-10-31
 
 ### Fixed

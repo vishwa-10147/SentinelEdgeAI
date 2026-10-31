@@ -1,4 +1,6 @@
-Pi setup notes
+# Pi development setup (legacy)
+
+> **Use the release package instead** (README → Installation): `scripts/install.sh` or `sentinelctl install`. That creates the `sentinel` user, the `sentineledgeai-*` services, `/etc/sentinel` and `/var/lib/sentinel`, and supports updates and rollback. `scripts/setup_pi.sh` below is the old development installer for a single `sentineledgeai.service` running from a checkout; keep it for development only.
 
 1. Make the installer executable and run it:
 

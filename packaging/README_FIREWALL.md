@@ -1,5 +1,8 @@
-SentinelEdgeAI Firewall Rollback Guard
-------------------------------------
+# Firewall rollback guard
+
+> **Current setup:** a package install (`sentinelctl`) installs and enables `sentineledgeai-rollback-guard.timer` from `packaging/systemd/`. Every minute it checks the API's health, and after repeated failures it removes all blocks (`scripts/firewall_rollback_guard.sh`). The fail-open watchdog (`sentineledgeai-watchdog.timer`) also removes every rule if the engine or API stops. Nothing below needs to be done by hand. See `deploy/pi/README_ENFORCEMENT.md`.
+>
+> The rest of this page describes the **legacy** `sentinel-firewall-rollback.*` units for installs made before `sentinelctl`.
 
 This directory contains systemd unit templates and helper scripts to ensure that when enforcement is enabled on a Pi, an automated rollback guard periodically verifies health and removes accidental blocks if the device becomes unhealthy.
 

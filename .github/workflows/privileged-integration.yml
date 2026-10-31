@@ -2,7 +2,7 @@ name: Privileged Integration (self-hosted)
 
 # Real-kernel firewall tests: block, unblock and rollback against actual
 # nftables/iptables inside a container with NET_ADMIN. Needs a self-hosted
-# runner labelled `self-hosted, linux, docker` (see docs/SELF_HOSTED_RUNNER.md).
+# runner labelled `self-hosted, linux, docker` (see docs/SELF_HOSTED_RUNNER_SETUP.md).
 # Pull requests run the same container test via containerized-firewall-integration.yml.
 on:
   workflow_dispatch:

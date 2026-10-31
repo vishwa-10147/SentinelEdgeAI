@@ -58,7 +58,11 @@ Phase 3  Enforcement you can trust                v1.4   ███████�
 Phase 4  Detection quality                        v1.5   ███████████████░░░░░  built; public datasets + GPU pending
 Phase 5  Integrations and operations              v1.6   ██████████████████░░  built; real SIEM test pending
 Phase 6  Production release                       v2.0   ██████████████░░░░░░  released; OS images, pen test, beta pending
-Phase 7  Scale and advanced intelligence          v2.x+  ████████████████████  all 7 themes built (v2.0–v2.9)
+Phase 7  Scale and advanced intelligence          v2.x   ████████████████████  all 7 themes built (v2.0–v2.9)
+Phase 8  Proven in the field                      v3.0   ░░░░░░░░░░░░░░░░░░░░  next: pen test, beta, soak, Jetson, OS images
+Phase 9  Deeper visibility                        v3.x   ░░░░░░░░░░░░░░░░░░░░  SMB/RDP/Kerberos, more OT, packet buffer, IPv6
+Phase 10 Assisted operations                      v4.0   ░░░░░░░░░░░░░░░░░░░░  incidents, optional local assistant, SSO, mobile
+Phase 11 Platform and ecosystem                   v4.x+  ░░░░░░░░░░░░░░░░░░░░  multi-tenant MSP fleet, x86 10 Gb/s, certification
 ```
 
 **All phases (0–7) are built (v2.9).** Everything is tested in simulation, in real-kernel network-namespace tests, against real PostgreSQL and on a Raspberry Pi 5 running the released packages. What remains needs hardware, outside people or time rather than code: Jetson validation and GPU models, a 72-hour inline soak, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta, plus a few software follow-ups listed in [PLAN.md](PLAN.md) (UNSW-NB15 and CIC-IoT2023 loaders, fleet-wide remote actions and alert search, VLAN reassignment through switch APIs).
@@ -100,6 +104,24 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 All releases: [Releases](https://github.com/vishwa-10147/SentinelEdgeAI/releases) · full notes: [CHANGELOG.md](CHANGELOG.md).
 
 ---
+
+## Who it is for
+
+Organisations that need network detection and response but have **no security team**:
+- small and medium businesses
+- industrial and OT sites (water, energy, manufacturing, building automation)
+- clinics
+- schools, hotels and guest Wi-Fi
+- branch and retail networks
+- the **MSPs** who look after them
+- NIS2-regulated mid-size organisations preparing for an audit
+- home labs and trainers
+
+Inside an organisation, Viewers read, Analysts label alerts, Operators approve and undo responses, and Admins configure. PLAN.md has the [full list of users](PLAN.md#who-it-is-for), [where the product goes next](PLAN.md#where-it-goes-next) and [how far it can scale](PLAN.md#how-far-it-can-go).
+
+## How the "AI" works (and what it is not)
+
+It uses small classical models: an Isolation Forest, a compact autoencoder, per-device and per-hour baselines, attack-pattern detectors and an evidence-fusion step. Each decision takes well under a millisecond on a Raspberry Pi. **There is no large language model**: explanations are templates filled with evidence, so there is nothing to prompt-inject. The models can't act on their own either; every response passes the playbook, your policy, the protected-host list and, for high-impact steps, an Operator's approval. Every table the engine keeps has a size limit, so a flood of fake addresses can't run it out of memory: it raises a "capture overloaded" alert and keeps going. Details are in [EXPLAIN.md](EXPLAIN.md#what-the-ai-is-and-is-not) and [SECURITY.md](SECURITY.md).
 
 ## Use cases
 
@@ -359,8 +381,18 @@ Detection tuning lives in [config.yaml](config.yaml) (risk thresholds, baseline 
 | `REDACT_SENSITIVE` / `REDACT_SALT` | `0` / unset | Hash IPs and MACs in API responses |
 | `HEALTH_USER` / `HEALTH_PASS` | unset | Basic auth for the health endpoint |
 | `DISABLE_DB_MAINTENANCE` | `0` | Disable background retention and VACUUM |
+| `SENTINEL_CAPTURE` | `auto` | `auto` (AF_PACKET when permitted), `afpacket` or `scapy` |
+| `SENTINEL_MAX_FLOWS` | `100000` | Active flows tracked; beyond this the least recently active are evicted (flood safety, ~860 bytes each) |
+| `SENTINEL_MAX_SOURCES` | `20000` | Sources each detector keeps state for (flood safety) |
+| `SENTINEL_MAX_DEVICES` | `20000` | Rows in the device registry |
+| `SENTINEL_BRIDGE` | from Setup | `1` mirrors enforcement into the bridge table (inline placement) |
+| `SENTINEL_BRAIN_DATABASE_URL` | unset | PostgreSQL for the brain (falls back to `DATABASE_URL`); required for a standby brain |
+| `SENTINEL_BRAIN_PORT` / `SENTINEL_FLEET_PORT` | `9443` / `9444` | Sensor-facing brain link / site-facing fleet server (mutual TLS) |
+| `SENTINEL_UPDATE_URL` | GitHub releases | Release source for `sentinelctl update` (or a `file://` mirror) |
+| `SENTINEL_REQUIRE_SIGNATURE` | `0` | `1` refuses updates whose cosign signature cannot be checked |
+| `ENABLE_FILE_FALLBACK` | `1` | Also stream the engine's `live_stats.json` / `live_events.jsonl` to the console |
 
-Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
+Default ports: console and API `9000`, engine metrics `9101`, brain link `9443`, fleet server `9444`.
 
 ---
 
@@ -428,7 +460,7 @@ docs/         admin guide, runbooks, troubleshooting, API reference, performance
 
 ---
 
-## Known limitations (v2.9.2)
+## Known limitations (v2.9.3)
 
 1. **Self-signed certificate by default.** Browsers warn until you import a certificate from your own CA (`sentinelctl tls import`).
 2. **Jetson brain not yet run on hardware.** Two-node mode is verified in simulation and on the Pi; GPU models wait for the Jetson.
@@ -436,15 +468,18 @@ docs/         admin guide, runbooks, troubleshooting, API reference, performance
 4. **Containment and OT segmentation are IPv4 only.** Use quarantine for IPv6 hosts.
 5. **Bridged traffic has no conntrack on this kernel.** In inline bridge mode, containment stops new TCP connections and off-profile UDP, but packets of existing connections pass.
 6. **Not yet externally tested.** The penetration test and the 30-day field beta are still to come ([PENTEST_SCOPE](docs/PENTEST_SCOPE.md), [BETA_PROGRAM](docs/BETA_PROGRAM.md)).
+7. **Floods degrade detection.** Under a flood of spoofed addresses memory stays bounded and you get a "capture overloaded" alert, but detection is partial until the flood stops; stopping it needs your router, switch or the inline rate limit.
+8. **Service memory limits are inactive on stock Raspberry Pi OS**, which boots with the memory cgroup off. The in-process limits still apply; add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` to enable the systemd ones.
+9. **Throughput.** A Pi 5 captures about 120,000 packets/s (~0.5–1 Gb/s of typical traffic). Busier links need the Jetson brain or, later, an x86 sensor.
 
 ---
 
 ## Contributing
 
 1. Open an issue describing the change.
-2. Branch from `main` using `feature/…`, `fix/…` or `chore/…`.
-3. Ensure `pytest -q`, Bandit and pip-audit pass, and add tests for new behaviour.
-4. Update [CHANGELOG.md](CHANGELOG.md) and open a pull request. Changes to the firewall, authentication or signing need a second reviewer.
+2. Add tests for new behaviour. `pytest -q`, Bandit and pip-audit must pass. For capture or enforcement changes, also run the real-kernel tests: `sudo bash tests/firewall_netns/run_enforcement_netns.sh`, `run_segmentation_netns.sh`, `run_containment_netns.sh` and `run_flood_netns.sh`.
+3. Update [CHANGELOG.md](CHANGELOG.md) and the documentation the change affects.
+4. Changes to the firewall, authentication, signing or the update path need a second reviewer.
 
 **Security issues:** do not open a public issue. Follow the disclosure process in [SECURITY.md](SECURITY.md).
 

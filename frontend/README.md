@@ -1,58 +1,32 @@
-# Frontend (React + Vite)
+# Web console (React + Vite)
 
-This folder contains the React-based SOC UI built with Vite.
+The console served by the API at `https://<device>:9000`. Release packages include a built copy (`frontend/dist/`), so a device never needs Node.js.
 
-Quick Commands
-
-Install dependencies:
+## Develop
 
 ```bash
 cd frontend
 npm ci
+npm run dev          # http://127.0.0.1:5173, talking to the API set in VITE_API_BASE
+npm run build        # -> frontend/dist (what the API serves and the package ships)
 ```
 
-Run dev server:
+Node.js 20.19 or newer is required (Vite). `frontend/dist/` and `node_modules/` are not committed.
 
-```bash
-npm run dev
-# open http://127.0.0.1:5173
-```
+## Structure
 
-Build production bundle:
+| File | What it is |
+|---|---|
+| `src/App.jsx` | Layout, top bar, live WebSocket stream (cursor resume, resync, heartbeat watchdog), firewall window |
+| `src/api.js` | API client: short-lived access token in memory, refresh cookie, `openSocket()` |
+| `components/AuthScreens.jsx` | Sign-in, two-step sign-in, forced password change |
+| `components/SetupWizard.jsx` | First-run setup: network role, placement, capture interface, response mode |
+| `components/Topology*.jsx`, `DeviceDetail.jsx`, `Analytics*.jsx`, `FirewallActivity.jsx`, `Legend.jsx` | Network map, device panel, charts, firewall activity |
+| `components/OperationsModal.jsx` | **Operations:** approvals and restrictions, policy YAML with checked diff, response tuning, sensors, model registry, feedback, evaluation, compliance |
+| `components/TrustModal.jsx` | **Trust:** device trust scores with reasons, contain and release |
+| `components/OtModal.jsx` | **OT devices:** industrial controllers, their masters and functions, micro-segmentation |
+| `components/FleetModal.jsx` | **Fleet:** sites, groups and rollouts, templates, federated learning |
+| `components/UsersModal.jsx`, `AuditModal.jsx` | Users and API tokens; hash-chained audit log |
+| `components/PresenterMode.jsx` | Guided demo overlay |
 
-```bash
-npm run build
-# output -> frontend/dist
-```
-
-Notes
-- `frontend/dist/` is intentionally ignored in git; CI builds the artifact and uploads it to the PR.
-- Keep `node_modules/` out of the repo; use `npm ci` to install using `package-lock.json` for reproducible builds.
-
-If you want me to update the homepage content, provide the prompt and I'll edit `frontend/src` accordingly and open a PR update.
-Frontend scaffold (React + Vite)
-
-Quick start (local):
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The frontend expects a backend API at `VITE_API_BASE` (default `http://localhost:9000`). Run the dashboard API:
-
-```bash
-pip install -r requirements.txt
-python dashboard/dashboard_api.py
-```
-
-When deploying to Render, build the frontend (`npm run build`) and serve as a static site, or deploy both frontend and `dashboard_api.py` as separate services.
-
-Render quick deploy (example)
-
-1. Create two services on Render or use `render.yaml` in the repo root.
-2. Frontend: set as a static site, build command: `cd frontend && npm install && npm run build`, publish directory `frontend/dist`.
-3. Backend: set as a web service (Python), start command: `uvicorn dashboard.dashboard_api:app --host 0.0.0.0 --port $PORT`.
-
-After deploy, set `VITE_API_BASE` in the frontend environment to the backend URL (e.g., https://sentinel-backend.onrender.com).
+Buttons appear only for roles allowed to use them (`hasRole` in `api.js`), but the API enforces every role itself (`tests/test_endpoint_roles.py`).

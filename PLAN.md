@@ -25,7 +25,7 @@ This is the single source of truth for what we are building, in what order, and 
 
 ---
 
-## 2. Target architecture (v2.0)
+## 2. Architecture
 
 ```text
            Pi 5 "Sensor" (one per network segment)            Jetson Orin Nano "Brain"
@@ -72,7 +72,11 @@ This is the single source of truth for what we are building, in what order, and 
 | **v1.5** | Detection quality | 4 |
 | **v1.6** | Integrations and operations | 5 |
 | **v2.0** | Production release | 6 |
-| **v2.x+** | Scale and advanced intelligence | 7 |
+| **v2.x** | Scale and advanced intelligence (released v2.0–v2.9) | 7 |
+| **v3.0** | Proven in the field | 8 |
+| **v3.x** | Deeper visibility | 9 |
+| **v4.0** | Assisted operations | 10 |
+| **v4.x+** | Platform and ecosystem | 11 |
 
 Each phase ends with a working, tested, merged build. The **exit criteria** must all be met before the phase is called done.
 
@@ -276,7 +280,7 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 
 ---
 
-## Phase 7 — Scale and advanced intelligence (v2.x and later)
+## Phase 7 — Scale and advanced intelligence (v2.x)
 
 - **Fleet manager:** central console for many sites (self-hosted), configuration templates, staged rollouts.
 - **Zero-trust micro-segmentation:** per-device trust score drives allowed peers and ports; learned "allow-lists" for IoT/OT devices.
@@ -302,14 +306,114 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 
 ---
 
+## Where it goes next
+
+**Where we stand (v2.9.3).** Every phase from 0 to 7 is built: detection with explanations, bounded and reversible response, zero-trust segmentation, sensor/brain with high availability, a fleet console, federated learning, response tuning, OT protocols, compliance evidence and flood safety. What is missing now is not features. It is:
+
+1. **Proof.** No external pen test, no beta, no long inline soak, no Jetson run. Nobody should rely on it in production until these exist.
+2. **Visibility depth.** Flow metadata cannot see lateral movement in SMB, RDP or Kerberos, most OT protocols, or what was actually sent. There is no packet capture for forensics.
+3. **Operator time.** The target users have no analyst, so every alert has to be cheap to understand and act on.
+4. **Physics.** A Pi running Python handles about 120,000 packets per second (roughly 0.5–1 Gb/s of typical traffic).
+
+The phases below address these, in that order.
+
+## Phase 8 — Proven in the field (v3.0)
+
+**Goal:** evidence that it is safe and useful on real networks.
+
+* External penetration test (docs/PENTEST_SCOPE.md), with every high and critical finding fixed.
+* 30-day beta at 3–5 sites (docs/BETA_PROGRAM.md): zero appliance-caused outages, published per-detector precision, alerts per day per site.
+* 72-hour inline soak with a hardware bypass; inline throughput and latency published.
+* Jetson Orin Nano as the brain: install, GPU autoencoder (TensorRT), measured speed-up.
+* Pre-built OS images for Pi and Jetson (first boot opens the setup wizard).
+* UNSW-NB15 and CIC-IoT2023 evaluation, and a Suricata comparison on the same traffic.
+* The release Isolation Forest moves to Ed25519 (devices hold only a public key).
+* A real Splunk/Elastic run; signed update channels (`stable`, `beta`).
+
+**Exit:** pen-test report clean; beta report published; zero appliance-caused outages.
+
+## Phase 9 — Deeper visibility (v3.x)
+
+**Goal:** see what flow metadata cannot.
+
+* **Lateral movement:** SMB, RDP, Kerberos, LDAP, WinRM and DCE-RPC metadata (no payloads), plus detectors for pass-the-hash patterns, admin-share use and new service creation.
+* **More OT:** IEC 60870-5-104, S7comm, EtherNet/IP (CIP) and MQTT for IoT; per-PLC command baselines.
+* **Encrypted traffic:** JA4S/JA4H, certificate anomalies (self-signed, short-lived, mismatched names), and the rhythm of encrypted sessions.
+* **Forensic packet buffer:** keep the last N minutes of packets for a device that raises an alert, and export them as a PCAP.
+* **Asset context:** passive OS and device-type fingerprinting, device criticality, and known-vulnerable firmware (offline CVE matching against an SBOM-style inventory).
+* **IPv6 parity** for containment and segmentation.
+* **Optional engines:** Zeek and Suricata as first-class sensor engines for busy links, with their output fused like any detector.
+* **Fleet:** remote actions and fleet-wide alert search.
+
+## Phase 10 — Assisted operations (v4.0)
+
+**Goal:** a non-expert can handle an incident in minutes.
+
+* **Incident view:** related alerts, devices and responses grouped into one incident with a timeline and a "what to do now" checklist.
+* **Optional local assistant (on the brain only):** a small language model that *summarises* incidents and *answers questions* about the data. Hard rules:
+  - it reads and explains; it never decides or acts
+  - every action still goes through the playbook, the policy and approvals
+  - all text from the network (DNS names, hostnames, HTTP fields) is treated as untrusted data and quoted, never followed
+  - it runs as its own service with CPU and memory limits, so overloading it cannot affect detection
+  - it is off by default and fully usable without it
+* **Notifications:** a mobile app (push, approve/deny from the phone) and digest e-mails.
+* **SSO** (OIDC/SAML), LDAP/AD groups mapped to roles.
+* **Ticketing and SOAR:** Jira, ServiceNow, TheHive and generic webhooks, both ways.
+* **Guided tuning:** "this detector produced 40 false alarms on the printer VLAN this week. Raise its threshold there?"
+
+## Phase 11 — Platform and ecosystem (v4.x and later)
+
+* **Multi-tenant fleet for MSPs and MSSPs:** customers, per-customer roles, branding, usage reports.
+* **Hardware options:** Pi kit, Jetson kit, a small x86 box with AF_XDP/DPDK capture for 10 Gb/s, and a 1U unit with a bypass NIC.
+* **Product certification:** IEC 62443-4-1 (secure development) and 4-2 (component), CE/FCC for hardware kits, a published SBOM and VEX for every release.
+* **Community threat sharing:** opt-in, anonymised indicators shared between fleets.
+* **Extension SDK:** third-party detectors and response actions, signed and sandboxed.
+* **Optional hosted fleet console** for organisations that want it. The appliances stay fully functional offline.
+
+## How far it can go
+
+| Dimension | Pi 5 today | With a Jetson brain | With an x86 sensor (Phase 11) |
+|---|---|---|---|
+| Traffic | ~120k packets/s, ~0.5–1 Gb/s typical | the same sensor, faster scoring and GPU models | 10 Gb/s with AF_XDP/DPDK or a Zeek/Suricata front end |
+| Devices per sensor | hundreds (tracks 100k conversations, 20k devices) | several sensors per brain | thousands |
+| Sites | one fleet server, hundreds of sites (5-minute reports) | the same | multi-tenant fleet |
+| Response | IPv4 inline (bridge or routed) | the same | the same, plus switch/VLAN control |
+
+What it will not become: a full firewall/UTM, an EDR, an e-mail gateway, or a cloud SIEM. It is the network layer that sees what those miss, and feeds them.
+
+## Who it is for
+
+| User | Their situation | What they get | Typical setup |
+|---|---|---|---|
+| **Small and medium businesses** (10–250 people) | An IT generalist or an outside contractor, no SOC, no budget for enterprise NDR | Alerts that explain themselves, safe automatic containment, monthly reports | One Pi, `office` preset |
+| **Industrial and OT sites** (water, energy, manufacturing, building automation) | Fragile PLCs, little patching, regulators asking for IEC 62443/NIS2 evidence, often air-gapped | Passive monitoring of who commands each PLC, restart/stop alerts, segmentation from learned behaviour, compliance PDF | Pi, passive, `ot` preset; inline only with a bypass |
+| **Healthcare clinics and labs** | Unpatchable medical devices, sensitive data | Device inventory, containment of a misbehaving device without cutting it off, exfiltration alerts | Pi or sensor+brain |
+| **Schools, universities, hotels, guest Wi-Fi** | Many unknown devices, abuse and infected guests | New-device and trust scores, rate limits and quarantine with a notice page | Pi inline on the guest segment |
+| **Branch networks and retail** | Many small sites, no local staff | One fleet console, the same policy everywhere, staged updates | One Pi per site + fleet server |
+| **Managed service providers (MSPs/MSSPs)** | Dozens of customers to watch with few people | Fleet overview, templates, rollouts, compliance per customer | Fleet server; Phase 11 multi-tenancy |
+| **NIS2-regulated mid-size organisations** | New legal duties, an audit coming | Evidence of monitoring, incident handling, cryptography and backups; 24-hour reporting support | Any setup + compliance packs |
+| **Home labs, students, trainers** | Learning network security | A real NDR to study, explainable alerts, a presenter demo | One Pi, `home` preset |
+| **Integrators and OEMs** | Building gateways and routers | An embeddable, offline detection engine with an API | Licensed integration (later) |
+
+**Inside each organisation:**
+- **Viewers:** managers who read the dashboards and reports.
+- **Analysts:** label alerts.
+- **Operators:** approve and undo responses.
+- **Admins:** set up users, policy, integrations, the fleet and segmentation.
+- **Auditors:** read the compliance PDF.
+
+**Who it is not for (yet):** large enterprises with a full SOC, EDR and an existing NDR, which can still feed it into their SIEM; and carrier or data-centre links above a few Gb/s.
+
+---
+
 ## 4. Engineering standards (all phases)
 
 * **Tests:** unit tests for every module; integration tests for firewall, storage and the sensor–brain link; target ≥ 80% coverage on `core/`, `detection/` and `security/`.
 * **CI gates:** tests, Bandit, pip-audit, npm audit, model-signature check, type checking (mypy) on new modules, lint (ruff, eslint).
-* **Code review:** all changes by pull request; security-sensitive paths need two reviewers (see SECURITY.md §7).
+* **Code review:** security-sensitive paths need a second reviewer (see SECURITY.md §7); while the project has one maintainer, changes land on `main` after the full test suite, Bandit and pip-audit pass.
 * **Versioning:** Semantic Versioning; `CHANGELOG.md` updated in every pull request.
 * **Performance budgets:** decision latency, sensor CPU (< 60% sustained on the Pi at the target load), console bundle size (enforced via `frontend/perfbudgets.json`).
-* **Definition of done:** code, tests and documentation merged; CI green; behaviour demonstrated on real hardware for anything touching capture or enforcement.
+* **Definition of done:** code, tests and documentation merged; CI green; behaviour demonstrated on real hardware for anything touching capture or enforcement (real-kernel network-namespace tests, the Pi itself).
 
 ---
 
@@ -326,8 +430,10 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 
 | Risk | Mitigation |
 |---|---|
-| Python capture path cannot keep up on busy links | Benchmark early (Phase 0/6); AF_PACKET with batching; optional Suricata/Zeek front end; native extension for hot loops |
+| Python capture path cannot keep up on busy links | AF_PACKET fast path (~120k packets/s); bounded state and load shedding under floods (2.9.2); optional Zeek/Suricata front end and an x86 sensor later |
 | False positives erode trust | Monitor-first rollout, approval gates, confidence scores, feedback loop, published FPR |
 | Appliance causes an outage | Fail-open bypass, watchdog, TTLs, rollback guard, soak tests |
 | Jetson supply or cost changes | Brain code also runs CPU-only on any arm64/x86 box; GPU models are optional accelerators |
 | Small team, large scope | Strict phase gates; Lite profile remains useful at every stage |
+| Shipping without field proof | Phase 8 is proof only: no new feature areas until the pen test and beta are done |
+| An assistant (LLM) becomes an attack surface | Phase 10 rules: read-only, off by default, network text treated as untrusted, separate resource-limited service |

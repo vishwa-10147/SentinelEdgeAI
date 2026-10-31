@@ -1,4 +1,12 @@
-Security hardening notes
+# Security hardening
+
+> **Current setup:**
+> - Services run as the unprivileged `sentinel` user, with only the capabilities they need (`CAP_NET_RAW`/`CAP_NET_ADMIN` for the engine, `CAP_NET_ADMIN` for the API), `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome` and `PrivateTmp`, plus CPU, task and OOM limits (`packaging/systemd/`).
+> - Secrets live in `/etc/sentinel` (`root:sentinel`, mode 640).
+> - OS hardening is `deploy/pi/harden_os.sh`.
+> - The threat model and checklist are in SECURITY.md.
+>
+> The rest of this page describes the **legacy** health-credential rotation and Vault fetcher for installs made before `sentinelctl`.
 
 Quick steps applied/available:
 - Services run as a non-root user (`vishwa` by default) and the health runtime env is provided from `/run/sentinel/health.env` with 600 perms.

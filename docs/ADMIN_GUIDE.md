@@ -35,12 +35,25 @@ Change later with `sudo sentinelctl preset <name>`, or edit the policy as YAML (
 
 * **Passive (recommended first):** connect the capture interface to a switch mirror (SPAN) port. Detection only; blocks apply to traffic to and routed through the appliance.
 * **Inline:** the appliance bridges two interfaces (`br0`); blocks and quarantines apply to bridged traffic through a `bridge` nftables table. Use hardware with a bypass relay, or accept that the fail-open watchdog removes all rules if the enforcer dies.
+  Step by step for a home or office line (router → appliance → switch): see `updates.md` in the repository.
+
+### Capacity and flood safety
+
+A Pi 5 captures about 120,000 packets/s. Every table the engine keeps has a limit, so a flood of spoofed addresses cannot exhaust its memory. Instead it raises one **capture overloaded** alert and keeps running (RUNBOOKS → "Capture overloaded").
+
+| Setting (`/etc/sentinel/sentinel.env`) | Default | When to change |
+|---|---|---|
+| `SENTINEL_MAX_FLOWS` | 100,000 active flows (~85 MB) | very busy links that trigger the overload alert without a flood |
+| `SENTINEL_MAX_SOURCES` | 20,000 devices per detector | networks with more than 20,000 internal addresses |
+| `SENTINEL_MAX_DEVICES` | 20,000 registry rows | the same |
+
+The systemd units also give the engine a lower CPU weight and make it the first process to be killed if memory runs out; systemd restarts it and the watchdog fails open meanwhile. Their `MemoryMax=` limits apply only where the memory cgroup is enabled. Raspberry Pi OS ships with it off: add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` to enable it.
 
 ## 4. Users, MFA and API tokens
 
 * Roles: Viewer (read), Analyst (+ explain and label alerts), Operator (+ block, quarantine, approve playbook actions), Admin (+ policy, users, integrations, setup).
 * Operators and Admins must use two-step sign-in. Lost phone: an Admin uses **Reset MFA** in the Users panel.
-* Scripts use API tokens (Users panel → API tokens), each with the lowest role it needs and an expiry. The shared `DASHBOARD_API_KEY` in `/etc/sentinel/sentinel.env` remains for health checks.
+* Scripts use API tokens (Users panel → API tokens), each with the lowest role it needs and an expiry. The shared `DASHBOARD_API_KEY` in `/etc/sentinel/sentinel.env` is still accepted for health checks; replace it with a scoped token, then remove it (the compliance report flags it).
 
 ## 5. Enforcement
 

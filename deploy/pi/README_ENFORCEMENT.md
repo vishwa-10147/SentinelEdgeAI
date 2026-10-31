@@ -1,55 +1,37 @@
-Enforcement & Rollback Guard — Pi deployment notes
+# Turning on real enforcement
 
-This document explains how to safely enable real firewall enforcement on a Raspberry Pi
-running SentinelEdgeAI and how to use the rollback guard/timer to avoid lockout.
+A new install records what it *would* do (`FIREWALL_DRY_RUN=1`) and responds in `monitor` mode. Turn enforcement on only after a week or more of watching.
 
-Prerequisites
-- Pi with systemd and `docker` installed (for running privileged integration tests during validation).
-- Console or out-of-band access (serial/SSH with fallback) in case network is disrupted.
+## Before
 
-Validation checklist (local, on your workstation)
-1. Run health check against the device: `curl -fsS http://<pi_ip>:9000/api/health`
-2. Run privileged integration tests on a self-hosted runner (see `.github/workflows/privileged-integration.yml`).
-3. Generate `deploy/pi/firewall-rollback.env` locally with `./scripts/enable_firewall_enforcement.sh --apply` and copy it to the Pi.
+- Run at least 7 days in monitor mode. Label alerts as real or false alarms in the console, which recalibrates the detectors.
+- Check the protected hosts (`sudo -u sentinel .venv/bin/python -m enforcement protected`, from `/opt/sentineledgeai/current`). The gateway, DNS, DHCP and the appliance are found automatically; add management PCs and OT engineering stations to `management_hosts` in the policy.
+- Keep a way in that doesn't depend on the network: a keyboard and screen, or a serial console.
+- For inline placement, have a hardware bypass or a spare cable ready (see `updates.md`).
 
-Deploy rollback guard on the Pi
-1. Copy env file to the Pi: `sudo cp firewall-rollback.env /etc/sentinel/firewall-rollback.env`
-2. Enable the timer: `sudo systemctl enable --now sentinel-firewall-rollback-guard.timer`
-
-Enable enforcement (safe steps)
-1. Keep console access to the Pi.
-2. Option A — use installer helper on Pi:
+## Turn it on
 
 ```bash
-# on the Pi
-sudo bash /opt/sentineledgeai/deploy/pi/install_pi.sh --install-rollback
-sudo bash /opt/sentineledgeai/deploy/pi/install_pi.sh --enable-enforcement
+sudo sed -i 's/^FIREWALL_DRY_RUN=.*/FIREWALL_DRY_RUN=0/' /etc/sentinel/sentinel.env
+sudo sentinelctl preset office            # or home / ot / enterprise; ot never acts automatically
+sudo systemctl restart sentineledgeai-engine sentineledgeai-api
 ```
 
-3. Option B — manual drop-in:
+By default, actions at risk 75 and above wait for an Operator's approval (**Operations → Response**) for the first 30 days.
+
+## Safety nets that are always on
+
+- **Protected hosts** can never be blocked, contained, quarantined or segmented.
+- **TTLs:** every block and restriction expires on its own.
+- **Watchdog** (`sentineledgeai-watchdog.timer`, every 20 s): if the engine or API is down for 3 checks while rules are in force, every rule is removed (fail-open), and it's written to the audit log.
+- **Rollback guard** (`sentineledgeai-rollback-guard.timer`, every minute): checks the API's health and removes all blocks after repeated failed checks (`scripts/firewall_rollback_guard.sh`, validated by `scripts/validate_rollback_guard.py`).
+- **Emergency rollback:** in the console, click the mode badge in the top bar, then **Remove ALL blocks now**; or `POST /api/firewall/rollback`. It takes about 100 ms.
+
+## Turn it off
 
 ```bash
-sudo mkdir -p /etc/systemd/system/sentineledgeai.service.d
-cat > /etc/systemd/system/sentineledgeai.service.d/enable_enforcement.conf <<'EOF'
-[Service]
-Environment="FIREWALL_DRY_RUN=0"
-EOF
-sudo systemctl daemon-reload
-sudo systemctl restart sentineledgeai.service
+sudo sed -i 's/^FIREWALL_DRY_RUN=.*/FIREWALL_DRY_RUN=1/' /etc/sentinel/sentinel.env
+sudo systemctl restart sentineledgeai-engine sentineledgeai-api
 ```
 
-Disable enforcement atomically:
-
-```bash
-sudo bash /opt/sentineledgeai/deploy/pi/enforcement_ctl.sh disable
-```
-
-Check status:
-
-```bash
-sudo bash /opt/sentineledgeai/deploy/pi/enforcement_ctl.sh status
-```
-
-Recovering from accidental lockout
-- The rollback guard timer will call `core.firewall.rollback_blocks()` after the configured failure threshold if the dashboard health endpoint is unreachable. Keep the rollback guard enabled while testing.
-- If you lose network access entirely, use local console to run `python3 -c "import core.firewall as f; print(f.rollback_blocks('manual_recovery'))"` from the venv to clear rules.
+Rules already in force are removed by the emergency rollback; new ones are only recorded.

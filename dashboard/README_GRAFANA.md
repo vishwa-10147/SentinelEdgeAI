@@ -1,6 +1,6 @@
-# Grafana Integration (Starter)
+# Grafana on PostgreSQL (optional)
 
-This folder provides a small Grafana setup to visualize data from the Postgres DB used by SentinelEdgeAI.
+For setups that store alerts and flows in PostgreSQL (`DATABASE_URL`), `deploy/grafana/` runs Grafana with a PostgreSQL datasource and a starter dashboard over the `alerts` and `flows` tables. For the operations dashboard built on Prometheus metrics, see `deploy/monitoring/README.md`.
 
 Quick start (uses Docker Compose):
 
@@ -21,7 +21,7 @@ cd deploy/grafana
 docker compose up -d
 ```
 
-3. Open Grafana at http://localhost:3000 (username `admin`, password `admin` by default).
+3. Open Grafana at http://localhost:3000 and **change the default `admin`/`admin` password at first sign-in**.
 
 Notes:
 - The provided dashboard is a starter and queries the `alerts` and `flows` tables. You can extend it or create new dashboards in Grafana.

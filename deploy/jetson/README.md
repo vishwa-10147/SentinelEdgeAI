@@ -1,23 +1,13 @@
-Jetson (NVIDIA) deployment
+# Jetson (brain)
 
-This folder contains helper steps for running on NVIDIA Jetson devices. Jetson runs Ubuntu-based images but may require additional native packages (CUDA, cuDNN) for GPU-accelerated ML.
-
-Basic steps (CPU-only / quick start):
+`install_brain.sh` installs SentinelEdgeAI on an NVIDIA Jetson (JetPack 6.x) as the **brain**: the device that sensors report to, runs the models and hosts the console.
 
 ```bash
-# create venv and install deps
-python3 -m venv $HOME/.venv/sentineledgeai
-source $HOME/.venv/sentineledgeai/bin/activate
-pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-
-# run main
-python main.py
-
-# run dashboard
-streamlit run dashboard/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+sudo bash deploy/jetson/install_brain.sh sentineledgeai-pi-<version>.tar.gz
 ```
 
-If you need GPU support, install appropriate CUDA and system packages from NVIDIA Jetson docs before installing Python packages.
+It installs a private CPython 3.11 with `uv` (JetPack's Python may be older), installs from the package's offline wheels, and points `sentinelctl` at that interpreter through `/etc/sentinel/python`. Then choose the **Brain** role in Setup and create sensor enrolment codes (admin guide §7).
 
-Helper script: `setup_jetson.sh` — creates venv and installs Python dependencies.
+Status: built and tested in simulation and on a Raspberry Pi acting as the brain. **It has not yet run on a Jetson**, and GPU (TensorRT) models are planned for Phase 8 ([PLAN.md](../../PLAN.md)). The brain also runs CPU-only on any arm64 or x86 Linux box.
+
+`setup_jetson.sh` is the older development setup (a virtualenv and `python main.py`) and is kept for development only.

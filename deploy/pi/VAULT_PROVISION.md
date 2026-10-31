@@ -74,7 +74,7 @@ sudo systemctl restart sentineledgeai.service
 
 Notes
 - Ensure Vault access method (AppRole) is secure for the device and tokens are short-lived.
-- The file `/etc/sentinel/model_signing.key` must be readable only by the sentinel user (chmod 600).
+- The file `/etc/sentinel/model_signing.key` must be readable by the service and nobody else: `root:sentinel`, mode 640 (sentinelctl sets this on install). With a package install, `SENTINEL_MODEL_SIGNING_KEY_FILE` is already set in `/etc/sentinel/sentinel.env`, so the systemd `Environment=` lines below are only for the legacy single-service setup.
 - If you prefer asymmetric keys, write only the public verify key to devices and keep the private signing key in CI/Vault.
 
 Automated setup (examples)

@@ -21,6 +21,13 @@ groups:
         annotations:
           summary: "Capture interface {{ $labels.interface }} is dropping packets"
           description: "The kernel drops more than 100 packets/s; the appliance may be overloaded."
+      - alert: SentinelCaptureOverloaded
+        expr: sentinel_capture{item="overloaded"} == 1
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Capture overloaded: more new flows than the appliance can track"
+          description: "The flow table is evicting flows or scoring is shedding them: a flood or spoofed scan. Detection is degraded until it stops; find the source upstream."
       - alert: SentinelHot
         expr: sentinel_system{resource="temperature_c"} > 80
         for: 5m
