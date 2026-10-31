@@ -88,12 +88,28 @@ def test_unknown_new_device_is_watched():
 
 
 def test_recent_alerts_lower_trust_and_fade():
-    hot = trust.score_device(DEV, NOW, DEVICE, [alert(90, 60), alert(85, 120), alert(80, 300), alert(95, 30)])
-    assert hot['level'] == 'untrusted' and 'strongest: port_scan, risk 95' in hot['reasons'][-1]
+    hot = trust.score_device(DEV, NOW, DEVICE, [alert(90, 60), alert(85, 120, 'brute_force'),
+                                                alert(80, 300, 'beaconing'), alert(95, 30, 'exfiltration')])
+    assert hot['level'] == 'untrusted' and 'strongest: exfiltration, risk 95' in hot['reasons'][-1]
     cold = trust.score_device(DEV, NOW, DEVICE, [alert(90, 5 * DAY), alert(85, 5 * DAY)])
     assert cold['score'] > hot['score'] and cold['level'] == 'trusted'
     old = trust.score_device(DEV, NOW, DEVICE, [alert(100, 8 * DAY)])         # outside the 7-day window
     assert old['score'] == 90
+
+
+def test_repeats_of_one_kind_do_not_stack():
+    one = trust.score_device(DEV, NOW, DEVICE, [alert(90, 60)])
+    many = trust.score_device(DEV, NOW, DEVICE, [alert(90, 60 + i) for i in range(400)])
+    assert many['score'] == one['score'] == 63 and many['level'] == 'watch'
+    assert '400 alerts of 1 kind' in many['reasons'][-1]
+
+
+def test_randomised_mac_earns_no_vendor_bonus_and_protected_hosts_get_no_response():
+    t = trust.score_device(DEV, NOW, dict(DEVICE, vendor='Private (randomised MAC)'))
+    assert t['score'] == 85
+    alerts = [alert(95, 10, k) for k in ('a', 'b', 'c', 'd')]
+    g = trust.score_device(DEV, NOW, None, alerts, profile_learned=True, protected='gateway')
+    assert g['level'] == 'untrusted' and g['recommendation'] == 'none (protected host)' and g['protected']
 
 
 def test_false_positive_kinds_are_ignored():
@@ -103,7 +119,7 @@ def test_false_positive_kinds_are_ignored():
 
 
 def test_recommendation_depends_on_the_profile_and_restrictions():
-    alerts = [alert(95, 10)] * 6
+    alerts = [alert(95, 10, k) for k in ('port_scan', 'brute_force', 'dga')]
     assert trust.score_device(DEV, NOW, None, alerts, profile_learned=True)['recommendation'] == 'contain'
     assert trust.score_device(DEV, NOW, None, alerts)['recommendation'].startswith('quarantine')
     q = trust.score_device(DEV, NOW, DEVICE, restrictions=[{'ip': DEV, 'kind': 'quarantine'}])
@@ -115,9 +131,11 @@ def test_recommendation_depends_on_the_profile_and_restrictions():
 def test_alert_rows_from_both_storage_paths():
     rows = [{'timestamp': NOW, 'src_ip': DEV, 'score': 80, 'details': str({'attack_type': 'brute_force'})},
             {'timestamp': NOW, 'src_ip': None, 'score': 85, 'details': json.dumps({'initiator_ip': NAS, 'attack_type': 'dga'})},
-            {'timestamp': NOW, 'src_ip': None, 'score': 50, 'details': 'garbage'}]
+            {'timestamp': NOW, 'src_ip': None, 'score': 50, 'details': 'garbage'},
+            {'timestamp': NOW, 'src_ip': PEER, 'score': 60, 'details': json.dumps({'attack_type': 'NONE'})}]
     assert trust.normalise_alerts(rows) == [{'src': DEV, 'ts': NOW, 'risk': 80.0, 'kind': 'brute_force'},
-                                            {'src': NAS, 'ts': NOW, 'risk': 85.0, 'kind': 'dga'}]
+                                            {'src': NAS, 'ts': NOW, 'risk': 85.0, 'kind': 'dga'},
+                                            {'src': PEER, 'ts': NOW, 'risk': 60.0, 'kind': 'anomaly'}]
 
 
 def test_scores_lists_every_known_device(monkeypatch):
@@ -125,9 +143,9 @@ def test_scores_lists_every_known_device(monkeypatch):
     s.observe(flow(PEER, 445, ts=time.time() - 8 * DAY))
     s.close()
     monkeypatch.setattr(trust, '_load_alerts', lambda limit=5000: [
-        {'src': NAS, 'ts': time.time() - 60, 'risk': 95, 'kind': 'port_scan'}] * 6)
+        {'src': ip, 'ts': time.time() - 60, 'risk': 95, 'kind': k} for ip in (NAS, '127.0.0.1') for k in ('a', 'b', 'c')])
     out = trust.scores()
-    assert [d['ip'] for d in out] == [NAS, DEV]                                # least trusted first
+    assert [d['ip'] for d in out] == [NAS, DEV]                                # least trusted first, no loopback
     assert out[0]['level'] == 'untrusted' and out[1]['profile_learned'] is True
 
 

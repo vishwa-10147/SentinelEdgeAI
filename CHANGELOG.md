@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-31
+
+### Fixed
+- Trust scores were too harsh on real traffic: repeats of one alert kind stacked until a device hit 0. Each kind now counts once, at its strongest decayed value, and kinds add up to −80.
+- Loopback is no longer scored. Protected hosts (gateway, the appliance, ...) are marked as such and never get a recommended response.
+- Randomised MACs no longer earn the vendor bonus, and alerts without an attack type count as `anomaly` rather than `NONE`.
+
 ## [2.3.0] - 2026-10-31
 
 ### Added

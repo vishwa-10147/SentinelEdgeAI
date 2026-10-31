@@ -69,9 +69,9 @@ Every apply is validated, stored in `data/policy_history/` and written to the au
 
 **Trust** in the console (or `GET /api/trust`) lists every device with a score from 0 to 100, least trusted first, and the reasons behind it:
 
-- **Identity:** known MAC, vendor and hostname raise the score, and no MAC at all lowers it.
+- **Identity:** known MAC, vendor (not for randomised MACs) and hostname raise the score, and no MAC at all lowers it.
 - **Tenure:** days seen add to it, up to 10 days.
-- **Alerts:** each alert in the last 7 days lowers it, weighted by risk and halved every 24 h. Kinds you marked as false positives for that device don't count.
+- **Alerts:** each *kind* of alert in the last 7 days lowers it once, at its strongest, weighted by risk and halved every 24 h. Repeats of the same kind don't stack, and kinds you marked as false positives for that device don't count.
 - **Restrictions:** quarantined or blocked devices score 0, and contained devices at most 30.
 
 At 70 or more a device is *trusted*, at 40 or more *watch*, below that *untrusted*.
