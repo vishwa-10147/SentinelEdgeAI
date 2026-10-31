@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-31
+
 ### Added
 - **Operations console** with tabs for the APIs that had no screen yet: approvals and active restrictions (approve, deny, release), the response policy as YAML with a checked diff before apply, two-node sensors (enrolment code, revoke, health), the model registry (promote, roll back), analyst feedback precision and the latest evaluation.
 - **Event bus for the live stream** (`core/events.py`). One poller reads alerts and live events by row id and fans them out to every WebSocket. Events are numbered, so a reconnecting console resumes from its cursor and gets exactly what it missed, or a `resync` after an API restart. Heartbeats come every 15 s, and the console reconnects after 45 s of silence. A stalled client is dropped instead of slowing the others.
