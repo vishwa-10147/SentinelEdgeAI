@@ -1,10 +1,11 @@
-"""Phase 4 detection pipeline: detectors + DNS + TLS + fusion, used by the engine and the evaluator."""
+"""Detection pipeline: detectors + DNS + TLS + OT protocols + fusion, used by the engine and the evaluator."""
 import threading
 import time
 
 from detection.detectors import default_flow_detectors
 from detection.dns_analysis import DNSDetector
 from detection.fusion import Fusion
+from detection.ot import OTDetector, parse_ot
 from detection.tls import TLSDetector, parse_client_hello
 
 
@@ -31,10 +32,11 @@ class _FeedbackCalibration:
 
 
 class DetectionPipeline:
-    def __init__(self, flow_detectors=None, dns=None, tls=None, clock=time.time, calibrate=None, models=True):
+    def __init__(self, flow_detectors=None, dns=None, tls=None, ot=None, clock=time.time, calibrate=None, models=True):
         self.flow_detectors = flow_detectors if flow_detectors is not None else default_flow_detectors()
         self.dns = dns or DNSDetector()
         self.tls = tls or TLSDetector(clock=clock)
+        self.ot = ot or OTDetector(clock=clock)
         self.fusion = Fusion(clock=clock, calibrate=calibrate)
         self.clock = clock
         self.autoencoder = None
@@ -121,6 +123,17 @@ class DetectionPipeline:
                                             {'fingerprint': fp, 'source': hit[0], 'target': dst}, ts=ts))
             self.fusion.add_findings(findings)
         return hello, findings
+
+    def observe_ot(self, src, dst, proto, dport, payload, ts=None):
+        """Feed a payload sent to an industrial protocol port. Returns (protocol, messages, findings)."""
+        protocol, messages = parse_ot(proto, dport, payload)
+        if not protocol:
+            return None, [], []
+        ts = ts or self.clock()
+        with self._lock:
+            findings = self.ot.observe(src, dst, protocol, messages, ts)
+            self.fusion.add_findings(findings)
+        return protocol, messages, findings
 
 
 _pipeline = None

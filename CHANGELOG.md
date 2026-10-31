@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **OT protocol awareness (Phase 7).** Modbus/TCP, DNP3, BACnet/IP and OPC UA requests are parsed (`detection/ot.py`) from both capture paths. A per-controller learning period records which hosts command each controller and which functions they use; afterwards a new master (`ot_new_master`) or a first-time write/control function (`ot_new_write`) is reported. Restart, stop, listen-only and communication-control commands (`ot_device_stop`), OT traffic to or from the internet (`ot_external`) and Modbus unit-id sweeps (`ot_scan`) are always reported. Findings carry MITRE ATT&CK for ICS techniques.
+
 ## [2.0.0] - 2026-10-31
 
 First production-candidate release (Phases 2–6). The external penetration test, the 30-day beta, pre-built OS images and the Jetson hardware validation are still pending; see PLAN.md.

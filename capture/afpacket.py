@@ -4,7 +4,8 @@ scapy parses ~5,000 packets/s on a Raspberry Pi 5; parsing the Ethernet,
 IPv4/IPv6 and TCP/UDP headers directly is two orders of magnitude faster.
 Only packets that need deep inspection go through scapy:
 ARP and DHCP (device identity), DNS (tunnelling/DGA) and TLS handshakes
-(JA3/JA4). Everything else updates the flow table directly.
+(JA3/JA4) and requests to industrial protocol ports (Modbus, DNP3, BACnet,
+OPC UA). Everything else updates the flow table directly.
 
 Selected with SENTINEL_CAPTURE=auto (default: AF_PACKET when permitted),
 afpacket or scapy.
@@ -14,14 +15,15 @@ import struct
 
 ETH_P_ALL = 0x0003
 SO_RCVBUF_BYTES = 8 * 1024 * 1024
-SLOW_UDP_PORTS = frozenset({53, 67, 68, 5353})
+SLOW_UDP_PORTS = frozenset({53, 67, 68, 5353, 20000, 47808})
+SLOW_TCP_PORTS = frozenset({502, 4840, 20000})         # OT protocols (detection.ot)
 _IP6_EXT = frozenset({0, 43, 44, 50, 51, 60})   # extension headers the fast path does not walk
 
 
 def parse(frame):
     """(src, dst, sport, dport, proto, size, slow) from an Ethernet frame, or None for non-IP.
 
-    slow=True means the packet also needs scapy (DNS, DHCP, TLS handshake, ARP).
+    slow=True means the packet also needs scapy (DNS, DHCP, TLS handshake, ARP, OT requests).
     """
     if len(frame) < 14:
         return None
@@ -59,7 +61,8 @@ def parse(frame):
         sport, dport = struct.unpack_from('!HH', frame, l4)
         data_off = (frame[l4 + 12] >> 4) * 4
         payload = l4 + data_off
-        slow = len(frame) > payload and frame[payload] == 0x16      # TLS handshake record
+        slow = len(frame) > payload and (frame[payload] == 0x16      # TLS handshake record
+                                         or dport in SLOW_TCP_PORTS)
         return (src, dst, sport, dport, 'TCP', len(frame), slow)
     if proto == 17 and len(frame) >= l4 + 8:
         sport, dport = struct.unpack_from('!HH', frame, l4)

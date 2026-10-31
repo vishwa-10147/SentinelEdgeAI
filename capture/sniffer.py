@@ -460,7 +460,7 @@ def _forward_to_brain(flow, result, features):
 
 
 def _observe_dns_tls(packet):
-    """Feed DNS answers and TLS ClientHellos to the Phase 4 detectors; alert on findings."""
+    """Feed DNS answers, TLS ClientHellos and OT protocol requests to the detectors; alert on findings."""
     try:
         from detection.pipeline import get_pipeline
         findings = []
@@ -472,17 +472,23 @@ def _observe_dns_tls(packet):
             payload = bytes(packet[Raw].load)
             if payload[:1] == b'\x16':
                 _, findings = get_pipeline().observe_tls(packet[IP].src, packet[IP].dst, payload)
+            else:
+                _, _, findings = get_pipeline().observe_ot(packet[IP].src, packet[IP].dst, 'TCP',
+                                                           packet[TCP].dport, payload)
+        elif UDP in packet and Raw in packet:
+            _, _, findings = get_pipeline().observe_ot(packet[IP].src, packet[IP].dst, 'UDP',
+                                                       packet[UDP].dport, bytes(packet[Raw].load))
         for f in findings:
             if f.severity >= config.get("alerts", "min_risk_score"):
                 alert_logger.log({
                     "timestamp": str(time.strftime('%Y-%m-%d %H:%M:%S')), "initiator_ip": f.src,
-                    "responder_ip": f.details.get('target'), "protocol": 'DNS' if 'dns' in f.kind or f.kind == 'dga' else 'TLS',
+                    "responder_ip": f.details.get('target'), "protocol": (f.details.get('protocol') or ('DNS' if 'dns' in f.kind or f.kind == 'dga' else 'TLS')).upper(),
                     "final_risk_score": f.severity, "severity": "CRITICAL" if f.severity >= 75 else "HIGH",
                     "attack_type": f.kind, "confidence": f.probability, "mitre_technique_id": f.technique,
                     "explanation": [f.evidence], "findings": [f.as_dict()],
                 })
     except Exception:
-        logger.debug("DNS/TLS analysis failed", exc_info=True)
+        logger.debug("DNS/TLS/OT analysis failed", exc_info=True)
 
 
 def _record_flow_stats(flow, risk):
