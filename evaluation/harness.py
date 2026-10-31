@@ -262,10 +262,104 @@ def write_report(result, name):
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2)
     return path
+
+
+# ---------- CIC-IoT2023 ----------
+
+CIC_IOT2023_LABELS = {'mirai': 'brute_force', 'recon': 'port_scan'}
+
+
+def _ciot_time(index, per_second=5.0):
+    """Synthetic timestamp for CIC-IoT2023 rows, which ship without timestamps.
+
+    Rows are spaced `per_second` apart starting at the harness clock base.
+    """
+    return synthetic.BASE + index * per_second
+
+
+def load_cic_iot2023(path):
+    """Flow events from a CIC-IoT2023 CSV.
+
+    Columns (with accepted aliases): srcip/src_ip/source_ip, dstip/dst_ip/destination_ip,
+    sport/src_port/source_port, dsport/dst_port/destination_port, proto/protocol,
+    dur/duration/flow_duration, sbytes/src_bytes, dbytes/dst_bytes,
+    attack_cat/attack_category/attackcat, label/is_attack/malicious.
+
+    The standard release has no timestamps, so rows are spaced 5s apart in file order.
+    Attack categories our flow detectors can cover are mapped to detector classes;
+    the rest (DDoS, DoS, Spoofing, Web Attack, etc.) are not covered and count as
+    benign events for false-positive purposes.
+    """
+    SRC_ALIASES = {'srcip', 'src_ip', 'source_ip', 'sip'}
+    DST_ALIASES = {'dstip', 'dst_ip', 'destination_ip', 'dip'}
+    SPORT_ALIASES = {'sport', 'src_port', 'source_port', 'sp'}
+    DSPORT_ALIASES = {'dsport', 'dst_port', 'destination_port', 'dp'}
+    PROTO_ALIASES = {'proto', 'protocol'}
+    DUR_ALIASES = {'dur', 'duration', 'flow_duration'}
+    SBYTES_ALIASES = {'sbytes', 'src_bytes', 'bytes_in'}
+    DBYTES_ALIASES = {'dbytes', 'dst_bytes', 'bytes_out'}
+    ACAT_ALIASES = {'attack_cat', 'attack_category', 'attackcat'}
+    LABEL_ALIASES = {'label', 'is_attack', 'malicious'}
+
+    def pick(row, aliases, default=''):
+        for a in aliases:
+            if a in row and row[a] not in (None, ''):
+                return row[a]
+        return default
+
+    rows = []
+    with open(path, newline='', encoding='utf-8', errors='ignore') as f:
+        reader = csv.DictReader(f)
+        reader.fieldnames = [h.strip() for h in reader.fieldnames]
+        fieldset = set(reader.fieldnames)
+        if not (fieldset & SRC_ALIASES) or not (fieldset & DST_ALIASES):
+            raise ValueError('CIC-IoT2023 CSV missing source/destination IP columns')
+        for index, row in enumerate(reader):
+            try:
+                rec = {'ts': _ciot_time(index),
+                       'src': pick(row, SRC_ALIASES).strip(),
+                       'dst': pick(row, DST_ALIASES).strip(),
+                       'dport': int(float(pick(row, DSPORT_ALIASES) or 0)),
+                       'sport': int(float(pick(row, SPORT_ALIASES) or 0)),
+                       'proto': str(pick(row, PROTO_ALIASES)).strip().upper() or 'OTHER',
+                       'duration': float(pick(row, DUR_ALIASES) or 0),
+                       'forward_bytes': int(float(pick(row, SBYTES_ALIASES) or 0)),
+                       'backward_bytes': int(float(pick(row, DBYTES_ALIASES) or 0))}
+            except (KeyError, ValueError, TypeError):
+                continue
+            attack_cat = str(pick(row, ACAT_ALIASES)).strip().lower()
+            label = str(pick(row, LABEL_ALIASES)).strip()
+            is_attack = attack_cat not in ('', 'normal', 'benign') or label in ('1', 'true', 'yes')
+            if not is_attack:
+                rows.append((rec, 'benign', None))
+                continue
+            kind = CIC_IOT2023_LABELS.get(attack_cat)
+            if kind is None:
+                rows.append((rec, attack_cat, None))
+                continue
+            rows.append((rec, kind, kind))
+    events, truth, seen = [], [], {}
+    for rec, label, kind in rows:
+        if kind is None:
+            events.append({'type': 'flow', 'label': label, 'attack': None, 'record': rec})
+            continue
+        key = (kind, rec['src'])
+        if key not in seen:
+            seen[key] = f'{kind}-{len(truth)}'
+            truth.append({'id': seen[key], 'kind': kind, 'src': rec['src'], 'start': rec['ts']})
+        else:
+            t = next(x for x in truth if x['id'] == seen[key])
+            t['start'] = min(t['start'], rec['ts'])
+        events.append({'type': 'flow', 'label': kind, 'attack': seen[key], 'record': rec})
+    events.sort(key=lambda e: e['record']['ts'])
+    return events, truth
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='python -m evaluation.harness')
     parser.add_argument('--cicids', help='CIC-IDS2017 CSV file')
     parser.add_argument('--unswnb15', help='UNSW-NB15 CSV file')
+    parser.add_argument('--cic-iot2023', help='CIC-IoT2023 CSV file')
     parser.add_argument('--seed', type=int, default=7)
     parser.add_argument('--hours', type=float, default=6)
     args = parser.parse_args(argv)
@@ -275,6 +369,9 @@ def main(argv=None):
     elif args.unswnb15:
         events, truth = load_unswnb15(args.unswnb15)
         name = 'unswnb15-' + os.path.basename(args.unswnb15).split('.')[0]
+    elif args.cic_iot2023:
+        events, truth = load_cic_iot2023(args.cic_iot2023)
+        name = 'ciot2023-' + os.path.basename(args.cic_iot2023).split('.')[0]
     else:
         events, truth = synthetic.dataset(args.seed, args.hours)
         name = f'synthetic-seed{args.seed}'
