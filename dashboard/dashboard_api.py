@@ -964,6 +964,26 @@ def playbook_deny(pending_id: int, principal: dict = Depends(require_operator)):
     return _decide(pending_id, False, principal)
 
 
+@app.get('/api/tuning')
+def tuning_status(principal: dict = Depends(require_viewer)):
+    """Response tuning: mode and bounds, and the evidence per kind of incident and action."""
+    from enforcement import tuning
+    from enforcement.playbook import get_playbook
+    cfg = tuning.load_config()
+    return {'config': cfg, 'kinds': get_playbook().tuner.summary(cfg)}
+
+
+@app.post('/api/tuning')
+def tuning_update(payload: dict, principal: dict = Depends(require_admin)):
+    """Set mode (off | recommend | apply), target, min_action or window_seconds."""
+    from enforcement import tuning
+    try:
+        return tuning.save_config(payload or {}, by=principal.get('username'))
+    except (ValueError, TypeError) as exc:
+        audit_event(principal, 'response_tuning', outcome='rejected', details={'error': str(exc)[:300]})
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.get('/api/policy')
 def policy_get(principal: dict = Depends(require_viewer)):
     from enforcement import policy

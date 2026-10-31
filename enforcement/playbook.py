@@ -1,4 +1,4 @@
-"""Graduated response: alert -> rate-limit -> block (TTL) -> quarantine.
+"""Graduated response: alert -> rate-limit -> (contain) -> block (TTL) -> quarantine.
 
 A detection is mapped to the highest playbook step whose min_risk it
 reaches; repeated detections of the same source within the window escalate
@@ -7,6 +7,8 @@ Operator's approval while the approval period lasts (e.g. the first 30 days
 of a new deployment), so automatic enforcement starts out supervised.
 
 The configuration comes from the response policy (enforcement.policy).
+Response tuning (enforcement.tuning) may pick a gentler action than the step,
+never a stronger one, once evidence shows it resolves that kind of incident.
 """
 import json
 import os
@@ -18,7 +20,7 @@ import core.audit as audit
 import core.firewall as firewall
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-ACTIONS = ('alert', 'rate_limit', 'block', 'quarantine')
+ACTIONS = ('alert', 'rate_limit', 'contain', 'block', 'quarantine')
 DEFAULT_PLAYBOOK = {
     'steps': [
         {'action': 'alert', 'min_risk': 50},
@@ -44,6 +46,49 @@ class Playbook:
         self.clock = clock
         self._lock = threading.Lock()
         self._conn = None
+        self._tuner = None
+
+    @property
+    def tuner(self):
+        if self._tuner is None:
+            from enforcement.tuning import Tuner
+
+            def false_positives():
+                try:
+                    from detection.feedback import get_store
+                    return get_store().false_positive_kinds(since=self.clock() - 30 * 86400)
+                except Exception:
+                    return set()
+            self._tuner = Tuner(self._db, self._lock, clock=self.clock, false_positives=false_positives)
+        return self._tuner
+
+    def _tuned(self, ip, kind, step):
+        """(action to take, recommendation or None) within the bounds of `step` (see enforcement.tuning)."""
+        from enforcement import tuning
+        cfg = tuning.load_config()
+        if cfg['mode'] == 'off' or step['action'] == 'alert':
+            return step['action'], None
+        try:
+            from detection.peers import PeerStore, learned
+            store = PeerStore()
+            try:
+                profile_ok = learned(store.profile(ip))
+            finally:
+                store.close()
+        except Exception:
+            profile_ok = False
+        action, why = self.tuner.choose(ip, kind, step['action'], cfg, profile_learned=profile_ok)
+        rec = {'action': action, 'why': why, 'mode': cfg['mode'], 'ceiling': step['action']}
+        return (action if cfg['mode'] == 'apply' else step['action']), rec
+
+    def _ttl(self, action, step):
+        if action == step['action']:
+            return step.get('ttl')
+        for st in self.config['steps']:
+            if st['action'] == action:
+                return st.get('ttl')
+        from enforcement.tuning import DEFAULT_TTL
+        return DEFAULT_TTL.get(action)
 
     def _db(self):
         if self._conn is None:
@@ -104,8 +149,17 @@ class Playbook:
         step = self._step_for(int(risk), recent)
         if step is None:
             return {'action': None, 'status': 'below_threshold'}
-        if step['action'] == 'alert':
-            return {'action': 'alert', 'status': 'alerted'}
+        kind = str(reason or 'anomaly')
+        try:
+            action, rec = self._tuned(ip, kind, step)
+        except Exception:
+            action, rec = step['action'], None
+        extra = {'tuning': rec} if rec else {}
+        if action == 'alert':
+            if rec:
+                self.tuner.record(ip, kind, 'alert', step['action'])
+            return {'action': 'alert', 'status': 'alerted', **extra}
+        step = {**step, 'action': action, 'ttl': self._ttl(action, step), 'ceiling': step['action']}
         if self.needs_approval(step, int(risk)):
             with self._lock:
                 db = self._db()
@@ -118,14 +172,21 @@ class Playbook:
                 db.commit()
                 pid = cur.lastrowid
             audit.record('playbook', actor='engine', actor_kind='engine', target=ip, outcome='awaiting_approval',
-                         details={'action': step['action'], 'risk': int(risk), 'pending_id': pid, 'reason': reason})
-            return {'action': step['action'], 'status': 'awaiting_approval', 'pending_id': pid}
+                         details={'action': step['action'], 'risk': int(risk), 'pending_id': pid, 'reason': reason,
+                                  **extra})
+            return {'action': step['action'], 'status': 'awaiting_approval', 'pending_id': pid, **extra}
         result = self._execute(ip, step['action'], step.get('ttl'), reason)
+        if result['status'] == 'refused' and step['action'] == 'contain':
+            # no usable profile after all: fall back to what the playbook chose
+            step = {**step, 'action': step['ceiling'], 'ttl': self._ttl(step['ceiling'], step)}
+            result = self._execute(ip, step['action'], step.get('ttl'), reason)
+        if result['status'] == 'applied' and rec:
+            self.tuner.record(ip, kind, step['action'], step['ceiling'])
         audit.record('playbook', actor='engine', actor_kind='engine', target=ip,
                      outcome='success' if result['status'] == 'applied' else result['status'],
                      details={'action': step['action'], 'risk': int(risk), 'recent': recent, 'reason': reason,
-                              'detail': result.get('detail')})
-        return {'action': step['action'], **result}
+                              'detail': result.get('detail'), **extra})
+        return {'action': step['action'], **result, **extra}
 
     def _execute(self, ip, action, ttl, reason):
         reason = f'playbook:{reason}' if reason else 'playbook'
@@ -134,6 +195,8 @@ class Playbook:
                 self.fw.add_block(ip, ttl=ttl, reason=reason)
             elif action == 'rate_limit':
                 self.fw.add_restriction('ratelimit', ip, ttl=ttl, reason=reason)
+            elif action == 'contain':
+                self.fw.add_restriction('contain', ip, ttl=ttl, reason=reason)
             elif action == 'quarantine':
                 mac = None
                 try:
@@ -166,6 +229,13 @@ class Playbook:
         result = self._execute(row['ip'], row['action'], row['ttl'], row['reason']) if approve \
             else {'status': 'denied'}
         status = ('approved' if result['status'] == 'applied' else result['status']) if approve else 'denied'
+        if result['status'] == 'applied':
+            try:
+                from enforcement import tuning
+                if tuning.load_config()['mode'] != 'off':
+                    self.tuner.record(row['ip'], str(row['reason'] or 'anomaly'), row['action'], row['action'])
+            except Exception:
+                pass
         with self._lock:
             db = self._db()
             db.execute('UPDATE pending SET status = ?, decided_by = ?, decided = ?, result = ? WHERE id = ?',

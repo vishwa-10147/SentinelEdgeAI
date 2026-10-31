@@ -65,6 +65,20 @@ sudo -u sentinel .venv/bin/python -m enforcement policy apply policy.yaml
 
 Every apply is validated, stored in `data/policy_history/` and written to the audit log. Add administrator workstations and OT controllers to `management_hosts` so they can never be blocked.
 
+### Response tuning
+
+**Operations → Response → Response tuning** shows what the engine has learned: for each kind of incident, how often each response resolved it, meaning the source was not detected again within an hour. In the default **recommend** mode, every playbook decision records what tuning would have chosen, and nothing changes. Switch to **apply** to let it choose a gentler response, within these bounds:
+
+- never stronger than the playbook's step for that risk
+- never gentler than `min_action` (default `rate_limit`, so an incident the playbook would act on never gets only an alert)
+- after a response fails for a source, its next detection always gets a stronger one
+- approvals work as before
+
+```bash
+sudo -u sentinel .venv/bin/python -m enforcement tuning status
+sudo -u sentinel .venv/bin/python -m enforcement tuning set --mode apply --min-action rate_limit
+```
+
 ### Device trust and containment
 
 **Trust** in the console (or `GET /api/trust`) lists every device with a score from 0 to 100, least trusted first, and the reasons behind it:

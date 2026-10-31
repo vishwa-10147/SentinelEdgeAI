@@ -58,7 +58,7 @@ Phase 3  Enforcement you can trust                v1.4   ███████�
 Phase 4  Detection quality                        v1.5   ███████████████░░░░░  built; public datasets + GPU pending
 Phase 5  Integrations and operations              v1.6   ██████████████████░░  built; real SIEM test pending
 Phase 6  Production release                       v2.0   ██████████████░░░░░░  released; OS images, pen test, beta pending
-Phase 7  Scale and advanced intelligence          v2.x+  ███████████░░░░░░░░░  4 of 7 themes done (fleet, federated, OT, zero-trust)
+Phase 7  Scale and advanced intelligence          v2.x+  ██████████████░░░░░░  5 of 7 themes done (fleet, federated, tuning, OT, zero-trust)
 ```
 
 **v2.0 is released and Phase 7 is under way.** Phases 2–6 are built and tested in simulation, in real-kernel network-namespace tests and on the Pi itself. What remains of them needs hardware, outside people or time rather than code: Jetson validation, a 72-hour inline soak, public-dataset evaluation and GPU models, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta. Each phase's evidence and open items are listed in [PLAN.md](PLAN.md).
@@ -72,7 +72,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ███████�
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built, with console views for models, feedback and evaluation (v2.5); 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models |
 | 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
 | 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Released as v2.0; installer, OTA, reproducible Sigstore-signed builds, hardening, container, docs, 25–31× faster capture and decisions. Pending: OS images, pen test, beta |
-| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3), the fleet manager (v2.4) and federated learning (v2.6) done; 3 themes to go |
+| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3), the fleet manager (v2.4), federated learning (v2.6) and response tuning (v2.7) done; 2 themes to go |
 
 Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked done when all of them are met.
 
@@ -80,7 +80,8 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 
 | Version | Highlights |
 |---|---|
-| **v2.6.0** | Federated learning: sites train the autoencoder together and share only model updates |
+| **v2.7.0** | Response tuning: learns the least disruptive response that resolves each kind of incident, inside the playbook's bounds |
+| v2.6.0 | Federated learning: sites train the autoencoder together and share only model updates |
 | v2.5.0 | Operations console, live-stream event bus (resume, resync, heartbeats), brain on PostgreSQL, sensor upgrades through the brain |
 | v2.4.0 | Fleet manager: many sites in one console, configuration templates, staged rollouts that pause on failure |
 | v2.3.1 | Trust scores calibrated on live traffic (one penalty per alert kind; protected hosts and loopback handled) |
@@ -142,7 +143,8 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | Quarantine (DNS, DHCP and a quarantine page only), per-source rate limiting | ✅ |
 | **Containment:** an untrusted device keeps only the peers and ports it normally uses | ✅ |
 | **OT micro-segmentation:** only learned masters reach a controller's industrial ports | ✅ |
-| Graduated playbook (alert → rate-limit → block → quarantine) with Operator approval above a risk threshold | ✅ |
+| Graduated playbook (alert → rate-limit → contain → block → quarantine) with Operator approval above a risk threshold | ✅ |
+| **Response tuning:** learns the least disruptive response that resolves each kind of incident, never beyond the playbook | ✅ |
 | Protected hosts (gateway, DNS, DHCP, the appliance, management hosts) are never restricted | ✅ |
 | Inline bridge mode with MAC-based quarantine; fail-open watchdog | ✅ |
 | Response policy as code (YAML, validation, dry-run diff, history) | ✅ |
@@ -155,7 +157,7 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 |---|---|
 | Live stream: event bus with cursors, resume after reconnect, heartbeats | ✅ |
 | Storage: SQLite by default, PostgreSQL for the engine and the brain | ✅ |
-| FastAPI REST API (103 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
+| FastAPI REST API (105 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
 | React console: topology, device detail, analytics, firewall, operations (approvals, restrictions, policy, sensors, models, evaluation), trust, OT devices, fleet, users, audit, setup | ✅ |
 | User accounts (Argon2id), four roles, TOTP two-step sign-in, scoped API tokens, login lockout | ✅ |
 | HTTPS by default, security headers, API rate limits, hash-chained audit log | ✅ |
@@ -355,7 +357,7 @@ Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
 
 ## API
 
-Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 103 endpoints is in **[docs/API.md](docs/API.md)**.
+Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 105 endpoints is in **[docs/API.md](docs/API.md)**.
 
 | Role | Can |
 |---|---|
@@ -371,7 +373,7 @@ Operators and Admins must set up two-step sign-in (an authenticator app) at thei
 | Sign-in and accounts | `/api/auth/*`, `/api/users`, `/api/tokens`, `/api/audit` |
 | Detection data | `/api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/live_stats`, `/api/alerts/feedback` |
 | Devices and trust | `/api/devices/identity`, `/api/trust`, `/api/devices/{ip}/peers`, `/api/devices/{ip}/history` |
-| Response | `/api/firewall/block`, `/unblock`, `/quarantine`, `/ratelimit`, `/contain`, `/release`, `/rollback`, `/api/playbook/pending`, `/api/policy` |
+| Response | `/api/firewall/block`, `/unblock`, `/quarantine`, `/ratelimit`, `/contain`, `/release`, `/rollback`, `/api/playbook/pending`, `/api/policy`, `/api/tuning` |
 | OT | `/api/ot/assets`, `/api/ot/segmentation` (+ `/allow`, `/refresh`) |
 | Two-node | `/api/brain/*` (incl. `/api/brain/upgrade`), `/api/sensor/*` |
 | Fleet | `/api/fleet`, `/api/fleet/codes`, `/sites/{id}/revoke`, `/templates`, `/groups`, `/groups/{name}/rollout`, `/api/fleet/agent` |
@@ -391,8 +393,8 @@ flow/         flow records and the flow table
 features/     per-flow feature extraction
 detection/    baselines, Isolation Forest, autoencoder, detectors, DNS, TLS, OT protocols,
               fusion, model registry, feedback, peer profiles
-enforcement/  playbook, policy as code, protected hosts, device identity, OT segmentation,
-              trust scores, watchdog
+enforcement/  playbook, response tuning, policy as code, protected hosts, device identity,
+              OT segmentation, trust scores, watchdog
 core/         engine, firewall (nftables/iptables), auth, audit, storage, setup, health
 brain/        two-node brain: CA, enrolment, sensor registry, signed commands
 sensor/       two-node sensor: link client, disk buffer, command executor

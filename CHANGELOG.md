@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Response tuning (Phase 7).** A contextual bandit learns, per kind of incident, which response resolves it with the least disruption (alert < rate limit < contain < block < quarantine). "Resolved" means the source was not detected again within an hour, and an analyst's false-positive label counts as "an alert was enough". It works only inside the bounds people set:
+  - never stronger than the playbook's step
+  - never gentler than `min_action` (default rate limit)
+  - always stronger after a response that failed for the same incident
+  - the approval gate is unchanged
+
+  Gentler responses start from a pessimistic prior, so they are tried rarely without evidence. The default mode `recommend` only shows and audits its choice, and `apply` acts on it. `GET/POST /api/tuning`, `python -m enforcement tuning status|set`, **Operations → Response**.
+- `contain` is a playbook action, and can be used as an explicit step in the response policy.
+
 ## [2.6.0] - 2026-10-31
 
 ### Added

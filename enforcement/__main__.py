@@ -1,4 +1,4 @@
-"""python -m enforcement policy export|validate|diff|apply | protected | devices | quarantine | release | pending | approve | deny | segment | contain | trust"""
+"""python -m enforcement policy export|validate|diff|apply | protected | devices | quarantine | release | pending | approve | deny | segment | contain | trust | tuning"""
 import argparse
 import json
 import sys
@@ -29,6 +29,12 @@ def main(argv=None):
     p.add_argument('kind', choices=['quarantine', 'ratelimit', 'contain'])
     p.add_argument('ip')
     sub.add_parser('trust', help='trust score of every known device, least trusted first')
+    p = sub.add_parser('tuning', help='response tuning (learned, gentler responses within the playbook)')
+    p.add_argument('action', choices=['status', 'set'])
+    p.add_argument('--mode', choices=['off', 'recommend', 'apply'])
+    p.add_argument('--target', type=float)
+    p.add_argument('--min-action', choices=['alert', 'rate_limit', 'contain', 'block'])
+    p.add_argument('--by', default='cli')
     sub.add_parser('pending', help='playbook actions waiting for approval')
     for name in ('approve', 'deny'):
         p = sub.add_parser(name, help=f'{name} a pending playbook action')
@@ -41,6 +47,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
+        if args.command == 'tuning':
+            from enforcement import tuning
+            if args.action == 'set':
+                _show(tuning.save_config({k: v for k, v in (('mode', args.mode), ('target', args.target),
+                                                           ('min_action', args.min_action)) if v is not None}, by=args.by))
+            else:
+                cfg = tuning.load_config()
+                _show({'config': cfg, 'kinds': playbook.get_playbook().tuner.summary(cfg)})
+            return 0
         if args.command == 'trust':
             from enforcement import trust
             _show(trust.scores())

@@ -14,13 +14,40 @@ function pct(x){
 function ResponseTab({ user, act, busy, reloadKey }){
   const [restrictions, setRestrictions] = useState([])
   const [pending, setPending] = useState([])
+  const [tuning, setTuning] = useState(null)
   useEffect(()=>{
-    Promise.all([apiGet('/api/firewall/restrictions', []), apiGet('/api/playbook/pending', [])])
-      .then(([r, p])=>{ setRestrictions(r || []); setPending(p || []) }).catch(()=>{})
+    Promise.all([apiGet('/api/firewall/restrictions', []), apiGet('/api/playbook/pending', []), apiGet('/api/tuning', null)])
+      .then(([r, p, t])=>{ setRestrictions(r || []); setPending(p || []); setTuning(t) }).catch(()=>{})
   }, [reloadKey])
   const operator = hasRole(user, 'operator')
+  const admin = hasRole(user, 'admin')
   return (
     <>
+      {tuning && (
+        <div className="rules-section">
+          <h3>Response tuning</h3>
+          <p className="auth-hint">Learns which response resolves each kind of incident with the least disruption: never stronger than the playbook, never gentler than "{tuning.config.min_action}", always stronger after a failed response. In <b>recommend</b> mode it only shows and audits what it would do.</p>
+          {admin && (
+            <div className="audit-toolbar">
+              {['off', 'recommend', 'apply'].map(m=>(
+                <button key={m} className={m === tuning.config.mode ? 'primary-button' : 'ghost-button'} disabled={busy || m === tuning.config.mode}
+                  onClick={()=>{ if(m !== 'apply' || window.confirm('Let response tuning choose gentler responses within the playbook\'s bounds?')) act(()=>apiPost('/api/tuning', { mode: m }), `Response tuning: ${m}.`) }}>{m}</button>
+              ))}
+            </div>
+          )}
+          <div className="users-table">
+            <div className="users-row ot-seg-row users-head"><span>Kind</span><span>Evidence (resolved / not)</span><span>Instead of block</span></div>
+            {tuning.kinds.map(k=>(
+              <div className="users-row ot-seg-row" key={k.kind}>
+                <span>{k.kind}</span>
+                <span className="audit-details">{Object.entries(k.evidence).map(([a, e])=>`${a} ${e.resolved}/${e.not_resolved}`).join(', ')}</span>
+                <span>{k.recommended_instead_of_block}</span>
+              </div>
+            ))}
+            {tuning.kinds.length === 0 && <p className="auth-hint">No settled responses yet; outcomes are judged one hour after each response.</p>}
+          </div>
+        </div>
+      )}
       <div className="rules-section">
         <h3>Waiting for approval</h3>
         <p className="auth-hint">Playbook actions above the approval threshold wait here for an Operator.</p>

@@ -137,7 +137,9 @@ def test_steps_by_risk(tmp_path):
     pb = make_playbook(tmp_path)
     assert pb.evaluate('198.51.100.1', 30)['status'] == 'below_threshold'
     assert pb.evaluate('198.51.100.2', 55)['action'] == 'alert'
-    assert pb.evaluate('198.51.100.3', 70) == {'action': 'rate_limit', 'status': 'applied'}
+    out = pb.evaluate('198.51.100.3', 70)
+    assert (out['action'], out['status']) == ('rate_limit', 'applied')
+    assert out['tuning']['mode'] == 'recommend'                      # response tuning only recommends by default
     assert pb.evaluate('198.51.100.4', 80)['action'] == 'block'
     assert pb.evaluate('198.51.100.5', 95)['action'] == 'quarantine'
     assert pb.fw.calls == [('ratelimit', '198.51.100.3', 600), ('block', '198.51.100.4', 3600),

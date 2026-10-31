@@ -73,6 +73,8 @@ ROUTES = {
     ('GET', '/api/devices/identity'): 'viewer',
     ('GET', '/api/ot/assets'): 'viewer',
     ('GET', '/api/trust'): 'viewer',
+    ('GET', '/api/tuning'): 'viewer',
+    ('POST', '/api/tuning'): 'admin',
     ('GET', '/api/brain/upgrade'): 'viewer',
     ('POST', '/api/brain/upgrade'): 'admin',
     ('POST', '/api/brain/upgrade/clear'): 'admin',

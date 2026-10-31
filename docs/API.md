@@ -147,6 +147,8 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `POST` | `/api/ot/segmentation/allow` | admin | Let `src` command controller `dst` over `protocol` (an exception to the learned allow-list). |
 | `POST` | `/api/ot/segmentation/refresh` | admin | While enforcing, take a new snapshot of the learned allow-lists. |
 | `GET` | `/api/trust` | viewer | Trust score (0-100), level, reasons and recommended response for every known device, least trusted first. |
+| `GET` | `/api/tuning` | viewer | Response tuning: mode and bounds, and the evidence per kind of incident and action. |
+| `POST` | `/api/tuning` | admin | Set mode (off | recommend | apply), target, min_action or window_seconds. |
 | `GET` | `/metrics` | viewer |  |
 | `GET` | `/openapi.json` | viewer |  |
 | `GET` | `/quarantined` | public |  |
