@@ -14,11 +14,13 @@ import collections
 import hashlib
 import json
 import logging
+import os
 import secrets
 import time
 
 logger = logging.getLogger('sentinel.events')
 
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 RING = 2000
 POLL_SECONDS = 0.5
 HEARTBEAT_SECONDS = 15
@@ -26,7 +28,10 @@ SUBSCRIBER_QUEUE = 1000
 
 
 class EventBus:
-    def __init__(self, storage_factory=None, ring=RING, poll=POLL_SECONDS, sanitize=None):
+    """`file_fallback`: also read live_stats.json and tail live_events.jsonl (ENABLE_FILE_FALLBACK, the
+    engine's file outputs) when the database has no live statistics or events."""
+
+    def __init__(self, storage_factory=None, ring=RING, poll=POLL_SECONDS, sanitize=None, file_fallback=None, root=ROOT):
         self.epoch = secrets.token_hex(4)
         self.seq = 0
         self.ring = collections.deque(maxlen=ring)
@@ -39,6 +44,9 @@ class EventBus:
         self._stats = None
         self._flows_seen = collections.OrderedDict()
         self._task = None
+        self.file_fallback = (os.environ.get('ENABLE_FILE_FALLBACK', '1') == '1') if file_fallback is None else file_fallback
+        self.root = root
+        self._events_pos = None
 
     # ---------- publishing ----------
 
@@ -106,7 +114,14 @@ class EventBus:
                 obj = payload
             self.publish(obj.get('type', 'event') if isinstance(obj, dict) else 'event', self.sanitize(obj))
             n += 1
+        n += self._tail_events_file() if self.file_fallback else 0
         stats = s.get_live_stats()
+        if not stats and self.file_fallback:
+            try:
+                with open(os.path.join(self.root, 'live_stats.json'), 'r', encoding='utf-8') as f:
+                    stats = f.read()
+            except OSError:
+                stats = None
         text = stats if isinstance(stats, str) or stats is None else json.dumps(stats, sort_keys=True)
         if text and text != self._stats:
             self._stats = text
@@ -122,6 +137,32 @@ class EventBus:
                 while len(self._flows_seen) > 5000:
                     self._flows_seen.popitem(last=False)
                 self.publish('flow', self.sanitize(flow))
+                n += 1
+        return n
+
+    def _tail_events_file(self):
+        """New lines of live_events.jsonl since the last poll (starts at its end; survives truncation)."""
+        path = os.path.join(self.root, 'live_events.jsonl')
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            return 0
+        if self._events_pos is None or size < self._events_pos:
+            self._events_pos = size if self._events_pos is None else 0
+            if self._events_pos == size:
+                return 0
+        n = 0
+        with open(path, 'r', encoding='utf-8') as f:
+            f.seek(self._events_pos)
+            for line in f:
+                if not line.endswith('\n'):
+                    break                                 # a line still being written
+                self._events_pos += len(line.encode('utf-8'))
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue
+                self.publish(obj.get('type', 'event') if isinstance(obj, dict) else 'event', self.sanitize(obj))
                 n += 1
         return n
 

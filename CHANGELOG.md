@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-10-31
+
+### Fixed
+- The 2.5.0 event bus read live statistics and events only from the database. It now also reads the engine's `live_stats.json` and tails `live_events.jsonl` (`ENABLE_FILE_FALLBACK`, on by default), as the old stream did, picking up half-written lines and file rotation correctly.
+
 ## [2.5.0] - 2026-10-31
 
 ### Added
