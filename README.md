@@ -32,7 +32,7 @@ SentinelEdgeAI is a network appliance that learns how every device on a network 
 
 | | |
 |---|---|
-| **Current release** | [`v2.7.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.7.0): production candidate — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning (pen test and beta pending) |
+| **Current release** | [`v2.8.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.8.0): production candidate — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning, high availability (pen test and beta pending) |
 | **Target hardware** | Raspberry Pi 5 (sensor) and NVIDIA Jetson Orin Nano (AI and management) |
 | **Supply chain** | Signed ML model, reproducible packages, Sigstore/cosign signatures, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
 | **Supply chain** | Signed ML model, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
@@ -241,16 +241,16 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 2. Optionally verify where the package was built:
 
    ```bash
-   gh attestation verify sentineledgeai-pi-2.7.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
+   gh attestation verify sentineledgeai-pi-2.8.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
    ```
 
 3. Install:
 
    ```bash
-   sha256sum -c sentineledgeai-pi-2.7.0.tar.gz.sha256
-   tar -xzf sentineledgeai-pi-2.7.0.tar.gz
-   sudo bash sentineledgeai-pi-2.7.0/deploy/pi/provision_key.sh /path/to/model_signing.key
-   sudo bash sentineledgeai-pi-2.7.0/packaging/sentinelctl install sentineledgeai-pi-2.7.0.tar.gz
+   sha256sum -c sentineledgeai-pi-2.8.0.tar.gz.sha256
+   tar -xzf sentineledgeai-pi-2.8.0.tar.gz
+   sudo bash sentineledgeai-pi-2.8.0/deploy/pi/provision_key.sh /path/to/model_signing.key
+   sudo bash sentineledgeai-pi-2.8.0/packaging/sentinelctl install sentineledgeai-pi-2.8.0.tar.gz
    ```
 
 4. Open `https://<pi-address>:9000` (the installer prints the address). The certificate is self-signed, so the browser warns once: check that the SHA-256 fingerprint matches `sentinelctl tls show` before continuing, or install your own certificate with `sudo sentinelctl tls import cert.pem key.pem`. Sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. The setup wizard then asks for the network placement, the capture interface and the response mode (reopen it later from **Setup**). Add other users from the **Users** panel.
@@ -421,7 +421,7 @@ docs/         admin guide, runbooks, troubleshooting, API reference, performance
 
 ---
 
-## Known limitations (v2.7)
+## Known limitations (v2.8)
 
 1. **Self-signed certificate by default.** Browsers warn until you import a certificate from your own CA (`sentinelctl tls import`).
 2. **Jetson brain not yet run on hardware.** Two-node mode is verified in simulation and on the Pi; GPU models wait for the Jetson.
