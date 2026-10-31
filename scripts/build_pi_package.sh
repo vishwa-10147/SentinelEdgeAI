@@ -13,6 +13,11 @@ set -euo pipefail
 #   VERSION=1.1.0-rc1 bash scripts/build_pi_package.sh     # override the version
 #   SKIP_FRONTEND_BUILD=1 bash scripts/build_pi_package.sh # reuse frontend/dist
 #   INCLUDE_WHEELS=0 bash scripts/build_pi_package.sh      # no wheelhouse (online install)
+#
+# Reproducible: the same commit and dependency set always produce the same
+# tarball bytes (timestamps fixed to the commit time, sorted entries, fixed
+# owners and modes, gzip without a timestamp). Check with:
+#   bash scripts/build_pi_package.sh && sha256sum dist/*.tar.gz   (twice)
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${VERSION:-$(tr -d '[:space:]' < "$REPO_DIR/VERSION")}"
@@ -20,6 +25,8 @@ PYTHON="${PYTHON:-python3}"
 WHEEL_PYTHON_VERSION="${WHEEL_PYTHON_VERSION:-3.11}"
 WHEEL_PLATFORMS="${WHEEL_PLATFORMS:-manylinux2014_aarch64 manylinux_2_17_aarch64 manylinux_2_28_aarch64 manylinux_2_34_aarch64 linux_aarch64}"
 DIST_DIR="$REPO_DIR/dist"
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_DIR" log -1 --format=%ct)}"
+export SOURCE_DATE_EPOCH
 STAGE_DIR="$(mktemp -d)"
 PKG_NAME="sentineledgeai-pi-$VERSION"
 PKG_ROOT="$STAGE_DIR/$PKG_NAME"
@@ -78,7 +85,7 @@ cat > "$PKG_ROOT/MANIFEST.txt" <<EOF
 SentinelEdgeAI Pi package
 Version: $VERSION
 Commit: $(git -C "$REPO_DIR" rev-parse HEAD)
-Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+Built: $(date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ) (commit time; reproducible)
 
 Install (first time):
   sha256sum -c $PKG_NAME.tar.gz.sha256
@@ -93,7 +100,8 @@ Roll back:
 EOF
 
 TARBALL="$DIST_DIR/$PKG_NAME.tar.gz"
-tar -C "$STAGE_DIR" -czf "$TARBALL" "$PKG_NAME"
+tar -C "$STAGE_DIR" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
+    --mode='u+rwX,go+rX,go-w' --format=gnu -cf - "$PKG_NAME" | gzip -9 -n > "$TARBALL"
 (cd "$DIST_DIR" && sha256sum "$PKG_NAME.tar.gz" > "$PKG_NAME.tar.gz.sha256")
 
 echo "$TARBALL"

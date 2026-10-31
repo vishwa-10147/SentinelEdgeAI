@@ -100,8 +100,9 @@ def validate(doc):
         errors.append('response_mode must be monitor, alert or auto_block')
     for key in ('default_ttl', 'max_ttl'):
         v = out[key]
-        if v is not None and (not isinstance(v, int) or v < 1 or v > 86400 * 30):
-            errors.append(f'{key} must be between 1 and {86400 * 30} seconds')
+        # same limit core.firewall enforces, so a valid policy always applies
+        if v is not None and (not isinstance(v, int) or v < 1 or v > 86400):
+            errors.append(f'{key} must be between 1 and 86400 seconds')
     if isinstance(out['default_ttl'], int) and isinstance(out['max_ttl'], int) and out['default_ttl'] > out['max_ttl']:
         errors.append('default_ttl cannot exceed max_ttl')
     if not isinstance(out['auto_block_min_risk'], int) or not 1 <= out['auto_block_min_risk'] <= 100:

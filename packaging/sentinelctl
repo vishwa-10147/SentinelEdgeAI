@@ -10,6 +10,8 @@
 #   sentinelctl tls show                           # certificate details and fingerprint
 #   sudo sentinelctl backup  /root/sentinel.seab   # encrypted backup of config, keys, policy, data
 #   sudo sentinelctl restore /root/sentinel.seab   # onto this device (install first on a fresh one)
+#   sudo sentinelctl update [--check]              # over-the-air: verified download, health-checked, auto-rollback
+#   sudo sentinelctl preset home|office|ot|enterprise
 #
 # On-device layout (code is replaceable, state is never touched by upgrades):
 #   /opt/sentineledgeai/releases/<version>/   code + its own Python venv
@@ -48,7 +50,7 @@ die()  { printf '[sentinelctl] ERROR: %s\n' "$*" >&2; exit 1; }
 require_root() { [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"; }
 
 usage() {
-  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -505,6 +507,78 @@ cmd_restore() {
   fi
 }
 
+UPDATE_URL="${SENTINEL_UPDATE_URL:-https://api.github.com/repos/vishwa-10147/SentinelEdgeAI/releases/latest}"
+COSIGN_IDENTITY="${SENTINEL_COSIGN_IDENTITY:-^https://github.com/vishwa-10147/SentinelEdgeAI/}"
+
+current_version() {
+  basename "$(readlink "$PREFIX/current" 2>/dev/null || echo none)"
+}
+
+latest_release() {
+  # prints "<version> <tarball url>"; a file:// mirror holds latest.json {"version", "tarball"}
+  local json
+  if [[ "$UPDATE_URL" == file://* ]]; then
+    json="$(cat "${UPDATE_URL#file://}/latest.json")" || return 1
+  else
+    json="$(curl -fsSL --max-time 30 "$UPDATE_URL")" || return 1
+  fi
+  printf '%s' "$json" | "$PYTHON_BIN" -c '
+import json, sys
+d = json.load(sys.stdin)
+if "tag_name" in d:
+    v = d["tag_name"].lstrip("v")
+    url = next(a["browser_download_url"] for a in d["assets"] if a["name"] == f"sentineledgeai-pi-{v}.tar.gz")
+else:
+    v, url = d["version"], d["tarball"]
+print(v, url)'
+}
+
+fetch() {  # fetch <url> <dest>
+  if [[ "$1" == file://* ]]; then cp "${1#file://}" "$2"; else curl -fsSL --max-time 600 -o "$2" "$1"; fi
+}
+
+cmd_update() {
+  local check_only=0 latest url current tmp file
+  [ "${1:-}" = "--check" ] && check_only=1
+  read -r latest url < <(latest_release) || die "could not read the latest release from $UPDATE_URL"
+  [ -n "$latest" ] && [ -n "$url" ] || die "no release found at $UPDATE_URL"
+  current="$(current_version)"
+  if [ "$current" = "$latest" ] || [ "$(printf '%s\n%s\n' "$latest" "$current" | sort -V | tail -1)" = "$current" ]; then
+    log "up to date ($current; latest release $latest)"
+    return 0
+  fi
+  log "update available: $current -> $latest"
+  [ "$check_only" -eq 1 ] && return 0
+  require_root
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  file="$tmp/sentineledgeai-pi-$latest.tar.gz"
+  fetch "$url" "$file" || die "download failed"
+  fetch "$url.sha256" "$file.sha256" || die "checksum file missing; refusing to install"
+  if fetch "$url.cosign.bundle" "$file.cosign.bundle" 2>/dev/null && command -v cosign >/dev/null; then
+    cosign verify-blob --bundle "$file.cosign.bundle" --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      --certificate-identity-regexp "$COSIGN_IDENTITY" "$file" >/dev/null 2>&1 \
+      || die "Sigstore signature verification FAILED for $latest; not installing"
+    log "Sigstore signature verified"
+  elif [ "${SENTINEL_REQUIRE_SIGNATURE:-0}" = "1" ]; then
+    die "signature required (SENTINEL_REQUIRE_SIGNATURE=1) but cosign or the bundle is missing"
+  else
+    log "WARNING: signature not checked (install cosign to verify releases); checksum still enforced"
+  fi
+  # same path as a manual upgrade: checksum, health check, automatic rollback
+  cmd_install "$file"
+}
+
+cmd_preset() {
+  require_root
+  local name="${1:-}" file
+  file="$PREFIX/current/presets/$name.yaml"
+  [ -n "$name" ] && [ -f "$file" ] || die "usage: sentinelctl preset home|office|ot|enterprise"
+  (cd "$PREFIX/current" && sudo -u "$SERVICE_USER" .venv/bin/python -m enforcement policy diff "$file") || die "invalid preset"
+  (cd "$PREFIX/current" && sudo -u "$SERVICE_USER" .venv/bin/python -m enforcement policy apply "$file" --by "preset:$name")
+  log "applied the $name preset (recorded in the audit log)"
+}
+
 cmd_status() {
   local current previous svc
   current="$(readlink "$PREFIX/current" 2>/dev/null || true)"
@@ -533,6 +607,8 @@ case "${1:-}" in
   versions)        cmd_versions ;;
   tls)             shift; cmd_tls "$@" ;;
   backup)          shift; cmd_backup "$@" ;;
+  update)          shift; cmd_update "$@" ;;
+  preset)          shift; cmd_preset "$@" ;;
   restore)         shift; cmd_restore "$@" ;;
   -h|--help|help)  usage 0 ;;
   *)               usage 1 ;;

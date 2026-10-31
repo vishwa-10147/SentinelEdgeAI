@@ -266,3 +266,14 @@ def test_watchdog_fails_open_after_threshold(monkeypatch):
 def test_watchdog_noop_when_healthy_or_idle():
     assert watchdog.check(is_active=lambda n: True) == 'healthy'
     assert 'nothing enforced' in watchdog.check(is_active=lambda n: False)
+
+
+@pytest.mark.parametrize('preset', ['home', 'office', 'ot', 'enterprise'])
+def test_presets_validate_and_apply(preset):
+    import os
+    path = os.path.join(os.path.dirname(__file__), '..', 'presets', f'{preset}.yaml')
+    doc = policy.parse(open(path).read())
+    _, errors, _ = policy.validate(doc)
+    assert errors == []
+    policy.apply(doc, by='preset-test')
+    assert fw.get_policy()['response_mode'] == doc['response_mode']

@@ -1,0 +1,13 @@
+# Home / home lab: tell me, do not block on your own.
+# Apply: sudo sentinelctl preset home
+version: 1
+response_mode: alert
+default_ttl: 3600
+max_ttl: 86400
+playbook:
+  steps:
+    - {action: alert, min_risk: 50}
+    - {action: block, min_risk: 85, ttl: 3600}
+  escalate_after: 3
+  window_seconds: 600
+  approval: {required_from_risk: 50}      # every enforcement waits for you

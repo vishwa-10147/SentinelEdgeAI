@@ -1,0 +1,13 @@
+# OT / industrial: availability first. Detect and alert only; never act automatically.
+# Add the engineering workstations and HMIs as management_hosts so they can never be blocked.
+version: 1
+response_mode: monitor
+default_ttl: 900
+max_ttl: 14400
+management_hosts: []
+playbook:
+  steps:
+    - {action: alert, min_risk: 40}
+  escalate_after: 5
+  window_seconds: 900
+  approval: {required_from_risk: 1}

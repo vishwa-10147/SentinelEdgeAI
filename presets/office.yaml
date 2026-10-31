@@ -1,0 +1,14 @@
+# Small office: graduated automatic response, supervised for the first 30 days.
+version: 1
+response_mode: auto_block
+default_ttl: 1800
+max_ttl: 86400
+playbook:
+  steps:
+    - {action: alert, min_risk: 50}
+    - {action: rate_limit, min_risk: 65, ttl: 600}
+    - {action: block, min_risk: 75, ttl: 3600}
+    - {action: quarantine, min_risk: 90, ttl: 86400}
+  escalate_after: 3
+  window_seconds: 600
+  approval: {required_from_risk: 75, days: 30}
