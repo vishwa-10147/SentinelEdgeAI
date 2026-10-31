@@ -73,6 +73,26 @@ jobs:
           python -m pip install --upgrade pip
           VERSION="${GITHUB_REF_NAME#v}" PYTHON=python bash scripts/build_pi_package.sh
 
+      - name: Check the build is reproducible
+        run: |
+          pkg="dist/sentineledgeai-pi-${GITHUB_REF_NAME#v}.tar.gz"
+          first="$(sha256sum "$pkg" | cut -d' ' -f1)"
+          mv "$pkg" "$pkg.first"
+          VERSION="${GITHUB_REF_NAME#v}" PYTHON=python SKIP_FRONTEND_BUILD=1 bash scripts/build_pi_package.sh
+          second="$(sha256sum "$pkg" | cut -d' ' -f1)"
+          rm "$pkg.first"
+          echo "first=$first second=$second"
+          test "$first" = "$second"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the package (Sigstore keyless)
+        run: |
+          for f in dist/*.tar.gz; do
+            cosign sign-blob --yes --bundle "$f.cosign.bundle" "$f"
+          done
+
       - name: Generate SBOM (CycloneDX)
         run: |
           pip install pip-audit
@@ -98,7 +118,8 @@ jobs:
           ---
           **Install / upgrade on a Raspberry Pi:** download the `.tar.gz` and `.sha256`, then see
           [README → Raspberry Pi installation](https://github.com/vishwa-10147/SentinelEdgeAI#raspberry-pi-installation).
-          Verify provenance with `gh attestation verify <file>.tar.gz --repo vishwa-10147/SentinelEdgeAI`.
+          Verify provenance with `gh attestation verify <file>.tar.gz --repo vishwa-10147/SentinelEdgeAI`
+          and the signature with `cosign verify-blob --bundle <file>.tar.gz.cosign.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/vishwa-10147/SentinelEdgeAI/' <file>.tar.gz`.
           EOF
 
       - name: Publish GitHub Release
