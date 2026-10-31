@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-31
+
 ### Added
 - **OT micro-segmentation (Phase 7).** The OT detector's learned allow-lists can be enforced: only the hosts seen commanding a controller (plus management and whitelisted hosts, and Admin exceptions) may open connections to its industrial ports. Modes `off`, `monitor` and `enforce` (Admin, inline placement only). Enforcement uses a frozen snapshot, so newly learned hosts are not allowed silently. Protected hosts are never guarded, and replies are never cut. The plan is re-applied at boot, and any rollback or watchdog fail-open turns it off. CLI `python -m enforcement segment status|off|monitor|enforce|allow|refresh`; API `GET/POST /api/ot/segmentation`, `POST /api/ot/segmentation/allow`, `POST /api/ot/segmentation/refresh`; controls in the **OT devices** panel; every change is audited. Real-kernel test: `tests/firewall_netns/run_segmentation_netns.sh`.
 
