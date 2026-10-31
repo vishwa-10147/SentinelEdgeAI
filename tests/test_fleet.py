@@ -159,3 +159,104 @@ def test_revoked_sites_and_strangers_are_refused(live):
 def test_unenrolled_site_cannot_report():
     with pytest.raises(agent.AgentError, match='not enrolled'):
         agent.report_once()
+
+
+# ---------- remote actions and fleet-wide alert search ----------
+
+def _alert(storage, ts, src, kind='POSSIBLE_PORT_SCAN', score=70):
+    storage.create_tables()
+    storage.insert_alert(int(ts), src, '10.0.0.9', 40000, 443, 'TCP', score, 0.8,
+                         json.dumps({'attack_type': kind, 'mitre_technique_id': 'T1046',
+                                     'mitre_technique_name': 'Network Service Discovery', 'severity': 'HIGH'}))
+
+
+def test_remote_actions_are_validated_and_must_expire():
+    st = FleetStore()
+    st.add_site('site-a', 'pi-a', 'fp', 'default')
+    with pytest.raises(ValueError, match='unknown or revoked'):
+        manage.queue_action('site-x', 'block', '10.0.0.5')
+    with pytest.raises(ValueError, match='action must be'):
+        manage.queue_action('site-a', 'wipe', '10.0.0.5')
+    with pytest.raises(ValueError, match='invalid ip'):
+        manage.queue_action('site-a', 'block', 'not-an-ip')
+    with pytest.raises(ValueError, match='must expire'):
+        manage.queue_action('site-a', 'block', '10.0.0.5', ttl=0)
+    with pytest.raises(ValueError, match='release needs'):
+        manage.queue_action('site-a', 'release', '10.0.0.5')
+    a = manage.queue_action('site-a', 'release', '10.0.0.5', release_kind='contain')
+    assert a['kind'] == 'release:contain' and a['ttl'] is None
+    b = manage.queue_action('site-a', 'block', '10.0.0.6', ttl=600)
+    assert manage.cancel_action(b['id'])['cancelled'] == b['id']
+    with pytest.raises(ValueError, match='only queued'):
+        manage.cancel_action(b['id'])
+    assert [x['id'] for x in st.pending_actions('site-a')] == [a['id']]
+    assert st.pending_actions('site-a', now=time.time() + 7200) == []          # undelivered actions expire
+    assert st.get_action(a['id'])['status'] == 'expired'
+
+
+def test_remote_action_runs_once_through_the_sites_own_checks(live, monkeypatch):
+    site_id = agent.enroll(live, manage.enrolment_code()['code'], keys.ca_fingerprint(), name='pi-branch')
+    from enforcement import protected
+    monkeypatch.setattr(protected, 'why_protected', lambda ip: 'gateway' if ip == '10.0.0.1' else None)
+    ok = manage.queue_action(site_id, 'block', '10.0.0.66', ttl=900, reason='seen at HQ', by='alice')
+    refused = manage.queue_action(site_id, 'block', '10.0.0.1', ttl=900, by='alice')
+    agent.report_once()
+    rules = [r for r in firewall.list_rules() if r.get('blocked')]
+    assert [r['ip'] for r in rules] == ['10.0.0.66'] and 'by alice' in rules[0]['reason']
+    st = FleetStore()
+    assert st.get_action(ok['id'])['status'] == 'done'
+    failed = st.get_action(refused['id'])
+    assert failed['status'] == 'failed' and 'protected host' in failed['result']['error']
+    agent.report_once()                                          # nothing runs twice
+    assert len([r for r in firewall.list_rules() if r.get('blocked')]) == 1
+    manage.queue_action(site_id, 'unblock', '10.0.0.66')
+    agent.report_once()
+    assert not [r for r in firewall.list_rules() if r.get('blocked')]
+
+
+def test_a_site_can_refuse_remote_actions(live, monkeypatch):
+    site_id = agent.enroll(live, manage.enrolment_code()['code'], keys.ca_fingerprint())
+    monkeypatch.setenv('SENTINEL_FLEET_REMOTE_ACTIONS', 'off')
+    a = manage.queue_action(site_id, 'quarantine', '10.0.0.70', ttl=600)
+    agent.report_once()
+    assert not firewall.list_restrictions()
+    assert 'turned off' in FleetStore().get_action(a['id'])['result']['error']
+
+
+def test_alerts_are_shared_once_and_searchable_across_sites(live, monkeypatch, tmp_path):
+    from core.storage import get_storage
+    monkeypatch.chdir(tmp_path)
+    os.makedirs('data', exist_ok=True)
+    storage = get_storage('data/sentinel.db')
+    storage.connect()
+    now = time.time()
+    _alert(storage, now - 300, '10.0.0.20')
+    _alert(storage, now - 200, '10.0.0.21', kind='DNS_TUNNELING', score=90)
+    _alert(storage, now - 3 * 86400, '10.0.0.22')                  # older than a day: not shared on first report
+    site_id = agent.enroll(live, manage.enrolment_code()['code'], keys.ca_fingerprint(), name='pi-north')
+    agent.report_once()
+    agent.report_once()                                          # the cursor stops a resend
+    res = manage.search_alerts()
+    assert res['count'] == 2 and {a['site_name'] for a in res['alerts']} == {'pi-north'}
+    assert manage.search_alerts(q='tunnel')['alerts'][0]['src_ip'] == '10.0.0.21'
+    assert manage.search_alerts(ip='10.0.0.20')['count'] == 1
+    assert manage.search_alerts(min_score=80)['count'] == 1
+    assert manage.search_alerts(q='T1046')['count'] == 2
+    assert manage.search_alerts(q='100%_')['count'] == 0          # LIKE wildcards are literal
+    assert manage.search_alerts(site=site_id, since=int(now - 250))['count'] == 1
+    with pytest.raises(ValueError, match='invalid ip'):
+        manage.search_alerts(ip='nope')
+    _alert(storage, time.time(), '10.0.0.23')
+    monkeypatch.setenv('SENTINEL_FLEET_SHARE_ALERTS', '0')
+    agent.report_once()
+    assert manage.search_alerts()['count'] == 2                  # opted out: stays on the site
+    assert 'alerts' not in FleetStore().get_site(site_id)['report']
+
+
+def test_store_rejects_malformed_alert_summaries():
+    st = FleetStore()
+    st.add_site('site-a', 'pi-a', 'fp', 'default')
+    now = int(time.time())
+    n = st.add_alerts('site-a', [{'ts': now, 'score': 'x'}, 'junk', {'ts': 'soon'}, {'ts': now + 86400},
+                                 {'ts': now, 'type': 'A' * 500, 'score': 50}])
+    assert n == 1 and len(st.search_alerts()[0]['type']) == 64

@@ -11,7 +11,9 @@ WorkingDirectory=/opt/sentineledgeai/current
 EnvironmentFile=/etc/sentinel/sentinel.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/sentineledgeai/current/.venv/bin/python -m fleet report
-CapabilityBoundingSet=
+# CAP_NET_ADMIN only to apply remote actions (block, contain, ...) through core.firewall's checks
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

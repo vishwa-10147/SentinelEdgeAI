@@ -811,6 +811,38 @@ def fleet_federated(payload: dict, principal: dict = Depends(require_admin)):
     return _fleet(principal, 'federated_round_start', manage.start_round, int(p.get('min_sites') or 2))
 
 
+@app.get('/api/fleet/actions')
+def fleet_actions(site: str = None, principal: dict = Depends(require_viewer)):
+    """Remote actions queued on this fleet server, newest first."""
+    from fleet.store import FleetStore
+    return {'actions': FleetStore().list_actions(site)}
+
+
+@app.post('/api/fleet/sites/{site_id}/actions')
+def fleet_queue_action(site_id: str, payload: dict, principal: dict = Depends(require_operator)):
+    """Queue block | unblock | quarantine | ratelimit | contain | release for one site. It reaches the site with
+    its next report and runs through that site's own checks (whitelist, protected hosts, TTL limits)."""
+    from fleet import manage
+    p = payload or {}
+    return _fleet(principal, 'fleet_action_queued', manage.queue_action, site_id, str(p.get('kind', '')),
+                  str(p.get('ip', '')), p.get('ttl', 3600), str(p.get('reason', ''))[:200], p.get('release_kind'))
+
+
+@app.post('/api/fleet/actions/{action_id}/cancel')
+def fleet_cancel_action(action_id: int, principal: dict = Depends(require_operator)):
+    from fleet import manage
+    return _fleet(principal, 'fleet_action_cancelled', manage.cancel_action, action_id)
+
+
+@app.get('/api/fleet/alerts')
+def fleet_alerts(q: str = None, ip: str = None, site: str = None, group: str = None, min_score: float = None,
+                 since: int = None, until: int = None, limit: int = 200, principal: dict = Depends(require_viewer)):
+    """Search alert summaries shared by every site (type, score, addresses, MITRE; no flows or packets)."""
+    from fleet import manage
+    return _fleet(principal, 'fleet_alert_search', manage.search_alerts, q=q, ip=ip, site=site, group=group,
+                  min_score=min_score, since=since, until=until, limit=limit)
+
+
 @app.get('/api/fleet/agent')
 def fleet_agent_status(principal: dict = Depends(require_viewer)):
     """This site's own fleet status: enrolment, last report, applied template, pending version."""

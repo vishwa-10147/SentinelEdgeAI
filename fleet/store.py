@@ -10,6 +10,9 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 CODE_TTL = 3600
 HISTORY = 288                                             # reports kept per site (one day at 5-minute reports)
+ACTION_TTL = 3600                                         # an action not picked up within an hour expires
+ALERT_RETENTION = 30 * 86400                              # shared alert summaries kept for 30 days
+ALERTS_PER_SITE = 50000                                   # and at most this many per site
 
 
 def default_path():
@@ -53,6 +56,17 @@ class FleetStore:
                     base INTEGER, global TEXT, aggregated INTEGER, by TEXT);
                 CREATE TABLE IF NOT EXISTS fl_updates (round INTEGER NOT NULL, site TEXT NOT NULL, ts INTEGER NOT NULL,
                     n_samples INTEGER NOT NULL, upd TEXT NOT NULL, PRIMARY KEY (round, site));
+                CREATE TABLE IF NOT EXISTS actions (id INTEGER PRIMARY KEY AUTOINCREMENT, site TEXT NOT NULL,
+                    kind TEXT NOT NULL, ip TEXT NOT NULL, ttl INTEGER, reason TEXT, created INTEGER NOT NULL,
+                    expires INTEGER NOT NULL, by TEXT, status TEXT NOT NULL DEFAULT 'queued', delivered INTEGER,
+                    done INTEGER, result TEXT);
+                CREATE INDEX IF NOT EXISTS actions_site ON actions(site, status);
+                CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, site TEXT NOT NULL,
+                    ts INTEGER NOT NULL, type TEXT, score REAL, severity TEXT, src_ip TEXT, dst_ip TEXT,
+                    dst_port INTEGER, proto TEXT, mitre TEXT, summary TEXT);
+                CREATE INDEX IF NOT EXISTS alerts_ts ON alerts(ts);
+                CREATE INDEX IF NOT EXISTS alerts_site ON alerts(site, ts);
+                CREATE INDEX IF NOT EXISTS alerts_src ON alerts(src_ip);
                 INSERT OR IGNORE INTO groups(name) VALUES ('default');
             """)
             self._conn = conn
@@ -237,3 +251,119 @@ class FleetStore:
                          '(SELECT SUM(n_samples) FROM fl_updates u WHERE u.round = r.id) AS samples '
                          'FROM fl_rounds r ORDER BY r.id DESC LIMIT ?', (int(limit),))
         return rows
+
+    # ---------- remote actions ----------
+
+    def queue_action(self, site_id, kind, ip, ttl, reason, by, ttl_queue=ACTION_TTL):
+        now = int(time.time())
+        cur = self._exec('INSERT INTO actions(site, kind, ip, ttl, reason, created, expires, by) VALUES (?,?,?,?,?,?,?,?)',
+                         (site_id, kind, ip, ttl, (reason or '')[:200], now, now + int(ttl_queue), by))
+        return self.get_action(cur.lastrowid)
+
+    def get_action(self, action_id):
+        row = self._one('SELECT * FROM actions WHERE id = ?', (int(action_id),))
+        if row and row.get('result'):
+            row['result'] = json.loads(row['result'])
+        return row
+
+    def _expire_actions(self, now):
+        self._exec("UPDATE actions SET status = 'expired' WHERE status IN ('queued', 'delivered') AND expires <= ?",
+                   (int(now),))
+
+    def pending_actions(self, site_id, now=None):
+        """Actions this site has not finished yet, oldest first; marks them delivered.
+        Delivered but unanswered actions are handed out again (the site skips ids it already ran)."""
+        now = int(now or time.time())
+        self._expire_actions(now)
+        rows = self._all("SELECT id, kind, ip, ttl, reason, created, expires, by FROM actions "
+                         "WHERE site = ? AND status IN ('queued', 'delivered') ORDER BY id LIMIT 50", (site_id,))
+        if rows:
+            self._exec("UPDATE actions SET status = 'delivered', delivered = COALESCE(delivered, ?) "
+                       "WHERE site = ? AND status = 'queued' AND id <= ?", (now, site_id, rows[-1]['id']))
+        return rows
+
+    def finish_action(self, site_id, action_id, ok, result):
+        """Record a site's answer; only for its own, still open actions."""
+        return self._exec("UPDATE actions SET status = ?, done = ?, result = ? WHERE id = ? AND site = ? "
+                          "AND status IN ('queued', 'delivered')",
+                          ('done' if ok else 'failed', int(time.time()), json.dumps(result, default=str)[:4000],
+                           int(action_id), site_id)).rowcount == 1
+
+    def cancel_action(self, action_id):
+        return self._exec("UPDATE actions SET status = 'cancelled' WHERE id = ? AND status = 'queued'",
+                          (int(action_id),)).rowcount == 1
+
+    def list_actions(self, site_id=None, limit=100):
+        self._expire_actions(time.time())
+        sql, params = 'SELECT * FROM actions', []
+        if site_id:
+            sql, params = sql + ' WHERE site = ?', [site_id]
+        rows = self._all(sql + ' ORDER BY id DESC LIMIT ?', (*params, int(limit)))
+        for r in rows:
+            r['result'] = json.loads(r['result']) if r.get('result') else None
+        return rows
+
+    # ---------- shared alert summaries ----------
+
+    ALERT_FIELDS = ('ts', 'type', 'score', 'severity', 'src_ip', 'dst_ip', 'dst_port', 'proto', 'mitre', 'summary')
+
+    def add_alerts(self, site_id, alerts, now=None):
+        now = int(now or time.time())
+        rows = []
+        for a in (alerts or [])[:500]:
+            if not isinstance(a, dict):
+                continue
+            try:
+                ts = int(a.get('ts'))
+                score = float(a['score']) if a.get('score') is not None else None
+                port = int(a['dst_port']) if a.get('dst_port') not in (None, '') else None
+            except (TypeError, ValueError):
+                continue
+            if ts < now - ALERT_RETENTION or ts > now + 3600:
+                continue
+            text = lambda k, n=64: str(a[k])[:n] if a.get(k) not in (None, '') else None  # noqa: E731
+            rows.append((site_id, ts, text('type'), score, text('severity', 16), text('src_ip', 45), text('dst_ip', 45),
+                         port, text('proto', 16), text('mitre', 32), text('summary', 300)))
+        if not rows:
+            return 0
+        with self._lock:
+            db = self._db()
+            db.executemany('INSERT INTO alerts(site, ts, type, score, severity, src_ip, dst_ip, dst_port, proto, mitre, '
+                           'summary) VALUES (?,?,?,?,?,?,?,?,?,?,?)', rows)
+            db.execute('DELETE FROM alerts WHERE ts < ?', (now - ALERT_RETENTION,))
+            db.execute('DELETE FROM alerts WHERE site = ? AND id NOT IN '
+                       '(SELECT id FROM alerts WHERE site = ? ORDER BY ts DESC, id DESC LIMIT ?)',
+                       (site_id, site_id, ALERTS_PER_SITE))
+            db.commit()
+        return len(rows)
+
+    def search_alerts(self, q=None, ip=None, site=None, group=None, min_score=None, since=None, until=None,
+                      limit=200):
+        """Alert summaries from every site, newest first, with the site's name and group."""
+        where, params = [], []
+        if q:
+            like = '%' + str(q).replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+            where.append("(a.type LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\' OR a.mitre LIKE ? ESCAPE '\\' "
+                         "OR a.src_ip LIKE ? ESCAPE '\\' OR a.dst_ip LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\')")
+            params += [like] * 6
+        if ip:
+            where.append('(a.src_ip = ? OR a.dst_ip = ?)')
+            params += [ip, ip]
+        if site:
+            where.append('a.site = ?')
+            params.append(site)
+        if group:
+            where.append('s.grp = ?')
+            params.append(group)
+        if min_score is not None:
+            where.append('a.score >= ?')
+            params.append(float(min_score))
+        if since is not None:
+            where.append('a.ts >= ?')
+            params.append(int(since))
+        if until is not None:
+            where.append('a.ts <= ?')
+            params.append(int(until))
+        sql = ('SELECT a.*, s.name AS site_name, s.grp AS site_group FROM alerts a LEFT JOIN sites s ON s.id = a.site'
+               + (' WHERE ' + ' AND '.join(where) if where else '') + ' ORDER BY a.ts DESC, a.id DESC LIMIT ?')
+        return self._all(sql, (*params, max(1, min(int(limit), 1000))))

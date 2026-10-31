@@ -1,4 +1,5 @@
-"""python -m fleet init | code | sites | revoke | template | templates | group | groups | rollout | federated | enroll | report | status"""
+"""python -m fleet init | code | sites | revoke | template | templates | group | groups | rollout | federated |
+                 action | actions | cancel | alerts | enroll | report | status"""
 import argparse
 import json
 import sys
@@ -40,6 +41,25 @@ def main(argv=None):
     p.add_argument('action', choices=['status', 'start', 'close'])
     p.add_argument('--min-sites', type=int, default=2, help='aggregate once this many sites have answered')
     p.add_argument('--round', type=int)
+    p = sub.add_parser('action', help='queue a response for one site (delivered with its next report)')
+    p.add_argument('site_id')
+    p.add_argument('kind', choices=list(manage.ACTIONS))
+    p.add_argument('ip')
+    p.add_argument('--ttl', type=int, default=3600, help='seconds until the response expires (60-86400)')
+    p.add_argument('--reason', default='')
+    p.add_argument('--release-kind', choices=list(manage.RELEASABLE), help='for release: what to release')
+    p = sub.add_parser('actions', help='queued and finished remote actions')
+    p.add_argument('--site')
+    p = sub.add_parser('cancel', help='cancel a queued remote action')
+    p.add_argument('action_id', type=int)
+    p = sub.add_parser('alerts', help='search alerts from every site')
+    p.add_argument('query', nargs='?')
+    p.add_argument('--ip')
+    p.add_argument('--site')
+    p.add_argument('--group')
+    p.add_argument('--min-score', type=float)
+    p.add_argument('--hours', type=float, help='only the last N hours')
+    p.add_argument('--limit', type=int, default=50)
     p = sub.add_parser('enroll', help='enrol this site with a fleet server')
     p.add_argument('url')
     p.add_argument('code')
@@ -91,6 +111,23 @@ def main(argv=None):
                 _show(manage.close_round(args.round, by='cli', st=st))
             else:
                 _show(st.rounds())
+        elif args.command == 'action':
+            _show(manage.queue_action(args.site_id, args.kind, args.ip, args.ttl, args.reason, args.release_kind,
+                                      by='cli', st=st))
+        elif args.command == 'actions':
+            _show(st.list_actions(args.site))
+        elif args.command == 'cancel':
+            _show(manage.cancel_action(args.action_id, by='cli', st=st))
+        elif args.command == 'alerts':
+            import time
+            res = manage.search_alerts(st=st, q=args.query, ip=args.ip, site=args.site, group=args.group,
+                                       min_score=args.min_score, limit=args.limit,
+                                       since=int(time.time() - args.hours * 3600) if args.hours else None)
+            for a in res['alerts']:
+                when = time.strftime('%Y-%m-%d %H:%M', time.localtime(a['ts']))
+                print(f"{when}  {a.get('site_name') or a['site']:<16} {a.get('score') or 0:>5.0f}  "
+                      f"{a.get('src_ip') or '-':<15} -> {a.get('dst_ip') or '-':<15} {a.get('type') or ''}")
+            print(f"{res['count']} alert(s)", file=sys.stderr)
         elif args.command == 'rollout':
             _show(manage.set_rollout(args.group, args.action, 'cli', st))
         return 0

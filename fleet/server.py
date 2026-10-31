@@ -2,7 +2,9 @@
 
   GET  /v1/ca       the fleet CA (sites pin it by fingerprint before trusting it)
   POST /v1/enroll   one-time code + CSR -> client certificate whose CN is the site id
-  POST /v1/report   a site's status report -> its desired state (template, target version)
+  POST /v1/report   a site's status report (+ new alert summaries) -> its desired state
+                    (template, target version, queued remote actions)
+  POST /v1/actions/result   a site's outcome for a remote action
 
 Started by sentineledgeai-fleet.path once `python -m fleet init` marked this
 device as a fleet server. Admins manage the fleet from the console
@@ -88,6 +90,7 @@ def desired_state(site, report, now=None):
             'template': {'name': template['name'], 'version': template['version'], 'yaml': template['yaml']}
             if template else None,
             'target_version': rollout.desired_version(group, site['id'], report.get('version'), now),
+            'actions': st.pending_actions(site['id'], now),
             'server_time': int(now)}
 
 
@@ -146,8 +149,26 @@ def federated_update(body: dict, site: dict = Depends(site_identity)):
 def report(body: dict, site: dict = Depends(site_identity)):
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail='report must be an object')
+    alerts = body.pop('alerts', None)
+    accepted = store().add_alerts(site['id'], alerts) if isinstance(alerts, list) else 0
     store().add_report(site['id'], body)
-    return desired_state(site, body)
+    return {**desired_state(site, body), 'alerts_accepted': accepted}
+
+
+class ActionResult(BaseModel):
+    id: int
+    ok: bool
+    result: dict = {}
+
+
+@app.post('/v1/actions/result')
+def action_result(payload: ActionResult, site: dict = Depends(site_identity)):
+    if not store().finish_action(site['id'], payload.id, payload.ok, payload.result):
+        raise HTTPException(status_code=404, detail='no open action with that id for this site')
+    audit.record('fleet_action_done', actor=site['name'][:64], target=f"{site['id']} action {payload.id}",
+                 outcome='success' if payload.ok else 'failure',
+                 details={k: str(v)[:200] for k, v in (payload.result or {}).items()})
+    return {'recorded': payload.id}
 
 
 def ssl_options():

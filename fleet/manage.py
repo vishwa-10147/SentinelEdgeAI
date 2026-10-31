@@ -94,3 +94,69 @@ def close_round(round_id, by='cli', st=None):
     (st or store()).close_round(int(round_id))
     audit.record('federated_round_close', actor=by, target=f'round {round_id}')
     return {'closed': int(round_id)}
+
+
+ACTIONS = ('block', 'unblock', 'quarantine', 'ratelimit', 'contain', 'release')
+RELEASABLE = ('quarantine', 'ratelimit', 'contain')
+MAX_TTL = 86400
+
+
+def queue_action(site_id, kind, ip, ttl=3600, reason='', release_kind=None, by='cli', st=None):
+    """Queue a response for one site. It is delivered with the site's next report (within 5 minutes) and runs
+    through that site's own checks: whitelist, protected hosts, learned profiles, TTL limits."""
+    import ipaddress
+    st = st or store()
+    site = st.get_site(site_id)
+    if not site or site['revoked']:
+        raise ValueError(f'unknown or revoked site: {site_id}')
+    if kind not in ACTIONS:
+        raise ValueError(f'action must be one of {", ".join(ACTIONS)}')
+    try:
+        ip = str(ipaddress.ip_address(str(ip)))
+    except ValueError:
+        raise ValueError(f'invalid ip: {ip}')
+    if kind == 'release':
+        if release_kind not in RELEASABLE:
+            raise ValueError(f'release needs kind {", ".join(RELEASABLE)}')
+        kind = f'release:{release_kind}'
+        ttl = None
+    elif kind == 'unblock':
+        ttl = None
+    else:
+        try:
+            ttl = int(ttl if ttl is not None else 3600)
+        except (TypeError, ValueError):
+            raise ValueError('ttl must be a number of seconds')
+        if not 60 <= ttl <= MAX_TTL:
+            raise ValueError(f'remote actions must expire: ttl between 60 and {MAX_TTL} seconds')
+    action = st.queue_action(site_id, kind, ip, ttl, reason, by)
+    audit.record('fleet_action_queued', actor=by, target=f'{site_id}:{ip}',
+                 details={'id': action['id'], 'kind': kind, 'ttl': ttl, 'reason': (reason or '')[:200]})
+    return action
+
+
+def cancel_action(action_id, by='cli', st=None):
+    if not (st or store()).cancel_action(action_id):
+        raise ValueError('only queued (not yet delivered) actions can be cancelled')
+    audit.record('fleet_action_cancelled', actor=by, target=f'action {action_id}')
+    return {'cancelled': int(action_id)}
+
+
+def search_alerts(by='cli', st=None, **filters):
+    import ipaddress
+    if filters.get('ip'):
+        try:
+            filters['ip'] = str(ipaddress.ip_address(str(filters['ip'])))
+        except ValueError:
+            raise ValueError('invalid ip')
+    for k in ('min_score', 'since', 'until', 'limit'):
+        if filters.get(k) in ('', None):
+            filters.pop(k, None)
+            continue
+        try:
+            filters[k] = float(filters[k]) if k == 'min_score' else int(filters[k])
+        except (TypeError, ValueError):
+            raise ValueError(f'{k} must be a number')
+    filters = {k: v for k, v in filters.items() if v not in (None, '')}
+    rows = (st or store()).search_alerts(**filters)
+    return {'alerts': rows, 'count': len(rows)}

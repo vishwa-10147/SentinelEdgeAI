@@ -5,6 +5,10 @@
              - the group's configuration template (response policy as code), validated before it is applied
              - the target version, written to desired_version for the root update timer
                (sentinelctl fleet-update), because the agent itself runs unprivileged
+             - remote actions (block, contain, ...) queued by a fleet operator, run through this site's
+               own checks (whitelist, protected hosts, TTL limits); SENTINEL_FLEET_REMOTE_ACTIONS=off refuses them
+           The report also carries summaries of new alerts for fleet-wide search
+           (SENTINEL_FLEET_SHARE_ALERTS=0 keeps them on the site).
 
 State lives in SENTINEL_FLEET_AGENT_DIR (default data/fleet_agent).
 """
@@ -165,6 +169,94 @@ def collect_report():
     }
 
 
+ALERT_BATCH = 200
+DONE_KEEP = 200
+
+
+def _off(name, default='1'):
+    return os.environ.get(name, default).strip().lower() in ('0', 'off', 'false', 'no')
+
+
+def _alert_summary(a):
+    try:
+        d = json.loads(a.get('details') or '{}') if isinstance(a.get('details'), str) else (a.get('details') or {})
+    except ValueError:
+        d = {}
+    kind = d.get('attack_type') or d.get('type') or 'anomaly'
+    mitre = d.get('mitre_technique_id')
+    name = d.get('mitre_technique_name')
+    return {'ts': int(float(a.get('timestamp') or 0)), 'type': kind, 'score': a.get('score'),
+            'severity': d.get('severity'), 'src_ip': a.get('src_ip') or d.get('initiator_ip'),
+            'dst_ip': a.get('dst_ip') or d.get('responder_ip'), 'dst_port': a.get('dst_port') or None,
+            'proto': a.get('protocol') or d.get('protocol'), 'mitre': mitre,
+            'summary': ' - '.join(x for x in (kind.replace('_', ' ').lower(), name) if x)}
+
+
+def new_alerts(cursor, now=None):
+    """Alert summaries newer than `cursor` (oldest first, at most ALERT_BATCH) and the cursor to save once
+    they were delivered. The first report only shares the last 24 hours."""
+    from core.storage import get_storage
+    now = now or time.time()
+    s = get_storage('data/sentinel.db')
+    s.connect()
+    since = cursor if cursor is not None else now - 86400
+    rows = [r for r in s.get_alerts(limit=5000) if float(r.get('timestamp') or 0) > since]
+    rows.sort(key=lambda r: float(r.get('timestamp') or 0))
+    batch = [_alert_summary(r) for r in rows[:ALERT_BATCH]]
+    return batch, (batch[-1]['ts'] if batch else (cursor if cursor is not None else int(since)))
+
+
+def run_action(action, now=None):
+    """Apply one remote action locally. Returns (ok, result)."""
+    import core.firewall as firewall
+    now = now or time.time()
+    if _off('SENTINEL_FLEET_REMOTE_ACTIONS'):
+        return False, {'error': 'remote actions are turned off at this site'}
+    if int(action.get('expires') or 0) <= now:
+        return False, {'error': 'expired before it reached the site'}
+    kind, ip = str(action.get('kind')), str(action.get('ip'))
+    reason = f"fleet action {action.get('id')} by {action.get('by') or 'fleet'}: {action.get('reason') or ''}".strip()
+    try:
+        if kind == 'block':
+            res = firewall.add_block(ip, ttl=action.get('ttl'), reason=reason)
+        elif kind == 'unblock':
+            res = firewall.remove_block(ip)
+        elif kind in ('quarantine', 'ratelimit', 'contain'):
+            res = firewall.add_restriction(kind, ip, ttl=action.get('ttl'), reason=reason)
+        elif kind.startswith('release:'):
+            res = firewall.remove_restriction(kind.split(':', 1)[1], ip)
+        else:
+            return False, {'error': f'unknown action {kind}'}
+    except (ValueError, RuntimeError, OSError) as exc:
+        return False, {'error': str(exc)[:300]}
+    keep = ('ip', 'expires', 'dry_run', 'applied', 'removed', 'kind')
+    return True, {k: res.get(k) for k in keep if isinstance(res, dict) and k in res}
+
+
+def _actions(desired, state, session, ident, now=None):
+    """Run newly delivered actions once each and report every outcome (resent until the server has it)."""
+    done = state.setdefault('actions_done', [])
+    outbox = state.setdefault('actions_outbox', {})
+    for action in desired.get('actions') or []:
+        aid = str(action.get('id'))
+        if aid in done:
+            continue
+        ok, result = run_action(action, now)
+        audit.record('fleet_action', actor=f"fleet:{action.get('by') or 'fleet'}", target=action.get('ip'),
+                     outcome='success' if ok else 'rejected',
+                     details={'id': action.get('id'), 'kind': action.get('kind'), 'ttl': action.get('ttl'), **result})
+        done.append(aid)
+        outbox[aid] = {'id': int(action['id']), 'ok': ok, 'result': result}
+    del done[:-DONE_KEEP]
+    for aid, body in list(outbox.items()):
+        try:
+            r = session.post(f"{ident['fleet_url']}/v1/actions/result", json=body, timeout=TIMEOUT)
+        except requests.RequestException:
+            break
+        if r.status_code in (200, 404):               # 404: cancelled, expired or already recorded
+            outbox.pop(aid)
+
+
 def _samples():
     from detection.samples import SampleStore
     return SampleStore()
@@ -248,16 +340,22 @@ def report_once(session=None):
         session = requests.Session()
         session.cert = (_path('site.pem'), _path('site.key'))
         session.verify = _path('ca.pem')
+    body, cursor = collect_report(), state.get('alerts_cursor')
+    if not _off('SENTINEL_FLEET_SHARE_ALERTS'):
+        body['alerts'], cursor = _part(lambda: new_alerts(state.get('alerts_cursor')), ([], cursor))
     try:
-        r = session.post(f"{ident['fleet_url']}/v1/report", json=collect_report(), timeout=TIMEOUT)
+        r = session.post(f"{ident['fleet_url']}/v1/report", json=body, timeout=TIMEOUT)
         r.raise_for_status()
         desired = r.json()
     except (requests.RequestException, ValueError) as exc:
         state.update(last_error=str(exc)[:300], last_attempt=int(time.time()))
         _write('state.json', json.dumps(state, indent=2))
         return state
+    if 'alerts' in body:
+        state['alerts_cursor'] = cursor
     state['template_status'] = _apply_template(desired.get('template'), state)
     _apply_version(desired.get('target_version'))
+    _actions(desired, state, session, ident)
     try:
         _federated(desired, state, session, ident)
     except (requests.RequestException, ValueError, OSError) as exc:
