@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205%20%7C%20Jetson%20Orin%20Nano-555)
-![Roadmap](https://img.shields.io/badge/roadmap-v2.x%20%C2%B7%20Phase%207%20in%20progress-blue)
+![Roadmap](https://img.shields.io/badge/roadmap-v3.x%20%C2%B7%20Phase%208%20in%20progress-blue)
 
 [Overview](#overview) ·
 [Roadmap](#roadmap-and-progress) ·
@@ -58,14 +58,14 @@ Phase 3  Enforcement you can trust                v1.4   ███████�
 Phase 4  Detection quality                        v1.5   ███████████████░░░░░  built; public datasets + GPU pending
 Phase 5  Integrations and operations              v1.6   ██████████████████░░  built; real SIEM test pending
 Phase 6  Production release                       v2.0   ██████████████░░░░░░  released; OS images, pen test, beta pending
-Phase 7  Scale and advanced intelligence          v2.x   ████████████████████  all 7 themes built (v2.0–v2.9)
-Phase 8  Proven in the field                      v3.0   ░░░░░░░░░░░░░░░░░░░░  next: pen test, beta, soak, Jetson, OS images
+Phase 7  Scale and advanced intelligence          v2.x   ████████████████████  done
+Phase 8  Proven in the field                      v3.0   ████████░░░░░░░░░░░░  in progress: pen test, beta, soak, Jetson, OS images
 Phase 9  Deeper visibility                        v3.x   ░░░░░░░░░░░░░░░░░░░░  SMB/RDP/Kerberos, more OT, packet buffer, IPv6
 Phase 10 Assisted operations                      v4.0   ░░░░░░░░░░░░░░░░░░░░  incidents, optional local assistant, SSO, mobile
 Phase 11 Platform and ecosystem                   v4.x+  ░░░░░░░░░░░░░░░░░░░░  multi-tenant MSP fleet, x86 10 Gb/s, certification
 ```
 
-**All phases (0–7) are built (v2.9).** Everything is tested in simulation, in real-kernel network-namespace tests, against real PostgreSQL and on a Raspberry Pi 5 running the released packages. What remains needs hardware, outside people or time rather than code: Jetson validation and GPU models, a 72-hour inline soak, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta, plus a few software follow-ups listed in [PLAN.md](PLAN.md) (UNSW-NB15 and CIC-IoT2023 loaders, fleet-wide remote actions and alert search, VLAN reassignment through switch APIs).
+**All phases (0–7) are built (v2.9).** Everything is tested in simulation, in real-kernel network-namespace tests, against real PostgreSQL and on a Raspberry Pi 5 running the released packages. Phase 7 is complete, including its last follow-ups: fleet-wide remote actions and fleet-wide alert search. Phase 8 (proven in the field) is now in progress: it needs hardware, outside people or time rather than code — Jetson validation and GPU models, a 72-hour inline soak, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta — plus software follow-ups in [PLAN.md](PLAN.md) (UNSW-NB15 and CIC-IoT2023 loaders, VLAN reassignment through switch APIs).
 
 | Phase | Release | Goal | Status |
 |---|---|---|---|
@@ -76,7 +76,8 @@ Phase 11 Platform and ecosystem                   v4.x+  ░░░░░░░�
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built, with console views for models, feedback and evaluation (v2.5); CIC-IDS2017: brute force, port scan, infiltration detected, 4/8 bots, 0.02–0.05% false positives per flow ([results](docs/EVALUATION.md)). Pending: UNSW-NB15, GPU models |
 | 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
 | 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Released as v2.0; installer, OTA, reproducible Sigstore-signed builds, hardening, container, docs, 25–31× faster capture and decisions. Pending: OS images, pen test, beta |
-| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | ✅ OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3), the fleet manager (v2.4), federated learning (v2.6), response tuning (v2.7), high availability (v2.8) and compliance packs (v2.9): all seven themes built |
+| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | ✅ OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3), the fleet manager (v2.4), federated learning (v2.6), response tuning (v2.7), high availability (v2.8) and compliance packs (v2.9): all seven themes built, plus fleet-wide remote actions and alert search |
+| 8 | v3.0 | External pen test, 30-day field beta, 72-hour inline soak, Jetson as brain, pre-built OS images, UNSW-NB15 / CIC-IoT2023 eval | 🟡 In progress |
 
 Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked done when all of them are met.
 
