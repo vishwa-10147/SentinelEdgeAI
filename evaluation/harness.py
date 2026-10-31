@@ -184,6 +184,76 @@ def load_cicids(path):
     return events, truth
 
 
+# ---------- UNSW-NB15 ----------
+
+UNSW_LABELS = {'reconnaissance': 'port_scan', 'analysis': 'port_scan',
+               'backdoors': 'beaconing', 'worms': 'beaconing',
+               'exploits': 'brute_force'}
+
+
+def _unsw_time(index, per_second=10.0):
+    """Synthetic timestamp for UNSW-NB15 rows, which ship without timestamps.
+
+    Rows are spaced `per_second` apart starting at the harness clock base so the
+    pipeline sees a plausible sequence instead of identical timestamps.
+    """
+    return synthetic.BASE + index * per_second
+
+
+def load_unswnb15(path):
+    """Flow events from a UNSW-NB15 CSV.
+
+    Columns used: srcip, dstip, sport, dsport, proto, dur, sbytes, dbytes, attack_cat, label.
+    The standard release has no timestamps, so rows are spaced 10s apart in file order.
+    Attack categories our flow detectors can cover are mapped to detector classes;
+    the rest (DoS, fuzzers, generic, shellcode) are not covered and count as benign
+    events for false-positive purposes, matching the CIC-IDS2017 treatment of uncovered attacks.
+    """
+    rows = []
+    with open(path, newline='', encoding='utf-8', errors='ignore') as f:
+        reader = csv.DictReader(f)
+        reader.fieldnames = [h.strip() for h in reader.fieldnames]
+        required = {'srcip', 'dstip', 'sport', 'dsport', 'proto', 'dur', 'sbytes', 'dbytes',
+                    'attack_cat', 'label'}
+        missing = required - set(reader.fieldnames)
+        if missing:
+            raise ValueError(f'UNSW-NB15 CSV missing columns: {sorted(missing)}')
+        for index, row in enumerate(reader):
+            try:
+                rec = {'ts': _unsw_time(index), 'src': row['srcip'].strip(), 'dst': row['dstip'].strip(),
+                       'dport': int(float(row['dsport'])), 'sport': int(float(row.get('sport') or 0)),
+                       'proto': str(row.get('proto', '')).strip().upper() or 'OTHER',
+                       'duration': float(row['dur']), 'forward_bytes': int(float(row['sbytes'])),
+                       'backward_bytes': int(float(row['dbytes']))}
+            except (KeyError, ValueError, TypeError):
+                continue
+            attack_cat = str(row.get('attack_cat', '')).strip().lower()
+            label = str(row.get('label', '')).strip()
+            if attack_cat == 'normal' or label == '0':
+                rows.append((rec, 'benign', None))
+                continue
+            kind = UNSW_LABELS.get(attack_cat)
+            if kind is None:
+                rows.append((rec, attack_cat, None))
+                continue
+            rows.append((rec, kind, kind))
+    events, truth, seen = [], [], {}
+    for rec, label, kind in rows:
+        if kind is None:
+            events.append({'type': 'flow', 'label': label, 'attack': None, 'record': rec})
+            continue
+        key = (kind, rec['src'])
+        if key not in seen:
+            seen[key] = f'{kind}-{len(truth)}'
+            truth.append({'id': seen[key], 'kind': kind, 'src': rec['src'], 'start': rec['ts']})
+        else:
+            t = next(x for x in truth if x['id'] == seen[key])
+            t['start'] = min(t['start'], rec['ts'])
+        events.append({'type': 'flow', 'label': kind, 'attack': seen[key], 'record': rec})
+    events.sort(key=lambda e: e['record']['ts'])
+    return events, truth
+
+
 def write_report(result, name):
     out_dir = os.path.join(ROOT, 'reports', 'eval')
     os.makedirs(out_dir, exist_ok=True)
@@ -192,17 +262,19 @@ def write_report(result, name):
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2)
     return path
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='python -m evaluation.harness')
     parser.add_argument('--cicids', help='CIC-IDS2017 CSV file')
+    parser.add_argument('--unswnb15', help='UNSW-NB15 CSV file')
     parser.add_argument('--seed', type=int, default=7)
     parser.add_argument('--hours', type=float, default=6)
     args = parser.parse_args(argv)
     if args.cicids:
         events, truth = load_cicids(args.cicids)
         name = 'cicids-' + os.path.basename(args.cicids).split('.')[0]
+    elif args.unswnb15:
+        events, truth = load_unswnb15(args.unswnb15)
+        name = 'unswnb15-' + os.path.basename(args.unswnb15).split('.')[0]
     else:
         events, truth = synthetic.dataset(args.seed, args.hours)
         name = f'synthetic-seed{args.seed}'
