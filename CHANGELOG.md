@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 First production-candidate release (Phases 2–6). The external penetration test, the 30-day beta, pre-built OS images and the Jetson hardware validation are still pending; see PLAN.md.
 
 ### Fixed
+- The console index route `GET /` is registered even when the console is not built, so the route table (and its tests) is the same in CI and on a device.
 - Flows idle for more than a day never expired (`timedelta.seconds` ignores days).
 - The expired-flow scan ran on every packet (12 ms per scan at 20,000 flows); it now runs once per second.
 - `policy.validate` accepted TTLs up to 30 days that the firewall then rejected; both now use the firewall's 1-day limit.
