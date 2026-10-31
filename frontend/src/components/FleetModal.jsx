@@ -3,6 +3,8 @@ import { apiGet, apiPost, errorMessage, hasRole } from '../api'
 
 const PRESETS = ['home', 'office', 'ot', 'enterprise']
 
+const ACTIONS = ['block', 'unblock', 'quarantine', 'ratelimit', 'contain']
+
 function ago(ts){
   if(!ts) return 'never'
   const s = Math.max(0, Math.round(Date.now() / 1000 - ts))
@@ -24,6 +26,10 @@ export default function FleetModal({ open, onClose, user }){
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ group: 'default', template: '', target_version: '', preset: 'office', templateName: '' })
+  const [remoteAction, setRemoteAction] = useState({ kind: 'block', ip: '', ttl: 3600, reason: '' })
+  const [alertSearch, setAlertSearch] = useState({ q: '', ip: '', site: '', group: '', minScore: '', since: '', limit: 50 })
+  const [fleetAlerts, setFleetAlerts] = useState(null)
+  const [alertSearchBusy, setAlertSearchBusy] = useState(false)
 
   const load = useCallback(async ()=>{
     setBusy(true)
@@ -101,7 +107,7 @@ export default function FleetModal({ open, onClose, user }){
               </div>
               <div className="users-table">
                 <div className="users-row fleet-row users-head">
-                  <span>Site</span><span>Group</span><span>Version</span><span>Status</span><span>Alerts 24 h</span><span>Untrusted</span><span>Restricted</span><span></span>
+                  <span>Site</span><span>Group</span><span>Version</span><span>Status</span><span>Alerts 24 h</span><span>Untrusted</span><span>Restricted</span><span>Remote action</span><span></span>
                 </div>
                 {fleet.sites.map(s=>{
                   const [label, cls] = siteHealth(s)
@@ -116,7 +122,20 @@ export default function FleetModal({ open, onClose, user }){
                       <span>{r.alerts_24h ? `${r.alerts_24h.critical} critical, ${r.alerts_24h.high} high` : '—'}</span>
                       <span>{r.trust ? r.trust.untrusted : '—'}</span>
                       <span>{restricted}</span>
-                      <span>{admin && !s.revoked && <button className="ghost-button" disabled={busy} onClick={()=>{ if(window.confirm(`Revoke ${s.name}? It can no longer report.`)) act(()=>apiPost(`/api/fleet/sites/${s.id}/revoke`, {}), `${s.name} revoked.`) }}>Revoke</button>}</span>
+                      <span>
+                        {admin && !s.revoked && (
+                          <>
+                            <select value={remoteAction.kind} onChange={e=>setRemoteAction({...remoteAction, kind: e.target.value})} aria-label="Action kind" style={{fontSize:'11px', padding:'2px 4px'}}>
+                              {ACTIONS.map(k=>(<option key={k} value={k}>{k === 'release' ? 'release:' : k}</option>))}
+                            </select>
+                            <input value={remoteAction.ip} onChange={e=>setRemoteAction({...remoteAction, ip: e.target.value})} placeholder="IP" style={{fontSize:'11px', padding:'2px 4px', width:'70px'}} />
+                            <button className="ghost-button" disabled={busy || !remoteAction.ip} onClick={()=>{
+                              if(!window.confirm(`${remoteAction.kind} ${remoteAction.ip} on ${s.name}?`)) return
+                              act(()=>apiPost(`/api/fleet/sites/${s.id}/actions`, { kind: remoteAction.kind, ip: remoteAction.ip, ttl: remoteAction.ttl, reason: remoteAction.reason }), `${remoteAction.kind} queued for ${s.name}.`)
+                            }}>Action</button>
+                          </>
+                        )}
+                        {admin && !s.revoked && <button className="ghost-button" disabled={busy} onClick={()=>{ if(window.confirm(`Revoke ${s.name}? It can no longer report.`)) act(()=>apiPost(`/api/fleet/sites/${s.id}/revoke`, {}), `${s.name} revoked.`) }}>Revoke</button>}</span>
                     </div>
                   )
                 })}
@@ -173,6 +192,54 @@ export default function FleetModal({ open, onClose, user }){
                 <div className="audit-toolbar">
                   <button className="ghost-button" disabled={busy} onClick={()=>act(()=>apiPost('/api/fleet/federated', { min_sites: Math.max(1, Math.min(fleet.sites.filter(s=>!s.revoked).length, 3)) }), r=>`Round ${r.id} started; it aggregates when ${r.min_sites} site(s) have answered.`)}>Start a round</button>
                 </div>
+              )}
+            </div>
+
+            <div className="rules-section">
+              <h3>Fleet-wide alert search</h3>
+              <p className="auth-hint">Search alert summaries shared by every site (type, score, IPs, MITRE — no flows or packets). Results are newest first.</p>
+              <div className="audit-toolbar" style={{display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap'}}>
+                <input value={alertSearch.q} onChange={e=>setAlertSearch({...alertSearch, q: e.target.value})} placeholder="Search type, MITRE, summary…" style={{fontSize:'11px', padding:'4px 8px'}} />
+                <input value={alertSearch.ip} onChange={e=>setAlertSearch({...alertSearch, ip: e.target.value})} placeholder="Src or dst IP" style={{fontSize:'11px', padding:'4px 8px', width:'110px'}} />
+                <input value={alertSearch.site} onChange={e=>setAlertSearch({...alertSearch, site: e.target.value})} placeholder="Site" style={{fontSize:'11px', padding:'4px 8px', width:'90px'}} />
+                <input value={alertSearch.minScore} onChange={e=>setAlertSearch({...alertSearch, minScore: e.target.value})} placeholder="Min score" style={{fontSize:'11px', padding:'4px 8px', width:'70px'}} />
+                <input value={alertSearch.since} onChange={e=>setAlertSearch({...alertSearch, since: e.target.value})} placeholder="Hours back" style={{fontSize:'11px', padding:'4px 8px', width:'70px'}} />
+                <button className="ghost-button" disabled={alertSearchBusy} onClick={async ()=>{
+                  setAlertSearchBusy(true)
+                  try{
+                    const params = new URLSearchParams()
+                    if(alertSearch.q) params.set('q', alertSearch.q)
+                    if(alertSearch.ip) params.set('ip', alertSearch.ip)
+                    if(alertSearch.site) params.set('site', alertSearch.site)
+                    if(alertSearch.minScore) params.set('min_score', alertSearch.minScore)
+                    if(alertSearch.since) params.set('since', String(Date.now()/1000 - Number(alertSearch.since)*3600))
+                    params.set('limit', String(alertSearch.limit))
+                    const res = await apiGet(`/api/fleet/alerts?${params.toString()}`, {alerts: [], count: 0})
+                    setFleetAlerts(res)
+                  }catch(e){ setError(errorMessage(e)) }
+                  finally{ setAlertSearchBusy(false) }
+                }}>Search</button>
+                <button className="ghost-button" onClick={()=>{ setAlertSearch({q:'', ip:'', site:'', group:'', minScore:'', since:'', limit:50}); setFleetAlerts(null) }}>Clear</button>
+              </div>
+              {fleetAlerts && (
+                <>
+                  <div style={{fontSize:'11px', color:'#64748b', marginBottom:'6px'}}>{fleetAlerts.count} alert summary{(fleetAlerts.count !== 1 ? 's' : '')} across the fleet</div>
+                  <div className="users-table">
+                    <div className="users-row fleet-group-row users-head"><span>Time</span><span>Site</span><span>Score</span><span>Type</span><span>Src → Dst</span><span>MITRE</span><span>Summary</span></div>
+                    {fleetAlerts.alerts.map(a=>(
+                      <div className="users-row fleet-group-row" key={`${a.site}-${a.ts}-${a.type}`}>
+                        <span>{new Date(Number(a.ts)*1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <span>{a.site_name || a.site}</span>
+                        <span>{a.score != null ? Math.round(a.score) : '—'}</span>
+                        <span>{a.type || 'anomaly'}</span>
+                        <span>{(a.src_ip || '—')} → {(a.dst_ip || '—')}</span>
+                        <span>{a.mitre || '—'}</span>
+                        <span className="audit-details" title={a.summary || ''}>{a.summary || '—'}</span>
+                      </div>
+                    ))}
+                    {fleetAlerts.alerts.length === 0 && <p className="auth-hint">No alerts match.</p>}
+                  </div>
+                </>
               )}
             </div>
 
