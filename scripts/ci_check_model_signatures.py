@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""CI helper: verify signatures for all model/*.pkl using the signing key.
+"""CI helper: verify the active Isolation Forest in the Ed25519 model registry.
 
-Exits with non-zero if any model is unsigned or verification fails.
+Exits with non-zero if no active verifiable model exists in the registry.
 """
 import os
 import sys
@@ -10,35 +10,35 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from security.model_signing import verify_model_signature, ModelSignatureError
+from detection import registry
+from detection.registry import RegistryError
 
 
 def main():
-    key = os.environ.get("SENTINEL_MODEL_SIGNING_KEY")
-    if not key:
-        print("SENTINEL_MODEL_SIGNING_KEY not set; failing CI signature check", file=sys.stderr)
+    registry_dir = os.environ.get("SENTINEL_MODEL_REGISTRY")
+    if not registry_dir:
+        print("SENTINEL_MODEL_REGISTRY not set; checking default data/models", file=sys.stderr)
+
+    try:
+        idx = registry.index()
+    except (OSError, ValueError) as exc:
+        print(f"cannot read model registry index: {exc}", file=sys.stderr)
         return 2
 
-    model_dir = ROOT / "model"
-    if not model_dir.exists():
-        print("no model directory; nothing to check")
-        return 0
-
-    failures = 0
-    for pkl in sorted(model_dir.glob("*.pkl")):
-        try:
-            print(f"Verifying {pkl.name}...", end=" ")
-            verify_model_signature(pkl, key=key.encode("utf-8"))
-            print("OK")
-        except ModelSignatureError as exc:
-            print("FAILED")
-            print(f"  {pkl}: {exc}", file=sys.stderr)
-            failures += 1
-
-    if failures:
-        print(f"{failures} model signature verification failures", file=sys.stderr)
+    entry = idx.get("isolation_forest")
+    if not entry or not entry.get("active"):
+        print("no active Isolation Forest in the Ed25519 model registry", file=sys.stderr)
         return 3
-    print("All model signatures verified")
+
+    version = entry["active"]
+    try:
+        meta = registry.verify("isolation_forest", version)
+        model, _ = registry.load("isolation_forest", version)
+    except (RegistryError, OSError, ValueError) as exc:
+        print(f"active model v{version} failed verification: {exc}", file=sys.stderr)
+        return 3
+
+    print(f"Isolation Forest v{version} verified (Ed25519): sha256={meta['sha256'][:16]}...")
     return 0
 
 

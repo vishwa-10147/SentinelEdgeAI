@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
+"""Train the SentinelEdgeAI Isolation Forest and register it in the Ed25519 model registry.
+
+    python scripts/train_model.py --input flows_history.jsonl
+"""
 import argparse
 import json
 import os
 import sys
 from pathlib import Path
 
-import joblib
-import numpy as np
-from sklearn.ensemble import IsolationForest
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from security.model_signing import ModelSignatureError, sign_model
+import joblib
+import numpy as np
+from sklearn.ensemble import IsolationForest
+
+from detection import registry
+from detection.registry import RegistryError
 
 
 FEATURE_KEYS = ("duration", "total_bytes", "total_packets", "byte_ratio")
@@ -31,15 +36,16 @@ def parse_args():
     parser.add_argument(
         "--output",
         default=str(ROOT / "model" / "isolation_forest.pkl"),
-        help="Path to write the trained model.",
+        help=("Path to write the trained model (kept for backward compatibility; "
+              "the signed model is stored in the Ed25519 registry)."),
     )
     parser.add_argument("--contamination", type=float, default=0.02)
     parser.add_argument("--n-estimators", type=int, default=100)
     parser.add_argument("--min-samples", type=int, default=100)
     parser.add_argument(
-        "--allow-unsigned",
-        action="store_true",
-        help="Write the model even when no signing key is configured.",
+        "--registry-dir",
+        default=os.environ.get("SENTINEL_MODEL_REGISTRY"),
+        help="Model registry directory (defaults to SENTINEL_MODEL_REGISTRY or data/models).",
     )
     return parser.parse_args()
 
@@ -83,7 +89,6 @@ def load_vectors(path):
 def main():
     args = parse_args()
     input_path = Path(args.input)
-    output_path = Path(args.output)
 
     if not input_path.exists():
         raise SystemExit(f"flow history not found: {input_path}")
@@ -101,20 +106,21 @@ def main():
     )
     model.fit(np.array(vectors))
 
+    # Register through the Ed25519-signed registry (starts in 'shadow'), then activate.
+    version = registry.register(
+        'isolation_forest', model,
+        metrics={'contamination': args.contamination, 'n_estimators': args.n_estimators,
+                 'samples': len(vectors), 'skipped': skipped},
+        features=list(FEATURE_KEYS),
+        notes='trained by scripts/train_model.py',
+    )
+    registry.set_stage('isolation_forest', version, 'active')
+
+    # Also write a copy to --output for backward compatibility with any callers
+    # that expect a model file on disk.
+    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, output_path)
-
-    signed = False
-    try:
-        sign_model(output_path, signer="scripts/train_model.py")
-        signed = True
-    except ModelSignatureError as exc:
-        if not args.allow_unsigned:
-            output_path.unlink(missing_ok=True)
-            raise SystemExit(
-                f"model signing failed: {exc}. Set SENTINEL_MODEL_SIGNING_KEY "
-                "or rerun with --allow-unsigned for development only."
-            )
 
     print(
         json.dumps(
@@ -122,9 +128,11 @@ def main():
                 "status": "trained",
                 "input": str(input_path),
                 "output": str(output_path),
+                "registry_version": version,
                 "samples": len(vectors),
                 "skipped": skipped,
-                "signed": signed,
+                "signed": True,
+                "algorithm": "ed25519",
             },
             indent=2,
         )
