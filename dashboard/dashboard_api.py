@@ -722,6 +722,17 @@ def devices_identity(principal: dict = Depends(require_viewer)):
     return identity.get_registry().list()
 
 
+@app.get('/api/ot/assets')
+def ot_assets(principal: dict = Depends(require_viewer)):
+    """Industrial controllers seen on the network, the hosts that command them and the functions they use."""
+    from detection.ot import OTStore
+    store = OTStore()
+    try:
+        return {'assets': store.assets()}
+    finally:
+        store.close()
+
+
 @app.get('/api/firewall/restrictions')
 def firewall_restrictions(principal: dict = Depends(require_viewer)):
     return firewall.list_restrictions()

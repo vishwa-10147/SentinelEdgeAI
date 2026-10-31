@@ -126,6 +126,7 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | Method | Path | Minimum role | Notes |
 |---|---|---|---|
 | `GET` | `/` | public |  |
+| `GET` | `/api/ot/assets` | viewer | Industrial controllers seen on the network, the hosts that command them and the functions they use. |
 | `GET` | `/metrics` | viewer |  |
 | `GET` | `/openapi.json` | viewer |  |
 | `GET` | `/quarantined` | public |  |

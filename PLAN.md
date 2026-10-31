@@ -287,7 +287,7 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 **Status (2026-10-31): started — OT protocol awareness first.**
 - [x] OT protocol parsing (`detection/ot.py`): Modbus/TCP (incl. diagnostics restart / listen-only), DNP3 (master requests), BACnet/IP (confirmed and unconfirmed services, routed NPDUs), OPC UA binary (service of unencrypted messages; encrypted channels still give the connection). Request headers only; nothing is injected.
 - [x] OT detector: learns each controller's masters and their functions (7 days); then reports a new master (T0886) and a first-time write/control function (T0855); always reports restart/stop/listen-only/communication-control commands (T0816/T0814), OT traffic crossing the internet edge (T0883) and Modbus unit-id sweeps (T0846). Fed from both capture paths and fused like every other finding.
-- [ ] OT asset inventory in the API and console (`OTDetector.assets()` exists).
+- [x] OT asset inventory: learning persisted in SQLite (`data/ot.db`, so a restart does not reopen the learning period), `GET /api/ot/assets` (Viewer) and an **OT devices** console panel.
 - [ ] Learned allow-lists for OT devices feeding micro-segmentation.
 - [ ] Captured lab traffic from real PLCs / BACnet controllers.
 

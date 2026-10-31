@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **OT asset inventory (Phase 7).** What the OT detector learns (controllers, the hosts that command them and their functions) is kept in `data/ot.db` (`SENTINEL_OT_DB`), so an engine restart no longer begins a new 7-day learning period. `GET /api/ot/assets` (Viewer) and a new **OT devices** console panel show the inventory.
+
 ## [2.0.1] - 2026-10-31
 
 ### Fixed

@@ -18,6 +18,7 @@ const PresenterMode = lazy(() => import('./components/PresenterMode'))
 const AnalyticsPanel = lazy(() => import('./components/AnalyticsPanel'))
 const UsersModal = lazy(() => import('./components/UsersModal'))
 const AuditModal = lazy(() => import('./components/AuditModal'))
+const OtModal = lazy(() => import('./components/OtModal'))
 const SetupWizard = lazy(() => import('./components/SetupWizard'))
 import { apiGet, apiPost, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
 import { ChangePasswordScreen, LoginScreen, MfaSetupScreen } from './components/AuthScreens'
@@ -220,7 +221,7 @@ function Sparkline({ values = [] }){
   )
 }
 
-function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onSetup, onChangePassword, onLogout }){
+function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onOt, onSetup, onChangePassword, onLogout }){
   const utc = useUtcClock()
   return (
     <header className={`top-nav ${criticalPulse ? 'critical-pulse' : ''}`}>
@@ -243,6 +244,7 @@ function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter
         <button className={`mode-badge ${enforcementMode === 'ENFORCING' ? 'enforcing' : ''}`} onClick={onOpenFirewall}>{enforcementMode}</button>
         {hasRole(user, 'operator') && <button className="primary-button" onClick={onPresenter}>Start Presenter Demo</button>}
         {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onUsers}>Users</button>}
+        <button className="ghost-button" onClick={onOt}>OT devices</button>
         {hasRole(user, 'admin') && <button className="ghost-button" onClick={onAudit}>Audit log</button>}
         {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onSetup}>Setup</button>}
         <div className="user-chip" title={`Signed in as ${user?.username} (${user?.role})`}>
@@ -537,6 +539,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
   const [firewallOpen, setFirewallOpen] = useState(false)
   const [usersOpen, setUsersOpen] = useState(false)
   const [auditOpen, setAuditOpen] = useState(false)
+  const [otOpen, setOtOpen] = useState(false)
   const [connected, setConnected] = useState(false)
   const [criticalPulse, setCriticalPulse] = useState(false)
   const [toast, setToast] = useState(null)
@@ -690,6 +693,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
         user={user}
         onUsers={()=>setUsersOpen(true)}
         onAudit={()=>setAuditOpen(true)}
+        onOt={()=>setOtOpen(true)}
         onSetup={onSetup}
         onChangePassword={onChangePassword}
         onLogout={onLogout}
@@ -754,6 +758,11 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
       {auditOpen && (
         <Suspense fallback={null}>
           <AuditModal open={auditOpen} onClose={()=>setAuditOpen(false)} />
+        </Suspense>
+      )}
+      {otOpen && (
+        <Suspense fallback={null}>
+          <OtModal open={otOpen} onClose={()=>setOtOpen(false)} />
         </Suspense>
       )}
       <FirewallPolicyModal open={firewallOpen} onClose={()=>setFirewallOpen(false)} rules={firewallRules} onChanged={loadAll} />

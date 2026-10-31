@@ -155,3 +155,44 @@ def test_pipeline_fuses_ot_findings():
     fused = pipe.fusion.fuse(HMI, 0, 0, 'TCP', None, now=T0 + 1)
     assert fused['attack_type'] == 'ot_device_stop'
     assert pipe.observe_ot(HMI, PLC, 'TCP', 443, modbus(3)) == (None, [], [])
+
+
+# ---------- persistence and API ----------
+
+def test_learning_survives_a_restart(tmp_path):
+    from detection.ot import OTStore
+    store = OTStore(str(tmp_path / 'ot.db'))
+    d = OTDetector(store=store)
+    d.observe(HMI, PLC, 'modbus', parse_modbus(modbus(3)), ts=T0)
+    d.observe(HMI, PLC, 'modbus', parse_modbus(modbus(6)), ts=T0 + 60)
+    store.close()
+    again = OTDetector(store=OTStore(str(tmp_path / 'ot.db')))          # engine restarted 8 days later
+    later = T0 + 8 * DAY
+    assert again.observe(HMI, PLC, 'modbus', parse_modbus(modbus(6)), ts=later) == []
+    [f] = again.observe(LAPTOP, PLC, 'modbus', parse_modbus(modbus(3)), ts=later + 1)
+    assert f.kind == 'ot_new_master'
+
+
+def test_last_seen_writes_are_throttled(tmp_path):
+    from detection.ot import OTStore
+    store = OTStore(str(tmp_path / 'ot.db'))
+    d = OTDetector(store=store)
+    for i in range(100):
+        d.observe(HMI, PLC, 'modbus', parse_modbus(modbus(3)), ts=T0 + i)        # 100 s of polling
+    [asset] = store.assets()
+    assert asset['masters'][0]['last_seen'] == T0 + 60
+
+
+def test_ot_assets_endpoint():
+    from fastapi.testclient import TestClient
+    from dashboard import dashboard_api as api
+    from detection.ot import OTStore
+    store = OTStore()
+    OTDetector(store=store).observe(HMI, PLC, 'dnp3', parse_dnp3(dnp3(1)), ts=T0)
+    store.close()
+    api.app.dependency_overrides[api.require_viewer] = lambda: {'username': 't', 'role': 'viewer'}
+    try:
+        body = TestClient(api.app).get('/api/ot/assets').json()
+    finally:
+        api.app.dependency_overrides.clear()
+    assert body['assets'][0]['ip'] == PLC and body['assets'][0]['masters'][0]['functions'] == ['read']

@@ -71,6 +71,7 @@ ROUTES = {
     ('GET', '/quarantined.css'): 'public',
     ('GET', '/api/enforcement/protected'): 'viewer',
     ('GET', '/api/devices/identity'): 'viewer',
+    ('GET', '/api/ot/assets'): 'viewer',
     ('GET', '/api/firewall/restrictions'): 'viewer',
     ('GET', '/api/playbook/pending'): 'viewer',
     ('GET', '/api/policy'): 'viewer',

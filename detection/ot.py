@@ -10,8 +10,15 @@ functions each one uses. After the learning period it reports a new master,
 a write/control function a master has never used, and always reports
 restart/stop commands, OT traffic crossing the internet edge and Modbus
 unit-id sweeps. Techniques are MITRE ATT&CK for ICS ids.
+
+OTStore keeps what was learned in SQLite (data/ot.db, SENTINEL_OT_DB) so a
+restart does not begin a new learning period, and so the API process can
+serve the OT inventory the engine built.
 """
+import os
+import sqlite3
 import struct
+import threading
 import time
 from collections import defaultdict
 
@@ -144,6 +151,14 @@ def parse_opcua(payload):
     return [_msg('opcua', node, OPCUA_REQUESTS[node], node in OPCUA_WRITES)]
 
 
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+TOUCH_SECONDS = 60                                        # last_seen is written at most once a minute per row
+
+
+def default_path():
+    return os.environ.get('SENTINEL_OT_DB') or os.path.join(ROOT, 'data', 'ot.db')
+
+
 PARSERS = {'modbus': parse_modbus, 'dnp3': parse_dnp3, 'bacnet': parse_bacnet, 'opcua': parse_opcua}
 
 
@@ -158,8 +173,60 @@ def parse_ot(proto, dport, payload):
         return protocol, []
 
 
+class OTStore:
+    """Controllers and (master, controller, function) links; function '' records the master itself."""
+
+    def __init__(self, path=None):
+        self.path = path or default_path()
+        self._lock = threading.Lock()
+        self._conn = None
+
+    def _db(self):
+        if self._conn is None:
+            os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
+            conn = sqlite3.connect(self.path, check_same_thread=False, timeout=10)
+            conn.execute("""CREATE TABLE IF NOT EXISTS ot_servers (
+                ip TEXT NOT NULL, protocol TEXT NOT NULL, first_seen REAL NOT NULL, PRIMARY KEY (ip, protocol))""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS ot_links (
+                src TEXT NOT NULL, dst TEXT NOT NULL, protocol TEXT NOT NULL, function TEXT NOT NULL,
+                first_seen REAL NOT NULL, last_seen REAL NOT NULL, PRIMARY KEY (src, dst, protocol, function))""")
+            conn.commit()
+            self._conn = conn
+        return self._conn
+
+    def close(self):
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+
+    def load(self):
+        """(servers {(ip, protocol): first_seen}, links [(src, dst, protocol, function, last_seen)])."""
+        with self._lock:
+            db = self._db()
+            servers = {(ip, proto): first for ip, proto, first in db.execute('SELECT * FROM ot_servers')}
+            links = db.execute('SELECT src, dst, protocol, function, last_seen FROM ot_links').fetchall()
+        return servers, links
+
+    def add_server(self, ip, protocol, ts):
+        with self._lock:
+            self._db().execute('INSERT OR IGNORE INTO ot_servers VALUES (?,?,?)', (ip, protocol, ts))
+            self._conn.commit()
+
+    def touch(self, src, dst, protocol, function, ts):
+        with self._lock:
+            self._db().execute('INSERT INTO ot_links VALUES (?,?,?,?,?,?) ON CONFLICT DO UPDATE SET last_seen = ?',
+                               (src, dst, protocol, function, ts, ts, ts))
+            self._conn.commit()
+
+    def assets(self):
+        """The inventory as OTDetector.assets() reports it, read from disk (used by the API)."""
+        det = OTDetector(store=self)
+        return det.assets()
+
+
 class OTDetector:
-    def __init__(self, learning=7 * 86400, scan_units=16, clock=time.time):
+    def __init__(self, learning=7 * 86400, scan_units=16, clock=time.time, store=None):
         self.learning = learning
         self.scan_units = scan_units
         self.clock = clock
@@ -169,6 +236,30 @@ class OTDetector:
         self.last = {}                                    # (src, dst, protocol) -> last seen
         self.units = _Window(60)
         self.cooldown = Cooldown(1800)
+        self.store = store
+        self._written = {}                                # (src, dst, protocol, function) -> last write
+        if store is not None:
+            self.servers, links = store.load()
+            for src, dst, protocol, function, last in links:
+                self.masters[(dst, protocol)].add(src)
+                if function:
+                    self.ops[(src, dst, protocol)].add(function)
+                key = (src, dst, protocol)
+                self.last[key] = max(self.last.get(key, 0), last)
+
+    def _persist(self, method, *args):
+        try:
+            getattr(self.store, method)(*args)
+        except sqlite3.Error:
+            pass                                          # detection goes on from memory
+
+    def _touch(self, src, dst, protocol, function, ts):
+        if self.store is None:
+            return
+        k = (src, dst, protocol, function)
+        if ts - self._written.get(k, -1e18) >= TOUCH_SECONDS:
+            self._written[k] = ts
+            self._persist('touch', src, dst, protocol, function, ts)
 
     def _learned(self, server, ts):
         return ts - self.servers[server] > self.learning
@@ -177,7 +268,10 @@ class OTDetector:
         ts = ts or self.clock()
         out = []
         server = (dst, protocol)
-        self.servers.setdefault(server, ts)
+        if server not in self.servers:
+            self.servers[server] = ts
+            if self.store is not None:
+                self._persist('add_server', dst, protocol, ts)
         learned = self._learned(server, ts)
         label = protocol.upper() if protocol != 'opcua' else 'OPC UA'
 
@@ -197,6 +291,7 @@ class OTDetector:
 
         key = (src, dst, protocol)
         self.last[key] = ts
+        self._touch(src, dst, protocol, '', ts)
         for m in messages:
             name = m['function']
             if m['stop'] and self.cooldown.ready(('ot_stop', src, dst, name), ts):
@@ -210,6 +305,7 @@ class OTDetector:
                                        f'{src} sent {label} "{name}" to {dst} for the first time',
                                        {'protocol': protocol, 'target': dst, 'function': name}, ts=ts))
                 self.ops[key].add(name)
+            self._touch(src, dst, protocol, name, ts)
             if protocol == 'modbus' and m['unit'] is not None:
                 units = {u for _, u in self.units.add((src, dst), ts, m['unit'])}
                 if len(units) >= self.scan_units and self.cooldown.ready(('ot_scan', src, dst), ts):

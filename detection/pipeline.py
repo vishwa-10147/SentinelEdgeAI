@@ -5,7 +5,7 @@ import time
 from detection.detectors import default_flow_detectors
 from detection.dns_analysis import DNSDetector
 from detection.fusion import Fusion
-from detection.ot import OTDetector, parse_ot
+from detection.ot import OTDetector, OTStore, parse_ot
 from detection.tls import TLSDetector, parse_client_hello
 
 
@@ -142,5 +142,5 @@ _pipeline = None
 def get_pipeline():
     global _pipeline
     if _pipeline is None:
-        _pipeline = DetectionPipeline(calibrate=_FeedbackCalibration())
+        _pipeline = DetectionPipeline(calibrate=_FeedbackCalibration(), ot=OTDetector(store=OTStore()))
     return _pipeline
