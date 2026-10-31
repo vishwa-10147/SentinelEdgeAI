@@ -173,7 +173,7 @@ The old key no longer verifies any committed model, so a model signed with it wi
 | 6 | Containment and OT segmentation are IPv4 only | IPv6 hosts can only be quarantined or blocked | Planned |
 | 9 | The release Isolation Forest is HMAC-signed, so every device holds a key that could also sign it | A compromised device could sign a model for itself | Planned: move it to the Ed25519 registry |
 | 7 | ~~Flow table and per-source state unbounded; per-flow coroutines piled up under load~~ | **Fixed in 2.9.2**: a spoofed flood could exhaust memory | — |
-| 8 | ~~`health.json` and `live_stats.json` written non-atomically~~ | **Fixed in 2.9.2**: readers could see half-written files and the live statistics reset | — |
+| 8 | ~~`health.json` and `live_stats.json` written non-atomically~~ | **Fixed in 2.9.2/2.9.3**: readers could see half-written files and the live statistics reset | — |
 
 Earlier issues (firewall commands, single API key, TLS, WebSocket authentication, rate limits, development tools on devices, the root container) are fixed; see CHANGELOG.md.
 

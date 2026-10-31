@@ -142,6 +142,7 @@ def process_packet(packet):
 _last_timeout_check = 0.0
 # notices floods (evicted or shed flows) and raises one alert; see capture/overload.py
 from capture.overload import OverloadMonitor
+from utils.atomic import write_json_atomic
 overload = OverloadMonitor(flow_table, lambda a: alert_logger.log(a))
 
 
@@ -193,10 +194,7 @@ def handle_parsed(src_ip, dst_ip, src_port, dst_port, protocol_name, size):
 
         # -------- Update Health Status (once per pass, not per flow) --------
         try:
-            # atomic: readers (the API) never see a half-written file
-            with open(HEALTH_FILE + ".tmp", "w") as f:
-                json.dump({**health_monitor.get_status(), 'capture': capture_stats()}, f, indent=4)
-            os.replace(HEALTH_FILE + ".tmp", HEALTH_FILE)
+            write_json_atomic(HEALTH_FILE, {**health_monitor.get_status(), 'capture': capture_stats()}, indent=4)
         except Exception as e:
             logger.debug(f"Failed to write health status | Error={str(e)}")
 
@@ -543,10 +541,7 @@ def _record_flow_stats(flow, risk):
         return
     _live['written'] = now
     stats["unique_ips"] = list(ips)
-    tmp = LIVE_STATS_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(stats, f)
-    os.replace(tmp, LIVE_STATS_FILE)
+    write_json_atomic(LIVE_STATS_FILE, stats)
 
 
 def _process_flow_sync(flow):

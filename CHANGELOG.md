@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.9.3] - 2026-10-31
+
+### Fixed
+- 2.9.2 regression: on a device, `health.json` and `live_stats.json` stopped updating. The atomic write put its temporary file next to the symlink, in the read-only release directory, instead of next to the real file in `/var/lib/sentinel`. The write now goes beside the link's target (`utils/atomic.py`), with a regression test for the read-only, symlinked layout.
+
 ## [2.9.2] - 2026-10-31
 
 ### Security

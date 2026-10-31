@@ -160,3 +160,23 @@ def test_overload_raises_one_alert_and_clears():
     clock += 11
     mon.check(clock)
     assert mon.overloaded and len(alerts) == 1                                     # still within the alert interval
+
+
+def test_state_files_are_written_through_symlinks_in_a_read_only_release(tmp_path):
+    """2.9.2 regression: the temporary file went next to the symlink, in the read-only release directory."""
+    import json
+    import os
+    import stat
+    from utils.atomic import write_json_atomic
+    state, release = tmp_path / 'var-lib-sentinel', tmp_path / 'release'
+    state.mkdir()
+    release.mkdir()
+    (state / 'health.json').write_text('{}')
+    os.symlink(state / 'health.json', release / 'health.json')
+    release.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        write_json_atomic(str(release / 'health.json'), {'capture': {'active': 3}})
+    finally:
+        release.chmod(stat.S_IRWXU)
+    assert json.loads((state / 'health.json').read_text()) == {'capture': {'active': 3}}
+    assert os.path.islink(release / 'health.json')
