@@ -116,6 +116,13 @@ def process_packet(packet):
         dst_ip = ip_layer.dst
         size = len(packet)
 
+        # Forensic packet buffer (Phase 9): keep raw packets per source
+        # so we can export a PCAP around any alert.
+        try:
+            observe_packet(src_ip, bytes(packet))
+        except Exception:
+            pass
+
         src_port = 0
         dst_port = 0
         protocol_name = "OTHER"
@@ -142,6 +149,7 @@ def process_packet(packet):
 _last_timeout_check = 0.0
 # notices floods (evicted or shed flows) and raises one alert; see capture/overload.py
 from capture.overload import OverloadMonitor
+from capture.packet_buffer import observe_packet, export_pcap
 from utils.atomic import write_json_atomic
 overload = OverloadMonitor(flow_table, lambda a: alert_logger.log(a))
 
@@ -381,6 +389,15 @@ def _start_ingest_loop():
                     if fused and fused.get('technique') and not alert.get("mitre_technique_id"):
                         alert["mitre_technique_id"] = fused['technique']
                     alert_logger.log(alert)
+                    # Forensic packet buffer (Phase 9): export a PCAP for the
+                    # source of this alert so analysts can download it.
+                    try:
+                        src_ip = flow.initiator_ip
+                        pcap_path = export_pcap(src_ip)
+                        if pcap_path:
+                            alert["pcap_file"] = os.path.basename(pcap_path)
+                    except Exception:
+                        logger.debug("Failed to export PCAP for alert", exc_info=True)
                     try:
                         from utils import metrics as m
                         if m.ALERTS is not None:

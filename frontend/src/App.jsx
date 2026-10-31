@@ -23,7 +23,7 @@ const TrustModal = lazy(() => import('./components/TrustModal'))
 const FleetModal = lazy(() => import('./components/FleetModal'))
 const OperationsModal = lazy(() => import('./components/OperationsModal'))
 const SetupWizard = lazy(() => import('./components/SetupWizard'))
-import { apiGet, apiPost, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
+import { apiGet, apiPost, apiDelete, authStatus, hasRole, logout, onSessionEnded, openSocket, refreshSession } from './api'
 import { ChangePasswordScreen, LoginScreen, MfaSetupScreen } from './components/AuthScreens'
 
 const SEVERITY = {
@@ -224,7 +224,7 @@ function Sparkline({ values = [] }){
   )
 }
 
-function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onOt, onTrust, onFleet, onOps, onSetup, onChangePassword, onLogout }){
+function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onOt, onTrust, onFleet, onOps, onSetup, onChangePassword, onLogout, onForensics }){
   const utc = useUtcClock()
   return (
     <header className={`top-nav ${criticalPulse ? 'critical-pulse' : ''}`}>
@@ -253,6 +253,7 @@ function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter
         <button className="ghost-button" onClick={onOt}>OT devices</button>
         {hasRole(user, 'admin') && <button className="ghost-button" onClick={onAudit}>Audit log</button>}
         {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onSetup}>Setup</button>}
+        <button className="ghost-button" onClick={onForensics}>Forensics</button>
         <div className="user-chip" title={`Signed in as ${user?.username} (${user?.role})`}>
           <span>{user?.username}</span><em>{user?.role}</em>
         </div>
@@ -549,6 +550,9 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
   const [trustOpen, setTrustOpen] = useState(false)
   const [fleetOpen, setFleetOpen] = useState(false)
   const [opsOpen, setOpsOpen] = useState(false)
+  const [forensicsOpen, setForensicsOpen] = useState(false)
+  const [pcaps, setPcaps] = useState([])
+  const [pcapsBusy, setPcapsBusy] = useState(false)
   const [connected, setConnected] = useState(false)
   const [criticalPulse, setCriticalPulse] = useState(false)
   const [toast, setToast] = useState(null)
@@ -578,6 +582,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
     setRawTimeline(rt || {})
     const incidents = await apiGet('/api/incidents/timeline', [])
     setIncidentEvents(Array.isArray(incidents) ? incidents : [])
+    loadPcaps()
   }, [])
 
   useEffect(()=>{
@@ -665,6 +670,30 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
     setTimeout(()=>setToast(null), 3500)
   }
 
+  const loadPcaps = async ()=>{
+    setPcapsBusy(true)
+    try{
+      const res = await apiGet('/api/pcaps', {pcaps: []})
+      setPcaps(Array.isArray(res.pcaps) ? res.pcaps : [])
+    }catch(e){
+      // PCAP endpoint may not exist on older deployments
+      setPcaps([])
+    }finally{
+      setPcapsBusy(false)
+    }
+  }
+
+  const deletePcap = async (name)=>{
+    if(!window.confirm(`Delete ${name}?`)) return
+    try{
+      await apiDelete(`/api/pcaps/${encodeURIComponent(name)}`)
+      setPcaps(prev=>prev.filter(p=>p.name !== name))
+      showToast(`Deleted ${name}`, 'info')
+    }catch(e){
+      showToast(`Delete failed: ${errorMessage(e)}`, 'error')
+    }
+  }
+
   const startPresenter = async ()=>{
     try{
       await apiPost('/api/demo/presenter', { simulate_type: 'portscan' })
@@ -721,6 +750,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
         onTrust={()=>setTrustOpen(true)}
         onFleet={()=>setFleetOpen(true)}
         onOps={()=>setOpsOpen(true)}
+        onForensics={()=>{ setForensicsOpen(true); loadPcaps() }}
         onSetup={onSetup}
         onChangePassword={onChangePassword}
         onLogout={onLogout}
@@ -808,6 +838,40 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
         </Suspense>
       )}
       <FirewallPolicyModal open={firewallOpen} onClose={()=>setFirewallOpen(false)} rules={firewallRules} onChanged={loadAll} />
+      {forensicsOpen && (
+        <div className="modal-backdrop" onClick={()=>setForensicsOpen(false)}>
+          <section className="firewall-modal users-modal" role="dialog" aria-label="Forensics" onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2>Forensic Packet Buffer</h2>
+                <p>PCAP captures are saved automatically when an alert is raised. Download them for offline analysis in Wireshark or tcpdump.</p>
+              </div>
+              <button className="icon-button" onClick={()=>setForensicsOpen(false)}>Close</button>
+            </div>
+            <div className="audit-toolbar" style={{display:'flex', gap:'8px', alignItems:'center'}}>
+              <button className="ghost-button" disabled={pcapsBusy} onClick={loadPcaps}>Refresh</button>
+              {pcapsBusy && <span className="auth-hint">loading…</span>}
+            </div>
+            {pcaps.length === 0 && <p className="auth-hint">No packet captures stored yet. PCAPs are created when alerts fire.</p>}
+            {pcaps.length > 0 && (
+              <div className="users-table">
+                <div className="users-row ot-seg-row users-head"><span>File</span><span>Size</span><span>Captured</span><span></span></div>
+                {pcaps.map(p=>(
+                  <div className="users-row ot-seg-row" key={p.name}>
+                    <span title={p.name}>{p.name}</span>
+                    <span>{(p.size / 1024).toFixed(1)} KB</span>
+                    <span>{new Date(p.modified * 1000).toLocaleString()}</span>
+                    <span>
+                      <a href={`/api/pcaps/${encodeURIComponent(p.name)}`} download className="ghost-button">Download</a>
+                      <button className="ghost-button" onClick={()=>deletePcap(p.name)}>Delete</button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
       <Suspense fallback={null}>
         <PresenterMode />
       </Suspense>

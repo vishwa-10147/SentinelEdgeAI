@@ -1594,6 +1594,40 @@ async def websocket_packets(ws: WebSocket):
         bus.unsubscribe(q)
 
 
+@app.get('/api/pcaps')
+def list_pcaps_endpoint(principal: dict = Depends(require_viewer)):
+    """List stored forensic PCAP captures, newest first."""
+    from capture.packet_buffer import list_pcaps
+    return {'pcaps': list_pcaps()}
+
+
+@app.get('/api/pcaps/{name}')
+def download_pcap(name: str, principal: dict = Depends(require_viewer)):
+    """Download a forensic PCAP capture by filename."""
+    from capture.packet_buffer import get_buffer
+    from fastapi.responses import FileResponse
+    import os as _os
+    # Only allow basenames to prevent path traversal
+    safe = _os.path.basename(name)
+    path = get_buffer().pcaps_dir / safe
+    if not path.exists():
+        raise HTTPException(status_code=404, detail='PCAP not found')
+    return FileResponse(path, media_type='application/vnd.tcpdump.pcap', filename=safe)
+
+
+@app.delete('/api/pcaps/{name}')
+def delete_pcap(name: str, principal: dict = Depends(require_admin)):
+    """Delete a stored forensic PCAP capture."""
+    from capture.packet_buffer import get_buffer
+    import os as _os
+    safe = _os.basename(name)
+    path = get_buffer().pcaps_dir / safe
+    if not path.exists():
+        raise HTTPException(status_code=404, detail='PCAP not found')
+    path.unlink()
+    return {'deleted': safe}
+
+
 if os.path.isdir(DIST_DIR):
     # Mount static asset folder (vite usually emits assets/)
     assets_dir = os.path.join(DIST_DIR, 'assets')
