@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-10-31
+
+### Fixed
+- An upgrade only enabled the systemd units that the *previous* version's `sentinelctl` knew about, so units new in the upgraded release (the fleet path units and update timer in 2.4.0) were installed but left disabled. `install_units` now hands enabling to the new release's own script (`sentinelctl enable-units`).
+
 ## [2.4.0] - 2026-10-31
 
 ### Added

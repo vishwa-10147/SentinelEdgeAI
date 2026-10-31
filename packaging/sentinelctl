@@ -251,6 +251,15 @@ install_units() {
   done
   install -m 755 "$release/packaging/sentinelctl" "$SBIN_DIR/sentinelctl"
   systemctl daemon-reload
+  # the new release's own script knows its units; an older sentinelctl running this upgrade does not
+  if [ "${SENTINEL_ENABLE_UNITS_SELF:-0}" != "1" ] && [ -x "$release/packaging/sentinelctl" ]; then
+    SENTINEL_ENABLE_UNITS_SELF=1 "$release/packaging/sentinelctl" enable-units && return 0
+  fi
+  enable_units
+}
+
+enable_units() {
+  local unit
   systemctl enable "${SERVICES[@]}" sentineledgeai-rollback-guard.timer >/dev/null
   systemctl enable --now sentineledgeai-watchdog.timer sentineledgeai-intel.timer sentineledgeai-report.timer \
     sentineledgeai-fleet-update.timer >/dev/null 2>&1 || true
@@ -650,6 +659,7 @@ case "${1:-}" in
   backup)          shift; cmd_backup "$@" ;;
   update)          shift; cmd_update "$@" ;;
   fleet-update)    cmd_fleet_update ;;
+  enable-units)    require_root; enable_units ;;
   preset)          shift; cmd_preset "$@" ;;
   restore)         shift; cmd_restore "$@" ;;
   -h|--help|help)  usage 0 ;;
