@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-10-31
+
+### Added
+- **CIC-IDS2017 results** (docs/EVALUATION.md) on four capture days. Brute force was detected in 114 s, the port scan within a minute of the scan starting and the infiltration in 846 s; 4 of 8 bots were found. False positives were 0.02–0.05% per benign flow.
+
+### Fixed
+- The CIC-IDS2017 loader read afternoon timestamps as morning (the files use a 12-hour clock without AM/PM), which replayed attacks out of order, and gave every flow of a minute the same time. Hours 1–7 are now afternoon, and flows within a minute are spread in file order. The MachineLearningCVE variant (no IPs or timestamps) is refused with a clear message instead of silently yielding no events. Infiltration counts any compromise behaviour from the victim, not only exfiltration.
+
 ## [2.9.0] - 2026-10-31
 
 ### Added

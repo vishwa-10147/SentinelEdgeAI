@@ -25,7 +25,9 @@ from evaluation import synthetic
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 ALERT_RISK = 50
-CLASS_ALIASES = {'host_sweep': {'host_sweep', 'port_scan'}, 'port_scan': {'port_scan', 'host_sweep'}}
+CLASS_ALIASES = {'host_sweep': {'host_sweep', 'port_scan'}, 'port_scan': {'port_scan', 'host_sweep'},
+                 # a compromised internal host: any compromise behaviour from it counts
+                 'infiltration': {'port_scan', 'host_sweep', 'beaconing', 'exfiltration', 'threat_intel', 'tls_known_bad'}}
 
 
 class SimClock:
@@ -107,38 +109,77 @@ def evaluate(events, truth):
 # ---------- CIC-IDS2017 ----------
 
 CIC_LABELS = {'portscan': 'port_scan', 'ftp-patator': 'brute_force', 'ssh-patator': 'brute_force',
-              'bot': 'beaconing', 'infiltration': 'exfiltration'}
+              'bot': 'beaconing', 'infiltration': 'infiltration'}
+
+
+def _cic_time(text):
+    """(epoch seconds, has_seconds) of a CIC-IDS2017 timestamp.
+
+    The TrafficLabelling files write 'd/m/Y H:M' (some 'd/m/Y H:M:S') on a 12-hour clock
+    without AM/PM; the capture ran during office hours (08:00-17:00), so hours 1-7 are
+    afternoon and get 12 hours added.
+    """
+    text = text.strip()
+    for fmt, has_s in (('%d/%m/%Y %H:%M:%S', True), ('%d/%m/%Y %H:%M', False)):
+        try:
+            t = datetime.strptime(text, fmt)
+            break
+        except ValueError:
+            continue
+    else:
+        return float(text), True
+    if 1 <= t.hour <= 7:
+        t = t.replace(hour=t.hour + 12)
+    return t.timestamp(), has_s
 
 
 def load_cicids(path):
-    """Flow events from a CIC-IDS2017 'MachineLearningCVE'/'TrafficLabelling' CSV."""
-    events, truth, seen = [], [], {}
+    """Flow events from a CIC-IDS2017 'TrafficLabelling' CSV (the variant with IPs and timestamps).
+
+    Timestamps have minute resolution in most files: the flows of one minute are spread evenly
+    over that minute in file order, so detectors that look at timing see a plausible sequence
+    instead of bursts of identical timestamps. This is an approximation, stated in the report.
+    """
+    rows, per_minute = [], defaultdict(int)
     with open(path, newline='', encoding='utf-8', errors='ignore') as f:
         reader = csv.DictReader(f)
         reader.fieldnames = [h.strip() for h in reader.fieldnames]
+        if 'Source IP' not in reader.fieldnames:
+            raise ValueError('this is the MachineLearningCVE variant (no IPs or timestamps); use TrafficLabelling')
         for row in reader:
             try:
-                ts = datetime.strptime(row['Timestamp'].strip(), '%d/%m/%Y %H:%M').timestamp() \
-                    if '/' in row.get('Timestamp', '') else float(row.get('Timestamp') or 0)
+                ts, has_s = _cic_time(row['Timestamp'])
                 label = row['Label'].strip().lower()
-                kind = CIC_LABELS.get(label.split(' ')[0]) if label != 'benign' else None
                 rec = {'ts': ts, 'src': row['Source IP'].strip(), 'dst': row['Destination IP'].strip(),
                        'dport': int(float(row['Destination Port'])), 'sport': int(float(row.get('Source Port') or 0)),
                        'proto': {'6': 'TCP', '17': 'UDP'}.get(row.get('Protocol', '').strip(), 'OTHER'),
                        'duration': float(row['Flow Duration']) / 1e6,
                        'forward_bytes': int(float(row['Total Length of Fwd Packets'])),
                        'backward_bytes': int(float(row['Total Length of Bwd Packets']))}
-            except (KeyError, ValueError):
+            except (KeyError, ValueError, TypeError):
                 continue
-            if label == 'benign' or kind is None:
-                events.append({'type': 'flow', 'label': 'benign' if label == 'benign' else label, 'attack': None,
-                               'record': rec})
-                continue
-            key = (kind, rec['src'])
-            if key not in seen:
-                seen[key] = f'{kind}-{len(truth)}'
-                truth.append({'id': seen[key], 'kind': kind, 'src': rec['src'], 'start': ts})
-            events.append({'type': 'flow', 'label': kind, 'attack': seen[key], 'record': rec})
+            slot = None if has_s else int(ts)
+            index = per_minute[slot] if slot is not None else 0
+            if slot is not None:
+                per_minute[slot] += 1
+            rows.append((rec, label, slot, index))
+    events, truth, seen = [], [], {}
+    for rec, label, slot, index in rows:
+        if slot is not None:
+            rec['ts'] = slot + 60.0 * index / per_minute[slot]
+        kind = CIC_LABELS.get(label.split(' ')[0]) if label != 'benign' else None
+        if label == 'benign' or kind is None:
+            events.append({'type': 'flow', 'label': 'benign' if label == 'benign' else label, 'attack': None,
+                           'record': rec})
+            continue
+        key = (kind, rec['src'])
+        if key not in seen:
+            seen[key] = f'{kind}-{len(truth)}'
+            truth.append({'id': seen[key], 'kind': kind, 'src': rec['src'], 'start': rec['ts']})
+        else:
+            t = next(x for x in truth if x['id'] == seen[key])
+            t['start'] = min(t['start'], rec['ts'])
+        events.append({'type': 'flow', 'label': kind, 'attack': seen[key], 'record': rec})
     events.sort(key=lambda e: e['record']['ts'])
     return events, truth
 

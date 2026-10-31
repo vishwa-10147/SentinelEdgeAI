@@ -307,3 +307,43 @@ def test_flood_needs_a_high_packet_rate():
     flood = SimpleNamespace(duration=2, forward_packets=9000, backward_packets=100, **base)     # 4,550 packets/s
     assert c.classify(busy, 3) != 'TRAFFIC_FLOOD'
     assert c.classify(flood, 3) == 'TRAFFIC_FLOOD'
+
+
+# ---------- CIC-IDS2017 loader ----------
+
+CIC_HEADER = ('Flow ID, Source IP, Source Port, Destination IP, Destination Port, Protocol, Timestamp, Flow Duration, '
+              'Total Length of Fwd Packets, Total Length of Bwd Packets, Label')
+
+
+def cic_csv(tmp_path, rows):
+    path = tmp_path / 'day.pcap_ISCX.csv'
+    path.write_text(CIC_HEADER + '\n' + '\n'.join(rows) + '\n')
+    return str(path)
+
+
+def test_cic_timestamps_are_afternoon_without_am_pm():
+    from datetime import datetime
+    from evaluation.harness import _cic_time
+    morning, _ = _cic_time('4/7/2017 9:30')
+    afternoon, has_s = _cic_time('4/7/2017 3:11')
+    assert datetime.fromtimestamp(morning).hour == 9 and datetime.fromtimestamp(afternoon).hour == 15 and not has_s
+    assert _cic_time('04/07/2017 15:11:42')[1] is True
+
+
+def test_cic_flows_of_one_minute_are_spread_in_file_order(tmp_path):
+    from evaluation.harness import load_cicids
+    rows = [f'x,172.16.0.1,{40000 + i},192.168.10.50,22,6,4/7/2017 3:11,1000,100,200,SSH-Patator' for i in range(4)]
+    rows.append('y,192.168.10.5,50000,192.168.10.3,53,17,4/7/2017 9:00,10,60,90,BENIGN')
+    events, truth = load_cicids(cic_csv(tmp_path, rows))
+    attack = [e['record']['ts'] for e in events if e['attack']]
+    assert [round(b - a) for a, b in zip(attack, attack[1:])] == [15, 15, 15]
+    assert events[0]['label'] == 'benign'                               # 09:00 comes before 15:11
+    assert truth == [{'id': 'brute_force-0', 'kind': 'brute_force', 'src': '172.16.0.1', 'start': attack[0]}]
+
+
+def test_cic_machine_learning_variant_is_refused(tmp_path):
+    from evaluation.harness import load_cicids
+    path = tmp_path / 'ml.csv'
+    path.write_text(' Destination Port, Flow Duration, Label\n80,10,BENIGN\n')
+    with pytest.raises(ValueError, match='MachineLearningCVE'):
+        load_cicids(str(path))

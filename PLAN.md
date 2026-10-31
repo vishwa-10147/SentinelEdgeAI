@@ -219,7 +219,8 @@ Exit criteria evidence so far (`sudo bash tests/firewall_netns/run_enforcement_n
 - [x] Feedback loop: `/api/alerts/feedback` (Analyst); labels recalibrate each detector's precision, which drives confirmation.
 - [x] Evaluation harness (`python -m evaluation.harness`, `--cicids file.csv`), reports in `reports/eval/`.
 - [ ] GPU models on the Jetson (TensorRT autoencoder, sequence and graph models) — pending hardware.
-- [ ] Evaluation on CIC-IDS2017 / UNSW-NB15 / CIC-IoT2023 and captured lab attacks; Suricata comparison — the loader exists, datasets not yet run.
+- [x] Evaluation on CIC-IDS2017 (docs/EVALUATION.md): brute force, port scan and infiltration detected on their days (114 s; under a minute after the scan starts; 846 s), 4 of 8 bots (minute-resolution timestamps limit beaconing); 0.02–0.05% false positives per benign flow. The loader now handles the files' 12-hour clock and minute resolution, and refuses the MachineLearningCVE variant.
+- [ ] UNSW-NB15 / CIC-IoT2023 loaders, captured lab attacks and a Suricata comparison.
 - [x] Console views for analyst feedback, the model registry (promote, roll back) and the latest evaluation (**Operations → Models & evaluation**).
 
 Evidence on the labelled synthetic set (7 attack classes × 6 instances, 25 hosts, realistic false-positive bait such as NTP, backups, CDN browsing, management polling; 5 seeds and a 24-hour run): **100% detection, 0.0% false positives, p99 0.15 ms per event**. The harness was checked by an over-sensitive configuration, which it correctly scores at 1.4% false positives. These are upper-bound numbers on synthetic data; **the targets count as met only after the public datasets and lab captures.**

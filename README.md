@@ -32,11 +32,11 @@ SentinelEdgeAI is a network appliance that learns how every device on a network 
 
 | | |
 |---|---|
-| **Current release** | [`v2.9.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.9.0): production candidate — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning, high availability, compliance packs (pen test and beta pending) |
+| **Current release** | [`v2.9.1`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.9.1): production candidate, all phases (0–7) built — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning, high availability, compliance packs (pen test and beta pending) |
 | **Target hardware** | Raspberry Pi 5 (sensor) and NVIDIA Jetson Orin Nano (AI and management) |
 | **Supply chain** | Signed ML model, reproducible packages, Sigstore/cosign signatures, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
 | **Supply chain** | Signed ML model, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
-| **Documentation** | [Admin guide](docs/ADMIN_GUIDE.md) · [Runbooks](docs/RUNBOOKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [API reference](docs/API.md) · [Performance](docs/PERFORMANCE.md) · [EXPLAIN.md](EXPLAIN.md) · [SECURITY.md](SECURITY.md) · [PLAN.md](PLAN.md) · [CHANGELOG.md](CHANGELOG.md) |
+| **Documentation** | [Admin guide](docs/ADMIN_GUIDE.md) · [Runbooks](docs/RUNBOOKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [API reference](docs/API.md) · [Performance](docs/PERFORMANCE.md) · [Evaluation](docs/EVALUATION.md) · [EXPLAIN.md](EXPLAIN.md) · [SECURITY.md](SECURITY.md) · [PLAN.md](PLAN.md) · [CHANGELOG.md](CHANGELOG.md) |
 
 > **Status legend:** ✅ available · 🟡 partial · 🔜 planned (see [PLAN.md](PLAN.md))
 
@@ -61,7 +61,7 @@ Phase 6  Production release                       v2.0   ███████�
 Phase 7  Scale and advanced intelligence          v2.x+  ████████████████████  all 7 themes built (v2.0–v2.9)
 ```
 
-**v2.0 is released and Phase 7 is under way.** Phases 2–6 are built and tested in simulation, in real-kernel network-namespace tests and on the Pi itself. What remains of them needs hardware, outside people or time rather than code: Jetson validation, a 72-hour inline soak, public-dataset evaluation and GPU models, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta. Each phase's evidence and open items are listed in [PLAN.md](PLAN.md).
+**All phases (0–7) are built (v2.9).** Everything is tested in simulation, in real-kernel network-namespace tests, against real PostgreSQL and on a Raspberry Pi 5 running the released packages. What remains needs hardware, outside people or time rather than code: Jetson validation and GPU models, a 72-hour inline soak, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta, plus a few software follow-ups listed in [PLAN.md](PLAN.md) (UNSW-NB15 and CIC-IoT2023 loaders, fleet-wide remote actions and alert search, VLAN reassignment through switch APIs).
 
 | Phase | Release | Goal | Status |
 |---|---|---|---|
@@ -69,7 +69,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ███████�
 | 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | ✅ Released; exit checks met (role test per endpoint, clean ZAP baseline) |
 | 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🟡 Built, including the event bus, brain PostgreSQL, brain-distributed sensor upgrades and the sensors panel (v2.5); brain outage, forged/replayed commands and 3 sensors verified in simulation and on the Pi. Pending: Jetson hardware |
 | 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🟡 Built, with console panels for approvals, restrictions and policy (v2.5); 22/22 real-kernel checks (routed and bridged), rollback ~100 ms. Pending: 72 h inline soak |
-| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built, with console views for models, feedback and evaluation (v2.5); 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models |
+| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built, with console views for models, feedback and evaluation (v2.5); CIC-IDS2017: brute force, port scan, infiltration detected, 4/8 bots, 0.02–0.05% false positives per flow ([results](docs/EVALUATION.md)). Pending: UNSW-NB15, GPU models |
 | 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
 | 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Released as v2.0; installer, OTA, reproducible Sigstore-signed builds, hardening, container, docs, 25–31× faster capture and decisions. Pending: OS images, pen test, beta |
 | 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | ✅ OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3), the fleet manager (v2.4), federated learning (v2.6), response tuning (v2.7), high availability (v2.8) and compliance packs (v2.9): all seven themes built |
@@ -80,7 +80,8 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 
 | Version | Highlights |
 |---|---|
-| **v2.9.0** | Compliance packs: live evidence for ISO 27001, IEC 62443 and NIS2, as JSON and PDF |
+| **v2.9.1** | CIC-IDS2017 evaluation published; loader fixed for the dataset's 12-hour clock and minute timestamps |
+| v2.9.0 | Compliance packs: live evidence for ISO 27001, IEC 62443 and NIS2, as JSON and PDF |
 | v2.8.0 | High availability: active/standby brains with automatic sensor failover, dual sensors per segment |
 | v2.7.0 | Response tuning: learns the least disruptive response that resolves each kind of incident, inside the playbook's bounds |
 | v2.6.0 | Federated learning: sites train the autoencoder together and share only model updates |
@@ -243,16 +244,16 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 2. Optionally verify where the package was built:
 
    ```bash
-   gh attestation verify sentineledgeai-pi-2.9.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
+   gh attestation verify sentineledgeai-pi-2.9.1.tar.gz --repo vishwa-10147/SentinelEdgeAI
    ```
 
 3. Install:
 
    ```bash
-   sha256sum -c sentineledgeai-pi-2.9.0.tar.gz.sha256
-   tar -xzf sentineledgeai-pi-2.9.0.tar.gz
-   sudo bash sentineledgeai-pi-2.9.0/deploy/pi/provision_key.sh /path/to/model_signing.key
-   sudo bash sentineledgeai-pi-2.9.0/packaging/sentinelctl install sentineledgeai-pi-2.9.0.tar.gz
+   sha256sum -c sentineledgeai-pi-2.9.1.tar.gz.sha256
+   tar -xzf sentineledgeai-pi-2.9.1.tar.gz
+   sudo bash sentineledgeai-pi-2.9.1/deploy/pi/provision_key.sh /path/to/model_signing.key
+   sudo bash sentineledgeai-pi-2.9.1/packaging/sentinelctl install sentineledgeai-pi-2.9.1.tar.gz
    ```
 
 4. Open `https://<pi-address>:9000` (the installer prints the address). The certificate is self-signed, so the browser warns once: check that the SHA-256 fingerprint matches `sentinelctl tls show` before continuing, or install your own certificate with `sudo sentinelctl tls import cert.pem key.pem`. Sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. The setup wizard then asks for the network placement, the capture interface and the response mode (reopen it later from **Setup**). Add other users from the **Users** panel.
