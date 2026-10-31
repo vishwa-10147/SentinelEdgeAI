@@ -762,7 +762,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
       )}
       {otOpen && (
         <Suspense fallback={null}>
-          <OtModal open={otOpen} onClose={()=>setOtOpen(false)} />
+          <OtModal open={otOpen} onClose={()=>setOtOpen(false)} user={user} />
         </Suspense>
       )}
       <FirewallPolicyModal open={firewallOpen} onClose={()=>setFirewallOpen(false)} rules={firewallRules} onChanged={loadAll} />

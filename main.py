@@ -77,6 +77,15 @@ if __name__ == "__main__":
     except Exception:
         logger.exception("Failed to start Prometheus metrics server")
 
+    # an enforced OT segmentation plan does not survive a reboot of the kernel ruleset
+    try:
+        from enforcement import segmentation
+        ok, out = segmentation.reapply()
+        if not ok:
+            logger.error("OT segmentation could not be re-applied: %s", out)
+    except Exception:
+        logger.exception("OT segmentation re-apply failed")
+
     def _refresh_identities():
         from enforcement import identity
         while True:

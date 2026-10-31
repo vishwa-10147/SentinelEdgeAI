@@ -127,6 +127,10 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 |---|---|---|---|
 | `GET` | `/` | public |  |
 | `GET` | `/api/ot/assets` | viewer | Industrial controllers seen on the network, the hosts that command them and the functions they use. |
+| `GET` | `/api/ot/segmentation` | viewer |  |
+| `POST` | `/api/ot/segmentation` | admin | Set OT segmentation to off, monitor or enforce (enforce needs inline placement). |
+| `POST` | `/api/ot/segmentation/allow` | admin | Let `src` command controller `dst` over `protocol` (an exception to the learned allow-list). |
+| `POST` | `/api/ot/segmentation/refresh` | admin | While enforcing, take a new snapshot of the learned allow-lists. |
 | `GET` | `/metrics` | viewer |  |
 | `GET` | `/openapi.json` | viewer |  |
 | `GET` | `/quarantined` | public |  |

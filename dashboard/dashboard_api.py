@@ -733,6 +733,43 @@ def ot_assets(principal: dict = Depends(require_viewer)):
         store.close()
 
 
+@app.get('/api/ot/segmentation')
+def ot_segmentation(principal: dict = Depends(require_viewer)):
+    from enforcement import segmentation
+    return segmentation.status()
+
+
+def _segmentation_call(principal, action, fn, *args):
+    try:
+        return fn(*args, by=principal.get('username'))
+    except (ValueError, RuntimeError) as exc:
+        audit_event(principal, action, outcome='rejected', details={'error': str(exc)[:300]})
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post('/api/ot/segmentation')
+def ot_segmentation_mode(payload: dict, principal: dict = Depends(require_admin)):
+    """Set OT segmentation to off, monitor or enforce (enforce needs inline placement)."""
+    from enforcement import segmentation
+    return _segmentation_call(principal, 'ot_segmentation', segmentation.set_mode, (payload or {}).get('mode'))
+
+
+@app.post('/api/ot/segmentation/allow')
+def ot_segmentation_allow(payload: dict, principal: dict = Depends(require_admin)):
+    """Let `src` command controller `dst` over `protocol` (an exception to the learned allow-list)."""
+    from enforcement import segmentation
+    p = payload or {}
+    return _segmentation_call(principal, 'ot_segmentation_allow', segmentation.allow,
+                              str(p.get('src', '')), str(p.get('dst', '')), str(p.get('protocol', '')))
+
+
+@app.post('/api/ot/segmentation/refresh')
+def ot_segmentation_refresh(payload: dict = {}, principal: dict = Depends(require_admin)):
+    """While enforcing, take a new snapshot of the learned allow-lists."""
+    from enforcement import segmentation
+    return _segmentation_call(principal, 'ot_segmentation_refresh', segmentation.refresh)
+
+
 @app.get('/api/firewall/restrictions')
 def firewall_restrictions(principal: dict = Depends(require_viewer)):
     return firewall.list_restrictions()

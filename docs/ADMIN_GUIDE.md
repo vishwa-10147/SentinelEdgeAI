@@ -65,6 +65,24 @@ sudo -u sentinel .venv/bin/python -m enforcement policy apply policy.yaml
 
 Every apply is validated, stored in `data/policy_history/` and written to the audit log. Add administrator workstations and OT controllers to `management_hosts` so they can never be blocked.
 
+### OT micro-segmentation
+
+On industrial networks the engine learns, for 7 days per controller, which hosts command each Modbus, DNP3, BACnet or OPC UA device (**OT devices** in the console, `GET /api/ot/assets`). That learning can become an allow-list:
+
+- `monitor` (start here): shows the plan, meaning each learned controller and the hosts allowed to reach its industrial ports. A new host commanding a controller is already alerted (`ot_new_master`).
+- `enforce` (Admin, inline placement only): installs nftables rules so only the allowed hosts can open connections to those ports. Replies and other ports are untouched. Management hosts and the whitelist are always allowed, and protected hosts (gateway, DNS, DHCP, the appliance) are never guarded.
+- The enforced plan is a snapshot. A host learned afterwards is **not** allowed until you add an exception or take a new snapshot.
+- An operator rollback or the watchdog's fail-open turns segmentation **off**, and it stays off until someone turns it on again.
+
+Change modes, add exceptions and take snapshots from **OT devices** in the console (or `POST /api/ot/segmentation*`). The API service holds the firewall capability. The CLI is useful to inspect the plan:
+
+```bash
+cd /opt/sentineledgeai/current
+sudo -u sentinel .venv/bin/python -m enforcement segment status
+```
+
+Every change is in the audit log. The real-kernel test is `sudo bash tests/firewall_netns/run_segmentation_netns.sh`.
+
 ## 7. Two-node mode (Pi sensor + brain)
 
 1. On the brain: choose the **Brain** role in Setup (sensors connect to port 9443).

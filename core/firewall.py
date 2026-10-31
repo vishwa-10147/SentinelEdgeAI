@@ -490,6 +490,11 @@ def rollback_blocks(reason: str = 'operator_rollback'):
         for r in restricted:
             _remove_restriction_kernel(r)
         _write_restrictions([])
+    try:
+        from enforcement import segmentation
+        segmentation.on_rollback(reason)       # the tables are gone; segmentation stays off until re-enabled
+    except Exception:
+        pass
     _log_action({'action': 'rollback', 'count': len(active), 'restrictions': len(restricted),
                  'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
     return {'removed': len(active), 'restrictions_removed': len(restricted), 'rules_left': 0}

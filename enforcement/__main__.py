@@ -1,10 +1,10 @@
-"""python -m enforcement policy export|validate|diff|apply | protected | devices | quarantine | release | pending | approve | deny"""
+"""python -m enforcement policy export|validate|diff|apply | protected | devices | quarantine | release | pending | approve | deny | segment"""
 import argparse
 import json
 import sys
 
 import core.firewall as firewall
-from enforcement import identity, playbook, policy, protected
+from enforcement import identity, playbook, policy, protected, segmentation
 
 
 def _show(obj):
@@ -33,9 +33,26 @@ def main(argv=None):
         p = sub.add_parser(name, help=f'{name} a pending playbook action')
         p.add_argument('id', type=int)
         p.add_argument('--by', default='cli')
+    p = sub.add_parser('segment', help='OT micro-segmentation from learned allow-lists')
+    p.add_argument('action', choices=['status', 'off', 'monitor', 'enforce', 'allow', 'refresh'])
+    p.add_argument('args', nargs='*', help='allow: SRC DST PROTOCOL')
+    p.add_argument('--by', default='cli')
     args = parser.parse_args(argv)
 
     try:
+        if args.command == 'segment':
+            if args.action == 'status':
+                _show(segmentation.status())
+            elif args.action == 'allow':
+                if len(args.args) != 3:
+                    print('allow needs SRC DST PROTOCOL', file=sys.stderr)
+                    return 2
+                _show(segmentation.allow(*args.args, by=args.by))
+            elif args.action == 'refresh':
+                _show(segmentation.refresh(by=args.by))
+            else:
+                _show(segmentation.set_mode(args.action, by=args.by))
+            return 0
         if args.command == 'policy':
             if args.action == 'export':
                 print(policy.export(), end='')
