@@ -22,7 +22,8 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${VERSION:-$(tr -d '[:space:]' < "$REPO_DIR/VERSION")}"
 PYTHON="${PYTHON:-python3}"
-WHEEL_PYTHON_VERSION="${WHEEL_PYTHON_VERSION:-3.11}"
+# Bookworm ships Python 3.11, trixie 3.13; one package carries wheels for both (space-separated list)
+WHEEL_PYTHON_VERSION="${WHEEL_PYTHON_VERSION:-3.11 3.13}"
 WHEEL_PLATFORMS="${WHEEL_PLATFORMS:-manylinux2014_aarch64 manylinux_2_17_aarch64 manylinux_2_28_aarch64 manylinux_2_34_aarch64 linux_aarch64}"
 DIST_DIR="$REPO_DIR/dist"
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$REPO_DIR" log -1 --format=%ct)}"
@@ -53,19 +54,23 @@ mkdir -p "$PKG_ROOT/frontend"
 cp -R "$REPO_DIR/frontend/dist" "$PKG_ROOT/frontend/dist"
 
 if [ "${INCLUDE_WHEELS:-1}" = "1" ]; then
-  echo "Downloading runtime wheels for Python $WHEEL_PYTHON_VERSION on: $WHEEL_PLATFORMS"
   PLATFORM_ARGS=()
   for p in $WHEEL_PLATFORMS; do PLATFORM_ARGS+=(--platform "$p"); done
-  "$PYTHON" -m pip download --quiet --only-binary=:all: \
-    --python-version "$WHEEL_PYTHON_VERSION" --implementation cp "${PLATFORM_ARGS[@]}" \
-    -r "$PKG_ROOT/requirements.txt" -d "$PKG_ROOT/wheels"
-  # pip evaluates environment markers on the build host, so make sure every
-  # top-level requirement really has a wheel for the target.
   MISSING=""
-  while read -r name; do
-    norm="$(echo "$name" | tr 'A-Z-.' 'a-z__')"
-    ls "$PKG_ROOT/wheels" | tr 'A-Z-.' 'a-z__' | grep -q "^${norm}_" || MISSING="$MISSING $name"
-  done < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$PKG_ROOT/requirements.txt" | grep -v '^$' | sed -E 's/[=<>!~;\[].*//')
+  for pyver in $WHEEL_PYTHON_VERSION; do
+    echo "Downloading runtime wheels for Python $pyver on: $WHEEL_PLATFORMS"
+    "$PYTHON" -m pip download --quiet --only-binary=:all: \
+      --python-version "$pyver" --implementation cp "${PLATFORM_ARGS[@]}" \
+      -r "$PKG_ROOT/requirements.txt" -d "$PKG_ROOT/wheels"
+    # pip evaluates environment markers on the build host, so make sure every
+    # top-level requirement really has a wheel for this target (pure-Python or cpXY)
+    tag="cp${pyver/./}"
+    while read -r name; do
+      norm="$(echo "$name" | tr 'A-Z-.' 'a-z__')"
+      ls "$PKG_ROOT/wheels" | tr 'A-Z-.' 'a-z__' | grep "^${norm}_" | grep -qE "(py3|${tag}|abi3)" \
+        || MISSING="$MISSING $name($pyver)"
+    done < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$PKG_ROOT/requirements.txt" | grep -v '^$' | sed -E 's/[=<>!~;\[].*//')
+  done
   if [ -n "$MISSING" ]; then
     echo "No wheel bundled for:$MISSING" >&2
     exit 1

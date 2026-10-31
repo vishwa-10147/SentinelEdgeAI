@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-31
+
+### Fixed
+- The Pi package bundled wheels for Python 3.11 only, so it could not install offline on Raspberry Pi OS Trixie (Python 3.13). It now carries wheels for both 3.11 and 3.13 (`WHEEL_PYTHON_VERSION` takes a space-separated list).
+
 ## [2.0.0] - 2026-10-31
 
 First production-candidate release (Phases 2–6, plus the first Phase 7 feature: OT protocol awareness). The external penetration test, the 30-day beta, pre-built OS images and the Jetson hardware validation are still pending; see PLAN.md.
