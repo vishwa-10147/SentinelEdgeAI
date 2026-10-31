@@ -134,6 +134,9 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | Method | Path | Minimum role | Notes |
 |---|---|---|---|
 | `GET` | `/` | public |  |
+| `GET` | `/api/compliance` | admin | Every compliance pack's totals from one evidence collection (documentation support, not certification). |
+| `GET` | `/api/compliance/{pack}` | admin |  |
+| `GET` | `/api/compliance/{pack}/pdf` | admin |  |
 | `GET` | `/api/fleet` | viewer | Fleet server view: sites with their latest reports, groups with rollout progress, templates. |
 | `GET` | `/api/fleet/agent` | viewer | This site's own fleet status: enrolment, last report, applied template, pending version. |
 | `POST` | `/api/fleet/codes` | admin | A one-time enrolment code for a new site (valid for an hour). |

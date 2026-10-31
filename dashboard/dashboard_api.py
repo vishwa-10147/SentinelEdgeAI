@@ -984,6 +984,39 @@ def tuning_update(payload: dict, principal: dict = Depends(require_admin)):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@app.get('/api/compliance')
+def compliance_overview(principal: dict = Depends(require_admin)):
+    """Every compliance pack's totals from one evidence collection (documentation support, not certification)."""
+    from compliance import evidence, packs
+    ev = evidence.collect()
+    return {name: {k: v for k, v in packs.report(name, ev).items() if k != 'controls'} for name in packs.PACKS}
+
+
+@app.get('/api/compliance/{pack}')
+def compliance_report(pack: str, principal: dict = Depends(require_admin)):
+    from compliance import packs
+    try:
+        report = packs.report(pack)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    audit_event(principal, 'compliance_report', target=pack)
+    return report
+
+
+@app.get('/api/compliance/{pack}/pdf')
+def compliance_pdf(pack: str, principal: dict = Depends(require_admin)):
+    from fastapi.responses import Response
+    from compliance import packs
+    from compliance.pdf import render
+    try:
+        report = packs.report(pack)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    audit_event(principal, 'compliance_report', target=pack, details={'format': 'pdf'})
+    return Response(render(report), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="sentineledgeai-{pack}-evidence.pdf"'})
+
+
 @app.get('/api/policy')
 def policy_get(principal: dict = Depends(require_viewer)):
     from enforcement import policy

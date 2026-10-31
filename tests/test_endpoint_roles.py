@@ -74,6 +74,9 @@ ROUTES = {
     ('GET', '/api/ot/assets'): 'viewer',
     ('GET', '/api/trust'): 'viewer',
     ('GET', '/api/tuning'): 'viewer',
+    ('GET', '/api/compliance'): 'admin',
+    ('GET', '/api/compliance/{pack}'): 'admin',
+    ('GET', '/api/compliance/{pack}/pdf'): 'admin',
     ('POST', '/api/tuning'): 'admin',
     ('GET', '/api/brain/upgrade'): 'viewer',
     ('GET', '/api/brain/ha'): 'viewer',
@@ -153,7 +156,7 @@ def declared_minimum(route):
 
 
 def concrete(path):
-    return path.replace('{ip}', '192.0.2.1').replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope').replace('{site_id}', 'site-0').replace('{segment}', 'seg-0')
+    return path.replace('{ip}', '192.0.2.1').replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope').replace('{site_id}', 'site-0').replace('{segment}', 'seg-0').replace('{pack}', 'nis2')
 
 
 @pytest.fixture(autouse=True)

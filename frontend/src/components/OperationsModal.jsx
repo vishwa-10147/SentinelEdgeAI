@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { apiGet, apiPost, errorMessage, hasRole } from '../api'
+import { API_BASE, apiGet, apiPost, errorMessage, getAccessToken, hasRole } from '../api'
 
-const TABS = [['response', 'Response'], ['policy', 'Policy'], ['sensors', 'Sensors'], ['models', 'Models & evaluation']]
+const TABS = [['response', 'Response'], ['policy', 'Policy'], ['sensors', 'Sensors'], ['models', 'Models & evaluation'], ['compliance', 'Compliance']]
 
 function when(ts){
   return ts ? new Date(ts * 1000).toLocaleString() : '—'
@@ -208,6 +208,66 @@ function ModelsTab({ user, act, busy, reloadKey }){
   )
 }
 
+const STATUS_CLASS = { met: 'mfa-on', partial: 'mfa-pending', gap: 'trust-untrusted', manual: '', 'n/a': '' }
+
+function ComplianceTab({ user, reloadKey }){
+  const [overview, setOverview] = useState(null)
+  const [pack, setPack] = useState('iso27001')
+  const [report, setReport] = useState(null)
+  const [error, setError] = useState('')
+  const admin = hasRole(user, 'admin')
+  useEffect(()=>{
+    if(!admin) return
+    apiGet('/api/compliance', null).then(setOverview).catch(e=>setError(errorMessage(e)))
+  }, [reloadKey, admin])
+  useEffect(()=>{
+    if(!admin) return
+    setReport(null)
+    apiGet(`/api/compliance/${pack}`, null).then(setReport).catch(e=>setError(errorMessage(e)))
+  }, [pack, reloadKey, admin])
+  if(!admin) return <div className="rules-section"><p className="auth-hint">Compliance evidence is available to Admins.</p></div>
+  const download = async ()=>{
+    try{
+      const res = await fetch(`${API_BASE}/api/compliance/${pack}/pdf`, { headers: { Authorization: `Bearer ${getAccessToken()}` } })
+      if(!res.ok) throw new Error(`HTTP ${res.status}`)
+      const url = URL.createObjectURL(await res.blob())
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `sentineledgeai-${pack}-evidence.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    }catch(e){ setError(errorMessage(e)) }
+  }
+  return (
+    <div className="rules-section">
+      <h3>Compliance evidence</h3>
+      <p className="auth-hint">What this appliance can show for each control, read live. Documentation support, not a certification; organisational controls are marked manual.</p>
+      {error && <div className="auth-error users-error" role="alert">{error}</div>}
+      <div className="audit-toolbar" role="tablist">
+        {overview && Object.entries(overview).map(([k, o])=>(
+          <button key={k} className={k === pack ? 'primary-button' : 'ghost-button'} onClick={()=>setPack(k)} title={o.title}>
+            {k} · {o.totals.met} met, {o.totals.partial} partial, {o.totals.gap} gap
+          </button>
+        ))}
+        <button className="ghost-button" onClick={download}>Download PDF</button>
+      </div>
+      {report && (
+        <div className="users-table">
+          <div className="users-row compliance-row users-head"><span>Control</span><span>Status</span><span>What it asks</span><span>Evidence</span></div>
+          {report.controls.map(c=>(
+            <div className="users-row compliance-row" key={c.id}>
+              <span>{c.id}</span>
+              <span className={STATUS_CLASS[c.status]}>{c.status}</span>
+              <span>{c.title}</span>
+              <span className="audit-details">{c.evidence.length ? c.evidence.map(e=>`[${e.status}] ${e.summary}`).join(' · ') : 'organisational: evidence from outside the appliance'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function OperationsModal({ open, onClose, user }){
   const [tab, setTab] = useState('response')
   const [error, setError] = useState('')
@@ -255,6 +315,7 @@ export default function OperationsModal({ open, onClose, user }){
         {tab === 'policy' && <PolicyTab {...props} />}
         {tab === 'sensors' && <SensorsTab {...props} />}
         {tab === 'models' && <ModelsTab {...props} />}
+        {tab === 'compliance' && <ComplianceTab {...props} />}
       </section>
     </div>
   )

@@ -102,7 +102,39 @@ def create(out_path, passphrase, etc_dir=ETC_DEFAULT, state_dir=STATE_DEFAULT, v
     fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'wb') as f:
         f.write(MAGIC + salt + nonce + sealed)
+    _log_backup(state_dir, out_path, manifest)
     return manifest
+
+
+def backup_log_file(state_dir=STATE_DEFAULT):
+    return os.environ.get('SENTINEL_BACKUP_LOG') or os.path.join(state_dir, 'data', 'backup_log.json')
+
+
+def _log_backup(state_dir, out_path, manifest):
+    """Remember when backups were made (evidence for the compliance packs); never fails the backup."""
+    path = backup_log_file(state_dir)
+    try:
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                log = json.load(f)
+        except (OSError, ValueError):
+            log = []
+        log = (log + [{'ts': manifest['created'], 'file': os.path.abspath(out_path), 'files': len(manifest['files'])}])[-50:]
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + '.tmp', 'w', encoding='utf-8') as f:
+            json.dump(log, f, indent=2)
+        os.replace(path + '.tmp', path)
+    except OSError:
+        pass
+
+
+def last_backup(state_dir=STATE_DEFAULT):
+    try:
+        with open(backup_log_file(state_dir), 'r', encoding='utf-8') as f:
+            log = json.load(f)
+        return log[-1] if log else None
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def _open(path, passphrase):

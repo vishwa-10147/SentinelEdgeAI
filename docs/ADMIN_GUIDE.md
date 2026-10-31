@@ -185,6 +185,16 @@ Everything else happens in **Fleet** in the console (or `/api/fleet/*`, or `pyth
 
 **Federated learning.** Start a round from **Fleet** (or `python -m fleet federated start --min-sites 3`). On their next report, sites that have at least 500 normal flows sampled train the flow autoencoder locally and send back model parameters only. When enough sites have answered, the fleet server combines the updates. Every site then installs the result as a **shadow** model with its threshold calibrated on its own traffic. Compare it in **Operations → Models & evaluation**, and promote it to canary and then active when it looks right. Each round starts from the previous global model.
 
+## 7b. Compliance evidence
+
+**Operations → Compliance** (Admin) reports what this appliance can show for **ISO/IEC 27001:2022** (Annex A), **IEC 62443-3-3** and **NIS2** (Art. 21(2) and 23). The evidence is read live, so fix a gap and refresh. Each control is *met*, *partial*, *gap* (with how to close it), *manual* (organisational, e.g. training or physical security: evidence comes from elsewhere) or *n/a*. Download the PDF for your auditor, or run:
+
+```bash
+sudo -u sentinel .venv/bin/python -m compliance report nis2 --pdf /tmp/nis2-evidence.pdf
+```
+
+This is documentation support for an audit, not a certification or an audit opinion.
+
 ## 8. Integrations and threat intelligence
 
 * SIEM and notifications: `PUT /api/integrations` with sinks of type `syslog` (RFC 5424 or CEF, UDP/TCP/TLS), `webhook` (HMAC-signed), `jsonl`, `slack`, `teams` or `email`; `POST /api/integrations/test` sends a test alert.
