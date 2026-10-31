@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-31
+
 ### Added
 - **Response tuning (Phase 7).** A contextual bandit learns, per kind of incident, which response resolves it with the least disruption (alert < rate limit < contain < block < quarantine). "Resolved" means the source was not detected again within an hour, and an analyst's false-positive label counts as "an alert was enough". It works only inside the bounds people set:
   - never stronger than the playbook's step
