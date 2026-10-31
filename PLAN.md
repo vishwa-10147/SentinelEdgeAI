@@ -270,6 +270,7 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 - [x] Over-the-air updates (`sentinelctl update`): GitHub release or offline mirror, SHA-256 enforced, signature verified with cosign, health-checked install with automatic rollback (A/B via versioned releases). Verified on the Pi, including refusal of a tampered package.
 - [x] Performance (docs/PERFORMANCE.md): AF_PACKET fast-path capture (~121k packets/s effective, was ~4.9k), compiled Isolation Forest (3,843 decisions/s, was 124), throttled timeout scan; fixed a flow-expiry bug.
 - [x] Documentation: admin guide, operator runbooks, troubleshooting, generated API reference (82 endpoints, kept current by a test), pen-test scope, beta plan.
+- [x] Flood safety (2.9.2): bounded flow table with least-recently-active eviction, per-source caps in every detector, capped device/peer/OT tables, load shedding instead of unbounded queueing, a capture-overload alert and metrics, systemd CPU/task/OOM limits. Real-engine flood test in network namespaces: ~460 MB under 322k spoofed packets/s for 3 minutes (v2.9.1: 1.2 GB after 40 s).
 - [ ] External penetration test (scope in docs/PENTEST_SCOPE.md).
 - [ ] 30-day beta at 3–5 sites (plan in docs/BETA_PROGRAM.md).
 

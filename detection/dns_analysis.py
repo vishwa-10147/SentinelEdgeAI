@@ -6,9 +6,10 @@ subdomains per minute. DGA: the registrable label itself looks random
 """
 import math
 import time
-from collections import Counter, defaultdict, deque
+from collections import Counter, deque
 
-from detection.detectors import Cooldown, Finding
+from common.bounded import BoundedDict
+from detection.detectors import MAX_KEYS, MAX_SOURCES, Cooldown, Finding
 
 VOWELS = set('aeiou')
 COMMON_SUFFIXES = {'com', 'net', 'org', 'io', 'co', 'uk', 'de', 'in', 'edu', 'gov', 'local', 'lan', 'arpa'}
@@ -56,8 +57,8 @@ class DNSDetector:
     def __init__(self, window=60, tunnel_unique=30, tunnel_label=40, tunnel_entropy=3.5,
                  dga_names=10, dga_nx_ratio=0.5):
         self.window = window
-        self.queries = defaultdict(deque)        # (src, parent) -> (ts, sub)
-        self.lookups = defaultdict(deque)        # src -> (ts, label, nxdomain, dga)
+        self.queries = BoundedDict(MAX_KEYS, deque)        # (src, parent) -> (ts, sub)
+        self.lookups = BoundedDict(MAX_SOURCES, deque)     # src -> (ts, label, nxdomain, dga)
         self.tunnel_unique, self.tunnel_label, self.tunnel_entropy = tunnel_unique, tunnel_label, tunnel_entropy
         self.dga_names, self.dga_nx_ratio = dga_names, dga_nx_ratio
         self.cooldown = Cooldown(600)

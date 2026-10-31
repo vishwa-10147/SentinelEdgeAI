@@ -5,6 +5,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.9.2] - 2026-10-31
+
+### Security
+- **Flood safety.** A flood of spoofed source addresses could exhaust the appliance's memory: v2.9.1 grew from 246 MB to 1.2 GB in 40 seconds at 300,000 packets/s. Now:
+  - The flow table is capped (`SENTINEL_MAX_FLOWS`, default 100,000) and kept in order of last activity, so the least recently active flows are evicted first. Evicted flows are scored within a per-second budget, and the timeout scan stops at the first active flow.
+  - Per-source state in every detector, baseline and fingerprint is capped (`SENTINEL_MAX_SOURCES`, default 20,000). The adaptive baseline stores 4 numbers per flow instead of whole feature dicts, and fingerprint profiles keep at most 256 destinations and ports.
+  - The device registry, peer profiles and OT controller table are capped, so spoofed ARP/DHCP or BACnet floods can't grow them.
+  - Finished flows are handed to scoring once per pass and shed when the queue is full. One asyncio coroutine per flow had piled up tens of thousands of waiting tasks.
+  - A new overload monitor raises one `capture_overload` alert per 10 minutes, adds a `capture` section to the health file and exports `sentinel_capture` metrics.
+  - systemd units set `CPUWeight`, `TasksMax` and `OOMScoreAdjust`, so the engine yields CPU and is the first OOM victim. They also set `MemoryHigh`/`MemoryMax`, which apply where the memory cgroup is enabled.
+
+  Verified against the real engine in network namespaces: 3 minutes at 322,000 spoofed packets/s levels off at about 460 MB (`tests/firewall_netns/run_flood_netns.sh`).
+
+### Fixed
+- `health.json` and `live_stats.json` were written non-atomically, so readers could see half-written files, and a truncated `live_stats.json` reset the live statistics. Both are now written atomically: the live statistics at most once a second instead of for every flow, with `unique_ips` capped at the 5,000 most recent sources.
+- The health file was rewritten once per finished flow instead of once per pass.
+- Reading a baseline count for an unknown source created an empty entry.
+
 ## [2.9.1] - 2026-10-31
 
 ### Added

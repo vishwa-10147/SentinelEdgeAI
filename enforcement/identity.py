@@ -78,6 +78,11 @@ def arp_table(path='/proc/net/arp'):
     return out
 
 
+# flood safety: spoofed ARP/DHCP with random MACs would otherwise grow the table without limit;
+# beyond this many devices, the one not seen for the longest time is dropped
+MAX_DEVICES = int(os.environ.get('SENTINEL_MAX_DEVICES', '20000'))
+
+
 class DeviceRegistry:
     def __init__(self, path=None):
         self.path = path or default_path()
@@ -114,6 +119,8 @@ class DeviceRegistry:
             db = self._db()
             row = db.execute('SELECT * FROM devices WHERE mac = ?', (mac,)).fetchone()
             if row is None:
+                if db.execute('SELECT COUNT(*) FROM devices').fetchone()[0] >= MAX_DEVICES:
+                    db.execute('DELETE FROM devices WHERE mac = (SELECT mac FROM devices ORDER BY last_seen LIMIT 1)')
                 ips = [ip] if ip else []
                 db.execute('INSERT INTO devices(mac, first_seen, last_seen, ip, ips, vendor, hostname, '
                            'dhcp_fingerprint, vendor_class, interface) VALUES (?,?,?,?,?,?,?,?,?,?)',

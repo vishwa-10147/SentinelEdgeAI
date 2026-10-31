@@ -17,6 +17,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 EXTERNAL = '*'
 MAX_INTERNAL = 256
 MAX_EXTERNAL = 128
+MAX_HOSTS = 20000                                         # devices with a profile (flood safety)
 TOUCH_SECONDS = 300
 LEARNING = 7 * 86400
 
@@ -42,6 +43,7 @@ class PeerStore:
         self._conn = None
         self._written = {}
         self._counts = None                               # src -> [internal, external]
+        self._hosts = None                                # number of devices with a profile
 
     def _db(self):
         if self._conn is None:
@@ -91,6 +93,12 @@ class PeerStore:
             known = key in self._written or db.execute(
                 'SELECT 1 FROM peers WHERE src=? AND dst=? AND proto=? AND dport=?', key).fetchone()
             if not known:
+                if src not in self._counts:
+                    if self._hosts is None:
+                        self._hosts = db.execute('SELECT COUNT(*) FROM peer_hosts').fetchone()[0]
+                    if self._hosts >= MAX_HOSTS:
+                        return                            # a flood of spoofed sources: no new profiles
+                    self._hosts += 1
                 n = self._counts[src]
                 if n[0 if internal else 1] >= (MAX_INTERNAL if internal else MAX_EXTERNAL):
                     return

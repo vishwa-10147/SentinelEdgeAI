@@ -22,6 +22,7 @@ import threading
 import time
 from collections import defaultdict
 
+from common.bounded import BoundedDict
 from detection.detectors import Cooldown, Finding, _Window, is_external
 
 # (transport, destination port) -> protocol
@@ -153,6 +154,10 @@ def parse_opcua(payload):
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TOUCH_SECONDS = 60                                        # last_seen is written at most once a minute per row
+# a real site has tens or hundreds of controllers; beyond these caps, a flood of spoofed OT packets
+# (e.g. UDP to the BACnet port) is ignored instead of filling memory and the database
+MAX_SERVERS = 5000
+MAX_LINKS = 50000
 
 
 def default_path():
@@ -232,8 +237,9 @@ class OTDetector:
         self.clock = clock
         self.servers = {}                                 # (dst, protocol) -> first seen
         self.masters = defaultdict(set)                   # (dst, protocol) -> sources
-        self.ops = defaultdict(set)                       # (src, dst, protocol) -> function names
-        self.last = {}                                    # (src, dst, protocol) -> last seen
+        self.ops = BoundedDict(MAX_LINKS, set)            # (src, dst, protocol) -> function names
+        self.last = BoundedDict(MAX_LINKS)                # (src, dst, protocol) -> last seen
+        self.ignored = 0                                  # packets to new controllers beyond MAX_SERVERS
         self.units = _Window(60)
         self.cooldown = Cooldown(1800)
         self.store = store
@@ -269,6 +275,9 @@ class OTDetector:
         out = []
         server = (dst, protocol)
         if server not in self.servers:
+            if len(self.servers) >= MAX_SERVERS:
+                self.ignored += 1
+                return out
             self.servers[server] = ts
             if self.store is not None:
                 self._persist('add_server', dst, protocol, ts)

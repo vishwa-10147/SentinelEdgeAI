@@ -18,6 +18,8 @@
 | No alerts in the SIEM | `GET /api/integrations` (status), `POST /api/integrations/test` | wrong host/port, TLS CA, or the sink's `min_severity` |
 | Report PDF empty | `alerts.json` has alerts in the period? | widen to `weekly`; check the engine is detecting |
 | Audit `BROKEN at entry N` | see RUNBOOKS → audit log integrity | |
+| Alert `capture_overload` ("more new flows than the appliance can track") | `jq .capture /var/lib/sentinel/health.json`; `curl -s localhost:9101/metrics \| grep sentinel_capture` | a flood or spoofed scan: find the source upstream (switch counters, the gateway) and stop it there; detection is degraded until it ends. On a genuinely busy link raise `SENTINEL_MAX_FLOWS` (≈860 bytes per flow) |
+| Service memory limits have no effect | `cat /sys/fs/cgroup/cgroup.controllers` (no `memory`) | Raspberry Pi OS disables the memory cgroup: add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` and reboot |
 
 Useful commands:
 

@@ -140,6 +140,24 @@ def process_packet(packet):
 
 
 _last_timeout_check = 0.0
+# notices floods (evicted or shed flows) and raises one alert; see capture/overload.py
+from capture.overload import OverloadMonitor
+overload = OverloadMonitor(flow_table, lambda a: alert_logger.log(a))
+
+
+def capture_stats():
+    """Flow table and load-shedding counters, plus whether capture is overloaded right now."""
+    return overload.stats()
+
+
+def _offer(flows):
+    """On the ingest loop: queue finished flows for scoring; what does not fit is dropped and counted."""
+    for i, flow in enumerate(flows):
+        try:
+            ingest_queue.queue.put_nowait(flow)
+        except asyncio.QueueFull:
+            overload.ingest_shed += len(flows) - i       # scoring is behind: load shedding
+            return
 
 
 def handle_parsed(src_ip, dst_ip, src_port, dst_port, protocol_name, size):
@@ -154,37 +172,33 @@ def handle_parsed(src_ip, dst_ip, src_port, dst_port, protocol_name, size):
             size
         )
 
-        # Check for expired flows. The scan walks every active flow, so run it at most
-        # once a second instead of on every packet (idle timeouts are 30 s).
+        # Check for expired flows at most once a second (idle timeouts are 30 s); the scan stops at
+        # the first active flow, since the table is kept in order of last activity.
         global _last_timeout_check
         now_mono = time.monotonic()
         if now_mono - _last_timeout_check < 1.0:
             return
         _last_timeout_check = now_mono
         expired = flow_table.check_timeouts()
-
-        for flow in expired:
-            # enqueue expired flow to async ingestion queue for batched processing
-            try:
-                if ingest_queue and ingest_loop:
-                    # schedule enqueue on background loop
-                    asyncio.run_coroutine_threadsafe(ingest_queue.enqueue(flow), ingest_loop)
-                else:
-                    # fallback: process inline (synchronous)
-                    _process_flow_sync(flow)
-            except Exception:
-                logger.exception("Failed to enqueue flow for processing; falling back to sync")
+        overload.check(now_mono)
+        if expired and ingest_queue and ingest_loop:
+            # one hand-off per pass: a coroutine per flow piled up tasks and futures under load
+            ingest_loop.call_soon_threadsafe(_offer, expired)
+        else:
+            for flow in expired:
                 try:
                     _process_flow_sync(flow)
                 except Exception:
-                    logger.exception("Fallback sync processing also failed")
+                    logger.exception("Sync flow processing failed")
 
-            # -------- Update Health Status --------
-            try:
-                with open(HEALTH_FILE, "w") as f:
-                    json.dump(health_monitor.get_status(), f, indent=4)
-            except Exception as e:
-                logger.debug(f"Failed to write health status | Error={str(e)}")
+        # -------- Update Health Status (once per pass, not per flow) --------
+        try:
+            # atomic: readers (the API) never see a half-written file
+            with open(HEALTH_FILE + ".tmp", "w") as f:
+                json.dump({**health_monitor.get_status(), 'capture': capture_stats()}, f, indent=4)
+            os.replace(HEALTH_FILE + ".tmp", HEALTH_FILE)
+        except Exception as e:
+            logger.debug(f"Failed to write health status | Error={str(e)}")
 
     except Exception as e:
         logger.error(
@@ -491,25 +505,48 @@ def _observe_dns_tls(packet):
         logger.debug("DNS/TLS/OT analysis failed", exc_info=True)
 
 
+# live statistics are kept in memory and written atomically at most once a second: rewriting the
+# whole file for every flow was slow and, interrupted, left a truncated file that reset the stats
+MAX_LIVE_IPS = 5000
+_live = {'stats': None, 'written': 0.0}
+
+
 def _record_flow_stats(flow, risk):
-    """Append a finished flow and its risk score to the live stats file."""
-    try:
-        with open(LIVE_STATS_FILE, "r") as f:
-            stats = json.load(f)
-    except Exception:
-        stats = {}
-    stats.setdefault("total_flows", 0)
-    stats.setdefault("unique_ips", [])
-    if not isinstance(stats.get("flow_history"), list):
-        stats["flow_history"] = []
+    """Count a finished flow and its risk score in the live statistics (live_stats.json)."""
+    stats = _live['stats']
+    if stats is None:
+        try:
+            with open(LIVE_STATS_FILE, "r") as f:
+                stats = json.load(f)
+        except Exception:
+            stats = {}
+        stats.setdefault("total_flows", 0)
+        if not isinstance(stats.get("unique_ips"), list):
+            stats["unique_ips"] = []
+        if not isinstance(stats.get("flow_history"), list):
+            stats["flow_history"] = []
+        _live['stats'] = stats
+        _live['ips'] = dict.fromkeys(stats["unique_ips"][-MAX_LIVE_IPS:])
     stats["total_flows"] += 1
-    if flow.initiator_ip not in stats["unique_ips"]:
-        stats["unique_ips"].append(flow.initiator_ip)
+    ips = _live['ips']
+    if flow.initiator_ip in ips:
+        ips.pop(flow.initiator_ip)
+    ips[flow.initiator_ip] = None                 # most recent last; only the newest MAX_LIVE_IPS are kept
+    while len(ips) > MAX_LIVE_IPS:
+        ips.pop(next(iter(ips)))
     stats["flow_history"].append({"timestamp": time.time(), "score": risk})
     history_limit = config.get("persistence", "history_limit")
-    stats["flow_history"] = stats["flow_history"][-history_limit:]
-    with open(LIVE_STATS_FILE, "w") as f:
+    if len(stats["flow_history"]) > history_limit:
+        del stats["flow_history"][:-history_limit]
+    now = time.monotonic()
+    if now - _live['written'] < 1.0:
+        return
+    _live['written'] = now
+    stats["unique_ips"] = list(ips)
+    tmp = LIVE_STATS_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(stats, f)
+    os.replace(tmp, LIVE_STATS_FILE)
 
 
 def _process_flow_sync(flow):

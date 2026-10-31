@@ -11,8 +11,11 @@ sport, dport, proto, ts, duration, forward_bytes, backward_bytes, ...).
 import ipaddress
 import statistics
 import time
-from collections import defaultdict, deque
+import os
+from collections import deque
 from dataclasses import dataclass, field
+
+from common.bounded import BoundedDict, BoundedSet
 
 # services that authenticate per connection; Redis and HTTP-alternate ports are left out because
 # applications reconnect to them constantly (seen live: a container hitting Redis every ~4 s)
@@ -20,6 +23,10 @@ AUTH_PORTS = {21, 22, 23, 110, 143, 389, 445, 993, 995, 1433, 3306, 3389, 5432, 
 # interactive logins: nothing legitimate reconnects every few seconds, so any fast cadence counts;
 # on the other auth ports applications do reconnect on a timer, so only fast or irregular cadence counts
 INTERACTIVE_PORTS = {21, 22, 23, 3389, 5900}
+# per-source state is capped so a flood of spoofed addresses cannot exhaust memory: beyond these,
+# the oldest sources are forgotten (SENTINEL_MAX_SOURCES; keys are source pairs, about twice as many)
+MAX_SOURCES = int(os.environ.get('SENTINEL_MAX_SOURCES', '20000'))
+MAX_KEYS = 2 * MAX_SOURCES
 
 
 @dataclass
@@ -53,7 +60,7 @@ class _Window:
     def __init__(self, seconds, max_items=5000):
         self.seconds = seconds
         self.max_items = max_items
-        self.data = defaultdict(deque)
+        self.data = BoundedDict(MAX_KEYS, deque)
 
     def add(self, key, ts, value):
         q = self.data[key]
@@ -72,7 +79,7 @@ class Cooldown:
 
     def __init__(self, seconds=300):
         self.seconds = seconds
-        self.last = {}
+        self.last = BoundedDict(MAX_KEYS)
 
     def ready(self, key, now):
         if now - self.last.get(key, -1e18) < self.seconds:
@@ -191,8 +198,8 @@ class ExfiltrationDetector:
 
     def __init__(self, min_bytes=5_000_000, min_ratio=10.0, learning=3600):
         self.min_bytes, self.min_ratio, self.learning = min_bytes, min_ratio, learning
-        self.seen = defaultdict(set)      # src -> destinations seen during normal use
-        self.first = {}
+        self.seen = BoundedDict(MAX_SOURCES, set)   # src -> destinations seen during normal use
+        self.first = BoundedDict(MAX_SOURCES)
         self.cooldown = Cooldown(1800)
 
     def observe(self, f):
@@ -221,7 +228,7 @@ class NewDeviceDetector:
     def __init__(self, learning=86400, clock=time.time):
         self.started = clock()
         self.learning = learning
-        self.known = set()
+        self.known = BoundedSet(MAX_SOURCES)
 
     def observe(self, f):
         src = f['src']

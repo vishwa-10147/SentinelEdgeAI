@@ -10,9 +10,9 @@ import ipaddress
 import os
 import struct
 import time
-from collections import defaultdict
 
-from detection.detectors import Cooldown, Finding, is_external
+from common.bounded import BoundedDict
+from detection.detectors import MAX_SOURCES, Cooldown, Finding, is_external
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TLS_VERSIONS = {0x0304: '13', 0x0303: '12', 0x0302: '11', 0x0301: '10', 0x0300: 's3'}
@@ -122,8 +122,8 @@ def load_blocklist(path=None):
 class TLSDetector:
     def __init__(self, blocklist=None, learning=86400, clock=time.time):
         self.blocklist = load_blocklist() if blocklist is None else blocklist
-        self.seen = defaultdict(set)          # src -> fingerprints used
-        self.first = {}
+        self.seen = BoundedDict(MAX_SOURCES, set)   # src -> fingerprints used
+        self.first = BoundedDict(MAX_SOURCES)
         self.learning = learning
         self.clock = clock
         self.cooldown = Cooldown(1800)

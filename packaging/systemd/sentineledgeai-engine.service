@@ -24,5 +24,14 @@ ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/var/lib/sentinel /var/log/sentinel
 
+# flood safety: under load the engine yields CPU to the console and SSH, and is the first
+# process the kernel kills if memory runs out (systemd restarts it; the watchdog fails open).
+# MemoryHigh/Max apply where the memory cgroup is enabled (Raspberry Pi OS disables it by default).
+CPUWeight=50
+TasksMax=512
+OOMScoreAdjust=500
+MemoryHigh=40%
+MemoryMax=55%
+
 [Install]
 WantedBy=multi-user.target

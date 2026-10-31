@@ -21,9 +21,9 @@ Please give us up to **90 days** to ship a fix before public disclosure. Do not 
 
 | Version | Security fixes |
 |---|---|
-| `main` / latest `1.2.x` | ✅ |
-| `1.1.x` | ✅ until 1.3.0 |
-| `1.0.x` and older | ❌ — upgrade to the latest |
+| `main` / latest `2.9.x` | ✅ |
+| `2.8.x` | ✅ until 2.10.0 |
+| `2.7.x` and older | ❌ — upgrade with `sudo sentinelctl update` |
 
 The current and previous minor release receive security fixes.
 
@@ -45,34 +45,35 @@ The current and previous minor release receive security fixes.
 | Compromised IoT device | Flood the sensor to blind it or crash it |
 | Malicious or careless insider | Change policy, whitelist themselves, delete evidence |
 | Supply-chain attacker | Ship a poisoned model, dependency or installer |
-| Network attacker between Pi and Jetson 🔜 | Forge flow data or forge "block" commands |
+| Network attacker between sensor and brain, or between sites and the fleet server | Forge flow data or forge "block" commands |
 
 ### Key threats and mitigations
 
 | Threat | Mitigation | Status |
 |---|---|---|
-| Unauthorised use of the API (block/unblock/policy) | Per-user accounts with Argon2id passwords, four roles enforced on every endpoint, session expiry | ✅ |
-| | Rate limiting per client and account lockout on login | ✅ |
-| | Two-step sign-in (TOTP authenticator apps) required for Operator and Admin, with single-use recovery codes | ✅ |
+| Unauthorised use of the API (block, unblock, policy) | Per-user accounts with Argon2id passwords, four roles enforced and tested on every endpoint, session expiry | ✅ |
+| | Login throttling and account lockout; API rate limits per client | ✅ |
+| | Two-step sign-in (TOTP) required for Operator and Admin, with single-use recovery codes | ✅ |
 | | Scoped, expiring API tokens for automation | ✅ |
-| Stolen session token | 15-minute access tokens held in memory; refresh token in an HttpOnly, SameSite=Strict cookie, rotated on every use; reuse of an old refresh token revokes the session | ✅ |
-| Cross-site request forgery | Bearer tokens (not cookies) authorise API calls; the refresh/logout endpoints require a custom header; CORS limited to configured origins | ✅ |
-| Eavesdropping on the console/API | HTTPS by default with a certificate created at install, or the organisation's own; HSTS; secure WebSocket | ✅ |
-| Appliance blocks critical hosts (self-DoS) | Whitelist; `127.0.0.1` always whitelisted | ✅ |
-| | Auto-detect and protect gateway, DNS, management IPs | 🔜 |
-| Bad rules lock the network | Dry-run default, TTL expiry, rollback API, systemd rollback guard | ✅ |
-| Command injection through firewall calls | IP/TTL validation; argument lists only (no shell); metacharacter checks; `utils/subprocess_safe.py` | ✅ |
-| Tampered ML model | HMAC-SHA256 model signatures verified at load; CI signature check | ✅ |
-| | Asymmetric (Ed25519) signatures so devices hold only a public key | 🔜 |
-| Forged sensor data or commands between Pi and Jetson | Mutual TLS with per-device certificates; signed, replay-protected commands | 🔜 |
-| Sensor overload / blinding | Bounded queues and flow-table limit | 🟡 |
-| | Back-pressure, sampling under load, overload alerting | 🔜 |
+| Stolen session token | 15-minute access tokens held in memory; rotating refresh token in an HttpOnly, SameSite=Strict cookie; reuse revokes the session | ✅ |
+| Cross-site request forgery | Bearer tokens authorise API calls; refresh/logout need a custom header; CORS limited to configured origins | ✅ |
+| Eavesdropping on the console/API | HTTPS by default (certificate created at install, or the organisation's own), HSTS, secure WebSocket | ✅ |
+| The appliance blocks critical hosts (self-DoS) | Gateway, DNS, DHCP, the appliance and management hosts are found automatically and can never be blocked, quarantined, contained or segmented | ✅ |
+| Bad rules lock the network | Dry run by default, TTLs, Operator approval above a risk threshold, rollback in ~100 ms, fail-open watchdog, systemd rollback guard | ✅ |
+| Command injection through firewall calls | IP/TTL validation, argument lists only (no shell), allowlisted binaries | ✅ |
+| Tampered ML model | Registry models (autoencoder, federated models) are Ed25519-signed and hash-pinned; the release Isolation Forest is HMAC-signed and checked in CI; changed models are refused | ✅ |
+| | Asymmetric signature for the release Isolation Forest too, so devices hold only a public key | 🔜 |
+| Forged sensor data or commands | Mutual TLS with per-device certificates from a private CA pinned by fingerprint; Ed25519-signed, sequenced, expiring commands | ✅ |
+| Forged fleet or brain peers | Separate CAs for brain and fleet; enrolment codes are one-time and expire; revocation is immediate | ✅ |
+| **Flood / resource exhaustion (blinding the sensor)** | Flow table capped (`SENTINEL_MAX_FLOWS`, default 100,000), least-recently-active flows evicted; per-source detector state capped (`SENTINEL_MAX_SOURCES`, default 20,000); device and peer tables capped; scoring sheds load instead of queueing without limit; one "capture overloaded" alert with metrics; engine yields CPU and is the first OOM victim. Verified: 3 minutes at ~320,000 spoofed packets/s stays at ~460 MB (was 1.2 GB after 40 s) | ✅ |
+| | Memory caps per service (`MemoryMax=`) where the memory cgroup is enabled | 🟡 off on stock Raspberry Pi OS |
+| Poisoning what the appliance learns | Flows with findings never train models; federated updates are validated and clipped; OT segmentation uses a frozen snapshot; learning periods are visible | 🟡 an attacker present before installation can hide in the baseline |
+| Evasion (slow scans, low-and-slow exfiltration) | Long windows, seasonal baselines, beaconing and exfiltration detectors | 🟡 inherent to network detection |
+| Prompt injection / "talking the AI into" an action | Not applicable: no language model; explanations are templates; every action goes through the playbook, policy bounds and approval gate | ✅ |
+| Supply chain | Reproducible packages, Sigstore/cosign signatures, CycloneDX SBOM, build provenance; OTA updates verify checksum and signature and roll back on a failed health check | ✅ |
+| Vulnerable dependencies | `pip-audit` and Bandit on every push and before every release; pinned versions; runtime-only requirements on devices | ✅ |
+| Evidence tampering | Hash-chained audit log of every user, engine and fleet action, with a copy in the system journal | ✅ |
 | Leaking sensitive data in screenshots/demos | `REDACT_SENSITIVE=1` hashes IPs and MACs in API output | ✅ |
-| Vulnerable dependencies | `pip-audit` + Bandit in CI; pinned versions | ✅ |
-| | Separate runtime, dev and Streamlit requirement files; devices install runtime only | ✅ |
-| | Dependabot, SBOM per release | 🔜 |
-| Evidence tampering | Append-only firewall action log | 🟡 |
-| | Tamper-evident (hash-chained) audit log for all user actions, with a copy in the system journal | ✅ |
 
 ---
 
@@ -113,7 +114,7 @@ All Phase 1 features are in place; the remaining Phase 1 work is the exit checks
 3. **Every block has a TTL** (default 300 s, max 24 h) unless an operator makes it permanent.
 4. **Whitelist** checked before any block.
 5. **Rollback**: one API call (`/api/firewall/rollback`) or the rollback script removes every SentinelEdgeAI rule. A systemd timer (`sentinel-firewall-rollback-guard`) rolls back automatically if the service is unhealthy.
-6. **Fail-open** 🔜: in inline mode, a failure of the appliance must pass traffic, not drop it.
+6. **Fail-open**: if the engine or API stops while rules are in force, the watchdog removes every rule within about a minute, and any rollback also turns OT segmentation off. In inline mode a hardware bypass should pass traffic if the device loses power.
 
 ### Model integrity
 * `model/isolation_forest.pkl` is signed; the signature (`.pkl.sig`) includes the file's SHA-256 and is verified with HMAC-SHA256 before the model is loaded.
@@ -160,20 +161,21 @@ The old key no longer verifies any committed model, so a model signed with it wi
 
 ---
 
-## 5. Known security issues (v1.2)
+## 5. Known security issues (v2.9)
 
-| # | Issue | Impact | Tracked in |
+| # | Issue | Impact | Status |
 |---|---|---|---|
-| 1 | ~~Firewall commands rejected by the subprocess wrapper; nftables set never attached to a chain~~ | **Fixed in 1.1.0** — blocks had no effect | — |
-| 2 | ~~iptables removal omitted the comment match used at insert~~ | **Fixed in 1.1.0** | — |
-| 3 | Bridge-level (layer 2) filtering and MAC quarantine not implemented; `INPUT` and `FORWARD` are covered | Devices on the same bridge segment are not isolated | Phase 3 |
-| 4 | ~~Single shared API key, no per-user identity~~ | **Fixed in 1.2.0** — user accounts and roles; the shared key remains for automation until scoped tokens land | Phase 1 |
-| 5 | ~~No TLS on API/WebSocket~~ | **Fixed** — HTTPS and WSS by default; self-signed until an organisation certificate is imported | — |
-| 6 | ~~No rate limiting on the API~~ | **Fixed** — 600 reads and 60 writes per minute per client on `/api/*` (`SENTINEL_RATE_LIMIT_READ` / `_WRITE`); limits are per address, so clients behind one proxy share them | — |
-| 10 | ~~Live WebSocket stream had no authentication~~ | **Fixed in 1.2.0** — anyone who could reach the port could read alerts and flows | — |
-| 7 | HMAC model signing — every verifier holds the signing key | A compromised device can sign models | Phase 4 |
-| 8 | ~~Dev tools (pytest, bandit, pip-audit, streamlit) in runtime requirements~~ | **Fixed** — split into `requirements-dev.txt` / `requirements-streamlit.txt` | — |
-| 9 | Docker image runs as root and includes build tools | Container escape impact is higher | Phase 6 |
+| 1 | No external penetration test yet | Unknown issues may remain | Scope in docs/PENTEST_SCOPE.md; planned before the beta |
+| 2 | Raspberry Pi OS boots with `cgroup_disable=memory` | `MemoryMax=` limits are not enforced; the in-process caps still apply | Enable with `cgroup_enable=memory` in `/boot/firmware/cmdline.txt` |
+| 3 | Updates verify the cosign signature only when cosign is installed | Without it, only the SHA-256 is checked | `apt install cosign`, or `SENTINEL_REQUIRE_SIGNATURE=1` to refuse unsigned updates |
+| 4 | A shared API key may still exist for health checks | One secret with a fixed role | Replace with a scoped API token, then remove `DASHBOARD_API_KEY` |
+| 5 | Bridged (inline) traffic has no conntrack on stock kernels | Containment stops only new TCP connections and off-profile UDP on the bridge | Documented; routed traffic uses conntrack |
+| 6 | Containment and OT segmentation are IPv4 only | IPv6 hosts can only be quarantined or blocked | Planned |
+| 9 | The release Isolation Forest is HMAC-signed, so every device holds a key that could also sign it | A compromised device could sign a model for itself | Planned: move it to the Ed25519 registry |
+| 7 | ~~Flow table and per-source state unbounded; per-flow coroutines piled up under load~~ | **Fixed in 2.9.2**: a spoofed flood could exhaust memory | — |
+| 8 | ~~`health.json` and `live_stats.json` written non-atomically~~ | **Fixed in 2.9.2**: readers could see half-written files and the live statistics reset | — |
+
+Earlier issues (firewall commands, single API key, TLS, WebSocket authentication, rate limits, development tools on devices, the root container) are fixed; see CHANGELOG.md.
 
 ---
 
@@ -181,16 +183,17 @@ The old key no longer verifies any committed model, so a model signed with it wi
 
 Before enabling enforcement on a real network:
 
-- [ ] Running the latest release; `pip-audit` clean.
-- [ ] New signing key generated and provisioned; no keys in the repository.
-- [ ] `DASHBOARD_API_KEY` set to a random value of 32+ characters (`openssl rand -hex 32`), stored in a mode-600 `EnvironmentFile`.
-- [ ] API reachable only from a management VLAN or via a VPN — never from the internet or guest networks.
-- [ ] Gateway, DNS servers, management workstations and the appliance's own addresses are whitelisted.
-- [ ] Rollback guard installed and tested (`scripts/validate_rollback_guard.py`).
-- [ ] Ran at least 7 days in `monitor` mode and reviewed false positives before enabling auto-block.
-- [ ] Passive (mirror) placement first; inline only with a bypass in place.
-- [ ] SSH key-only login on the Pi and Jetson; default users removed; automatic security updates on.
-- [ ] Log rotation configured (`packaging/logrotate`); disk usage alerting via Prometheus.
+- [ ] Running the latest release (`sudo sentinelctl update`); cosign installed so updates verify signatures.
+- [ ] Model signing key provisioned on the device; no keys in the repository.
+- [ ] Every Operator and Admin has two-step sign-in; the shared API key replaced by a scoped token.
+- [ ] Console reachable only from a management VLAN or a VPN, never from the internet or guest networks.
+- [ ] Management workstations and OT engineering stations listed in `management_hosts` (check `python -m enforcement protected`).
+- [ ] At least 7 days in `monitor` mode, false positives labelled, before automatic response; response tuning left in `recommend` until its evidence looks right.
+- [ ] Passive (mirror) placement first; inline only with a hardware bypass.
+- [ ] Memory cgroup enabled (`cgroup_enable=memory`) so service memory limits apply.
+- [ ] SSH key-only login (`deploy/pi/harden_os.sh`); unattended security upgrades on.
+- [ ] Encrypted backups scheduled (`sentinelctl backup`); the compliance report shows the last one.
+- [ ] Alerts exported to a SIEM or notification channel.
 - [ ] `SENTINEL_ALLOW_UNSIGNED_MODELS` is **not** set.
 
 ---
@@ -199,6 +202,7 @@ Before enabling enforcement on a real network:
 
 * No `shell=True`; subprocess calls take validated argument lists.
 * SQL uses parameters; identifiers are validated or quoted (`psycopg2.sql`).
-* CI runs unit tests, Bandit, pip-audit and model-signature verification on every push; firewall changes are tested in a privileged container runner.
+* CI runs unit tests, Bandit, pip-audit and model-signature verification on every push and before every release.
+* Real-kernel tests in network namespaces cover enforcement, OT segmentation, containment and flood safety (`tests/firewall_netns/`).
 * Security-sensitive areas need two reviewers: `core/firewall.py`, `security/`, authentication code, installers, `packaging/`, and `.github/workflows/`.
 * Secrets in workflows are read at runtime, never interpolated into scripts.

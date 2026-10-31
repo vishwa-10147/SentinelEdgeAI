@@ -1,11 +1,20 @@
-from collections import defaultdict
 from core.product_intelligence import behavior_summary, infer_device_type
+from common.bounded import BoundedDict
+from detection.detectors import MAX_SOURCES
+
+# distinct destinations / ports remembered per device; a scanning host would otherwise add one key per probe
+MAX_PROFILE_KEYS = 256
+
+
+def _count(counts, key):
+    if key in counts or len(counts) < MAX_PROFILE_KEYS:
+        counts[key] = counts.get(key, 0) + 1
 
 
 class BehavioralFingerprint:
 
     def __init__(self, drift_threshold=0.5):
-        self.profiles = defaultdict(lambda: {
+        self.profiles = BoundedDict(MAX_SOURCES, lambda: {
             "flow_count": 0,
             "total_duration": 0,
             "total_bytes": 0,
@@ -44,11 +53,8 @@ class BehavioralFingerprint:
         protocol = flow.protocol
         profile["protocol_usage"][protocol] = \
             profile["protocol_usage"].get(protocol, 0) + 1
-        profile["destination_counts"][flow.responder_ip] = \
-            profile["destination_counts"].get(flow.responder_ip, 0) + 1
-        port_key = str(flow.responder_port)
-        profile["destination_port_counts"][port_key] = \
-            profile["destination_port_counts"].get(port_key, 0) + 1
+        _count(profile["destination_counts"], flow.responder_ip)
+        _count(profile["destination_port_counts"], str(flow.responder_port))
 
         # After 100 flows, lock baseline reference
         if profile["flow_count"] == 100:

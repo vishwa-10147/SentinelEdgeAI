@@ -25,6 +25,7 @@ FINDINGS = None             # detector findings by kind
 ALERTS = None               # alerts by severity
 INGEST_QUEUE = None         # flows waiting for scoring
 DROPPED_PACKETS = None      # kernel receive drops on the capture interfaces
+CAPTURE = None              # flow table size, evictions and shed flows (flood safety)
 SYSTEM = None               # cpu_percent, memory_percent, temperature_c
 INTEGRATION_EVENTS = None   # SIEM / notification deliveries by result
 SENSOR_BUFFER = None        # flows buffered for the brain
@@ -32,7 +33,7 @@ SENSOR_BUFFER = None        # flows buffered for the brain
 
 def init_metrics(registry=None):
     global REGISTRY, REQUEST_COUNT, WS_EVENTS, ML_MODEL_LOADED, ML_SIGNATURE_STATUS, FLOWS_COUNTER
-    global DECISION_LATENCY, FINDINGS, ALERTS, INGEST_QUEUE, DROPPED_PACKETS, SYSTEM, INTEGRATION_EVENTS, SENSOR_BUFFER
+    global DECISION_LATENCY, FINDINGS, ALERTS, INGEST_QUEUE, DROPPED_PACKETS, SYSTEM, INTEGRATION_EVENTS, SENSOR_BUFFER, CAPTURE
     if CollectorRegistry is None or Gauge is None or Counter is None:
         return
     if registry is None:
@@ -70,6 +71,8 @@ def init_metrics(registry=None):
         INTEGRATION_EVENTS = Gauge('sentinel_integration_events', 'Alert deliveries to SIEM/notification sinks',
                                    ['result'], registry=REGISTRY)
         SENSOR_BUFFER = Gauge('sentinel_sensor_buffered_flows', 'Flows buffered for the brain', registry=REGISTRY)
+        CAPTURE = Gauge('sentinel_capture', 'Flow table and load shedding: active, max, evicted_total, shed_total, '
+                        'ingest_shed_total, overloaded', ['item'], registry=REGISTRY)
     except Exception:
         pass
 

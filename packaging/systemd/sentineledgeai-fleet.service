@@ -26,5 +26,11 @@ ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/var/lib/sentinel /var/log/sentinel
 
+# resource limits: see sentineledgeai-engine.service
+CPUWeight=80
+TasksMax=128
+OOMScoreAdjust=200
+MemoryMax=15%
+
 [Install]
 WantedBy=multi-user.target

@@ -16,6 +16,9 @@ import math
 import time
 from collections import defaultdict, deque
 
+from common.bounded import BoundedDict
+from detection.detectors import MAX_SOURCES
+
 CONFIRM_CONFIDENCE = 0.8
 RECENT_SECONDS = 600
 
@@ -51,7 +54,7 @@ class SeasonalBaseline:
 
 class Fusion:
     def __init__(self, clock=time.time, calibrate=None):
-        self.recent = defaultdict(deque)       # src -> findings
+        self.recent = BoundedDict(MAX_SOURCES, deque)   # src -> findings
         self.baseline = SeasonalBaseline()
         self.clock = clock
         # calibrate(kind, prior) -> probability, e.g. from analyst feedback

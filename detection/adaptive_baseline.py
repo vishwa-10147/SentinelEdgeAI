@@ -1,27 +1,31 @@
-from collections import defaultdict, deque
+from collections import deque
 import numpy as np
+
+from common.bounded import BoundedDict
+
+# (source, protocol) pairs with a baseline; the oldest are forgotten beyond this (flood safety)
+MAX_BASELINES = 10000
 
 
 class AdaptiveBaseline:
 
     def __init__(self, window_size=500):
         self.window_size = window_size
-        self.data = defaultdict(lambda: deque(maxlen=self.window_size))
-        self.stats = {}
+        self.data = BoundedDict(MAX_BASELINES, lambda: deque(maxlen=self.window_size))
+        self.stats = BoundedDict(MAX_BASELINES)
 
     def update(self, features, initiator_ip, protocol):
         key = f"{initiator_ip}_{protocol}"
 
-        self.data[key].append(features)
+        # keep only the four numbers the statistics use, not the whole feature dict
+        q = self.data[key]
+        q.append((features["duration"], features["total_bytes"], features["total_packets"], features["byte_ratio"]))
 
         # Need minimum samples before computing stats
-        if len(self.data[key]) < 10:
+        if len(q) < 10:
             return
 
-        durations = [f["duration"] for f in self.data[key]]
-        bytes_ = [f["total_bytes"] for f in self.data[key]]
-        packets = [f["total_packets"] for f in self.data[key]]
-        ratios = [f["byte_ratio"] for f in self.data[key]]
+        durations, bytes_, packets, ratios = (list(col) for col in zip(*q))
 
         self.stats[key] = {
             "duration_mean": np.mean(durations),
@@ -47,4 +51,4 @@ class AdaptiveBaseline:
 
     def count(self, initiator_ip, protocol):
         key = f"{initiator_ip}_{protocol}"
-        return len(self.data[key])
+        return len(self.data.get(key, ()))   # reading must not create state
