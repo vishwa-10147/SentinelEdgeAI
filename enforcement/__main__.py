@@ -1,4 +1,4 @@
-"""python -m enforcement policy export|validate|diff|apply | protected | devices | quarantine | release | pending | approve | deny | segment"""
+"""python -m enforcement policy export|validate|diff|apply | protected | devices | quarantine | release | pending | approve | deny | segment | contain | trust"""
 import argparse
 import json
 import sys
@@ -20,14 +20,15 @@ def main(argv=None):
     p.add_argument('--by', default='cli')
     sub.add_parser('protected', help='hosts that are never blocked, and why')
     sub.add_parser('devices', help='known devices by MAC (refreshes from the ARP table)')
-    for name in ('quarantine', 'ratelimit'):
+    for name in ('quarantine', 'ratelimit', 'contain'):
         p = sub.add_parser(name, help=f'{name} an IP')
         p.add_argument('ip')
         p.add_argument('--ttl', type=int)
         p.add_argument('--reason', default='operator')
     p = sub.add_parser('release', help='remove a quarantine or rate limit')
-    p.add_argument('kind', choices=['quarantine', 'ratelimit'])
+    p.add_argument('kind', choices=['quarantine', 'ratelimit', 'contain'])
     p.add_argument('ip')
+    sub.add_parser('trust', help='trust score of every known device, least trusted first')
     sub.add_parser('pending', help='playbook actions waiting for approval')
     for name in ('approve', 'deny'):
         p = sub.add_parser(name, help=f'{name} a pending playbook action')
@@ -40,6 +41,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
+        if args.command == 'trust':
+            from enforcement import trust
+            _show(trust.scores())
+            return 0
         if args.command == 'segment':
             if args.action == 'status':
                 _show(segmentation.status())
@@ -88,7 +93,7 @@ def main(argv=None):
             reg.refresh_from_arp()
             for d in reg.list():
                 print(f"{d['mac']}  {d['ip'] or '-':<16} {(d['vendor'] or '?')[:28]:<28} {d['hostname'] or ''}")
-        elif args.command in ('quarantine', 'ratelimit'):
+        elif args.command in ('quarantine', 'ratelimit', 'contain'):
             _show(firewall.add_restriction(args.command, args.ip, ttl=args.ttl, reason=args.reason))
         elif args.command == 'release':
             _show(firewall.remove_restriction(args.kind, args.ip))

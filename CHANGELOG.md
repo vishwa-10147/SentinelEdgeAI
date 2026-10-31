@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Device trust and containment (Phase 7, zero-trust).** The engine learns each internal device's peer profile (`data/peers.db`, `SENTINEL_PEERS_DB`): internal peers exactly, internet destinations as protocol and port, capped per device. A trust score from 0 to 100 combines identity, tenure, recent alerts (decaying, with analyst false positives ignored) and active restrictions into a level (trusted / watch / untrusted), with reasons and a recommended response (`GET /api/trust`, `python -m enforcement trust`, new **Trust** console panel). The new `contain` response (`POST /api/firewall/contain`, Operator) keeps an untrusted IPv4 device to its learned profile plus DNS and DHCP instead of cutting it off. It is refused for protected hosts and for devices without a 7-day profile, expires with its TTL, and is cleared by any rollback. `GET /api/devices/{ip}/peers` shows the profile. Real-kernel test: `tests/firewall_netns/run_containment_netns.sh`.
+
+### Changed
+- README rewritten for v2.x: current capabilities, releases, API overview, repository layout and known limitations.
+
 ## [2.2.0] - 2026-10-31
 
 ### Added

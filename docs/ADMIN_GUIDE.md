@@ -65,6 +65,23 @@ sudo -u sentinel .venv/bin/python -m enforcement policy apply policy.yaml
 
 Every apply is validated, stored in `data/policy_history/` and written to the audit log. Add administrator workstations and OT controllers to `management_hosts` so they can never be blocked.
 
+### Device trust and containment
+
+**Trust** in the console (or `GET /api/trust`) lists every device with a score from 0 to 100, least trusted first, and the reasons behind it:
+
+- **Identity:** known MAC, vendor and hostname raise the score, and no MAC at all lowers it.
+- **Tenure:** days seen add to it, up to 10 days.
+- **Alerts:** each alert in the last 7 days lowers it, weighted by risk and halved every 24 h. Kinds you marked as false positives for that device don't count.
+- **Restrictions:** quarantined or blocked devices score 0, and contained devices at most 30.
+
+At 70 or more a device is *trusted*, at 40 or more *watch*, below that *untrusted*.
+
+For an untrusted device that has a 7-day peer profile, the recommendation is **contain**. It keeps the peers and ports it normally uses, plus DNS and DHCP, and loses everything else. That is much less disruptive than quarantine for printers, cameras and other devices people depend on. Containment has a TTL (one hour from the console), is refused for protected hosts, and is cleared by any rollback. Without a profile, quarantine is the fallback.
+
+```bash
+curl -sk -H "Authorization: Bearer $TOKEN" https://<pi>:9000/api/devices/192.168.1.50/peers   # what containment would keep
+```
+
 ### OT micro-segmentation
 
 On industrial networks the engine learns, for 7 days per controller, which hosts command each Modbus, DNP3, BACnet or OPC UA device (**OT devices** in the console, `GET /api/ot/assets`). That learning can become an allow-list:

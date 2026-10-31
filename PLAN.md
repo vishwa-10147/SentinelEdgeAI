@@ -284,12 +284,13 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 - **High availability:** active/standby brains; dual sensors with bypass.
 - **Compliance packs:** evidence mapping for ISO 27001, IEC 62443 (OT) and NIS2 — documentation support, not certification claims.
 
-**Status (2026-10-31): in progress — OT protocol awareness, inventory and micro-segmentation done.**
+**Status (2026-10-31): in progress — OT protocol awareness and zero-trust segmentation (OT allow-lists, device trust, containment) done; fleet manager, federated learning, RL response tuning, high availability and compliance packs to go.**
 - [x] OT protocol parsing (`detection/ot.py`): Modbus/TCP (incl. diagnostics restart / listen-only), DNP3 (master requests), BACnet/IP (confirmed and unconfirmed services, routed NPDUs), OPC UA binary (service of unencrypted messages; encrypted channels still give the connection). Request headers only; nothing is injected.
 - [x] OT detector: learns each controller's masters and their functions (7 days); then reports a new master (T0886) and a first-time write/control function (T0855); always reports restart/stop/listen-only/communication-control commands (T0816/T0814), OT traffic crossing the internet edge (T0883) and Modbus unit-id sweeps (T0846). Fed from both capture paths and fused like every other finding.
 - [x] OT asset inventory: learning persisted in SQLite (`data/ot.db`, so a restart does not reopen the learning period), `GET /api/ot/assets` (Viewer) and an **OT devices** console panel.
 - [x] OT micro-segmentation from the learned allow-lists (`enforcement/segmentation.py`): off / monitor / enforce (Admin, inline only), a frozen snapshot with Admin exceptions and refresh, management hosts always allowed, protected hosts never guarded, inet + bridge nftables rules that leave replies alone, re-applied at boot, turned off by any rollback or watchdog fail-open; CLI `python -m enforcement segment`, `/api/ot/segmentation*`, console controls. Verified on the real kernel (`tests/firewall_netns/run_segmentation_netns.sh`).
-- [ ] Per-device trust score for non-OT devices (zero-trust segmentation beyond industrial protocols).
+- [x] Zero-trust for every device: learned peer profiles (`detection/peers.py`: internal peers exactly, internet as protocol/port, capped), a trust score 0–100 with reasons (`enforcement/trust.py`: identity, tenure, decaying alerts, analyst false positives, restrictions) and a `contain` response that keeps an untrusted device to its profile (+ DNS/DHCP) through the existing restriction machinery (TTL, protected hosts, rollback, watchdog). `GET /api/trust`, `GET /api/devices/{ip}/peers`, `POST /api/firewall/contain`, **Trust** console panel, `python -m enforcement trust|contain`. Verified on the real kernel (`tests/firewall_netns/run_containment_netns.sh`, 11/11).
+- [ ] Automatic containment from the trust score inside the playbook (with the approval gate) — together with RL response tuning.
 - [ ] Captured lab traffic from real PLCs / BACnet controllers.
 
 ---

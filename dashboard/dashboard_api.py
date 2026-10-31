@@ -722,6 +722,29 @@ def devices_identity(principal: dict = Depends(require_viewer)):
     return identity.get_registry().list()
 
 
+@app.get('/api/trust')
+def trust_scores(principal: dict = Depends(require_viewer)):
+    """Trust score (0-100), level, reasons and recommended response for every known device, least trusted first."""
+    from enforcement import trust
+    return {'devices': trust.scores()}
+
+
+@app.get('/api/devices/{ip}/peers')
+def device_peers(ip: str, principal: dict = Depends(require_viewer)):
+    """The learned peer profile containment would restrict this device to."""
+    from detection.peers import PeerStore, learned
+    store = PeerStore()
+    try:
+        profile = store.profile(ip)
+    finally:
+        store.close()
+    if not profile:
+        raise HTTPException(status_code=404, detail='no peer profile for this device')
+    return {'ip': ip, 'learned': learned(profile), 'first_seen': profile['first_seen'],
+            'internal': [{'ip': d, 'proto': p, 'port': n} for d, p, n in profile['internal']],
+            'internet': [{'proto': p, 'port': n} for p, n in profile['external']]}
+
+
 @app.get('/api/ot/assets')
 def ot_assets(principal: dict = Depends(require_viewer)):
     """Industrial controllers seen on the network, the hosts that command them and the functions they use."""
@@ -797,6 +820,12 @@ def firewall_quarantine(payload: dict, principal: dict = Depends(require_operato
 @app.post('/api/firewall/ratelimit')
 def firewall_ratelimit(payload: dict, principal: dict = Depends(require_operator)):
     return _restrict('ratelimit', payload, principal)
+
+
+@app.post('/api/firewall/contain')
+def firewall_contain(payload: dict, principal: dict = Depends(require_operator)):
+    """Restrict an IPv4 device to the peers and ports of its learned profile (DNS and DHCP stay open)."""
+    return _restrict('contain', payload, principal)
 
 
 @app.post('/api/firewall/release')

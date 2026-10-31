@@ -510,14 +510,17 @@ def list_rules():
 # (flush + add inside one nft transaction), so set contents survive.
 # A quarantined host may only use DNS, DHCP and the console's quarantine page
 # (and replies to its existing connections); a rate-limited host is limited
-# per source address. With inline placement the same sets and rules are
+# per source address. A contained host (Phase 7) keeps only the peers and ports
+# of its learned profile (detection.peers), plus DNS and DHCP. With inline placement the same sets and rules are
 # mirrored into a `bridge` table, which sees bridged frames that the `inet`
 # hooks never do.
 
 RESTRICTION_SETS = {
     'quarantine': {4: 'quarantine', 6: 'quarantine6'},
     'ratelimit': {4: 'ratelimit', 6: 'ratelimit6'},
+    'contain': {4: 'contain', 6: 'contain6'},
 }
+PRIVATE4 = '{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 }'
 BRIDGE_TABLE = ('bridge', 'sentinel')
 
 
@@ -571,6 +574,7 @@ def _enforcement_script(bridge=None):
         f'add rule {t} quarantine_check ct state established,related return',
         f'add rule {t} quarantine_check drop',
     ]
+    lines += _contain_chain(t, conntrack=True)
     limit4 = f'update @rlmeter {{ ip saddr limit rate over {pps}/second burst {burst} packets }} drop'
     limit6 = f'update @rlmeter6 {{ ip6 saddr limit rate over {pps}/second burst {burst} packets }} drop'
     for chain, hook in (('enf_input', 'input'), ('enf_forward', 'forward')):
@@ -579,6 +583,7 @@ def _enforcement_script(bridge=None):
             f'flush chain {t} {chain}',
             f'add rule {t} {chain} ip saddr @quarantine jump quarantine_check',
             f'add rule {t} {chain} ip6 saddr @quarantine6 jump quarantine_check',
+            f'add rule {t} {chain} ip saddr @contain jump contain_check',
             f'add rule {t} {chain} ip saddr @ratelimit {limit4}',
             f'add rule {t} {chain} ip6 saddr @ratelimit6 {limit6}',
         ]
@@ -592,7 +597,9 @@ def _enforcement_script(bridge=None):
                   f'add set {b} blacklist {{ type ipv4_addr ; }}', f'add set {b} blacklist6 {{ type ipv6_addr ; }}',
                   f'add set {b} quarantine {{ type ipv4_addr ; }}', f'add set {b} quarantine6 {{ type ipv6_addr ; }}',
                   f'add set {b} qmac {{ type ether_addr ; }}',
-                  f'add chain {b} forward {{ type filter hook forward priority -10 ; policy accept ; }}',
+                  f'add set {b} contain {{ type ipv4_addr ; }}']
+        lines += _contain_chain(b, conntrack=False)
+        lines += [f'add chain {b} forward {{ type filter hook forward priority -10 ; policy accept ; }}',
                   f'flush chain {b} forward']
         lines += [f'add rule {b} forward {r}' for r in (
             'ip saddr @blacklist drop', 'ip daddr @blacklist drop',
@@ -601,7 +608,52 @@ def _enforcement_script(bridge=None):
             'ether saddr @qmac drop',
             'ip saddr @quarantine udp dport { 53, 67, 68 } accept',
             'ip saddr @quarantine drop', 'ip6 saddr @quarantine6 drop',
+            'ip saddr @contain jump contain_check',
         )]
+    return '\n'.join(lines) + '\n'
+
+
+def _contain_chain(t, conntrack):
+    """contain_check for table `t`: DNS/DHCP, then the learned peers, then nothing internal, then learned internet ports.
+
+    Bridged frames have no conntrack here, so the bridge chain lets packets of
+    existing TCP connections through and stops only new ones (SYN without ACK).
+    """
+    lines = [f'add set {t} contain_peers {{ type ipv4_addr . ipv4_addr . inet_proto . inet_service ; }}',
+             f'add set {t} contain_ext {{ type ipv4_addr . inet_proto . inet_service ; }}',
+             f'add chain {t} contain_check', f'flush chain {t} contain_check']
+    first = 'ct state established,related return' if conntrack else 'tcp flags & (syn | ack) != syn return'
+    lines += [f'add rule {t} contain_check {r}' for r in (
+        first, 'udp dport { 53, 67, 68 } return',
+        'ip saddr . ip daddr . meta l4proto . th dport @contain_peers return',
+        f'ip daddr {PRIVATE4} drop',
+        'ip saddr . meta l4proto . th dport @contain_ext return',
+        'drop')]
+    return lines
+
+
+def _contain_elements_script(bridge=None):
+    """Refill the peer sets from the learned profiles of every contained host."""
+    from detection.peers import PeerStore
+    contained = sorted({r['ip'] for r in _read_restrictions() if r['kind'] == 'contain'})
+    peers, ext = [], []
+    store = PeerStore()
+    try:
+        for ip in contained:
+            profile = store.profile(ip) or {'internal': [], 'external': []}
+            peers += [f'{ip} . {dst} . {proto} . {port}' for dst, proto, port in profile['internal']]
+            ext += [f'{ip} . {proto} . {port}' for proto, port in profile['external']]
+    finally:
+        store.close()
+    tables = [NFT_TABLE] + ([BRIDGE_TABLE] if (bridge if bridge is not None else bridge_enabled()) else [])
+    lines = []
+    for fam, tbl in tables:
+        t = f'{fam} {tbl}'
+        lines += [f'flush set {t} contain_peers', f'flush set {t} contain_ext']
+        if peers:
+            lines.append(f'add element {t} contain_peers {{ {", ".join(peers)} }}')
+        if ext:
+            lines.append(f'add element {t} contain_ext {{ {", ".join(ext)} }}')
     return '\n'.join(lines) + '\n'
 
 
@@ -637,16 +689,16 @@ def _remove_restriction_kernel(r):
         return
     name = RESTRICTION_SETS[r['kind']][_ip_version(r['ip'])]
     _set_element('delete', NFT_TABLE, name, r['ip'])
-    if r['kind'] == 'quarantine' and bridge_enabled():
+    if r['kind'] in ('quarantine', 'contain') and bridge_enabled():
         _set_element('delete', BRIDGE_TABLE, name, r['ip'])
         if r.get('mac'):
             _set_element('delete', BRIDGE_TABLE, 'qmac', r['mac'])
 
 
 def add_restriction(kind, ip, ttl=None, reason='', mac=None):
-    """Quarantine or rate-limit `ip` (refused for whitelisted and protected hosts)."""
+    """Quarantine, rate-limit or contain `ip` (refused for whitelisted and protected hosts)."""
     if kind not in RESTRICTION_SETS:
-        raise ValueError('kind must be quarantine or ratelimit')
+        raise ValueError('kind must be quarantine, ratelimit or contain')
     ip = _validate_ip(ip)
     policy = get_policy()
     if ip in set(policy.get('whitelist', [])):
@@ -655,6 +707,17 @@ def add_restriction(kind, ip, ttl=None, reason='', mac=None):
     reason_protected = why_protected(ip)
     if reason_protected:
         raise ValueError(f'refusing to {kind} protected host {ip} ({reason_protected})')
+    if kind == 'contain':
+        from detection.peers import PeerStore, learned
+        if _ip_version(ip) != 4:
+            raise ValueError('containment is IPv4 only; quarantine an IPv6 host instead')
+        store = PeerStore()
+        try:
+            profile = store.profile(ip)
+        finally:
+            store.close()
+        if not learned(profile):
+            raise ValueError(f'{ip} has no learned peer profile yet (7 days); quarantine it instead')
     ttl = _resolve_ttl(ttl, policy)
     now = int(time.time())
     item = {'kind': kind, 'ip': ip, 'mac': mac, 'created': now, 'expires': (now + ttl) if ttl else None,
@@ -663,14 +726,19 @@ def add_restriction(kind, ip, ttl=None, reason='', mac=None):
         ok, out = _run_nft_script(_enforcement_script())
         if ok:
             ok, out = _set_element('add', NFT_TABLE, RESTRICTION_SETS[kind][_ip_version(ip)], ip)
-        if ok and kind == 'quarantine' and bridge_enabled():
+        if ok and kind in ('quarantine', 'contain') and bridge_enabled():
             _set_element('add', BRIDGE_TABLE, RESTRICTION_SETS[kind][_ip_version(ip)], ip)
-            if mac:
+            if mac and kind == 'quarantine':
                 _set_element('add', BRIDGE_TABLE, 'qmac', mac)
         item['applied'], item['apply_output'] = ok, out
     items = [r for r in _expire_restrictions() if not (r['kind'] == kind and r['ip'] == ip)]
     items.append(item)
     _write_restrictions(items)
+    if kind == 'contain' and not FIREWALL_DRY_RUN and item.get('applied'):
+        ok, out = _run_nft_script(_contain_elements_script())
+        if not ok:
+            item['applied'], item['apply_output'] = False, out
+            _write_restrictions(items)
     _log_action({'action': kind, 'ip': ip, 'ttl': ttl, 'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
     return item
 

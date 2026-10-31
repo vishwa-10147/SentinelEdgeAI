@@ -1257,6 +1257,14 @@ button:disabled {
   grid-template-columns: 1fr 0.8fr 1.1fr 1fr 2fr 1.1fr;
 }
 
+.trust-row {
+  grid-template-columns: 1fr 0.5fr 0.7fr 3fr 1.2fr 0.8fr;
+}
+
+.trust-untrusted {
+  color: #f87171;
+}
+
 .ot-seg-row {
   grid-template-columns: 1fr 0.8fr 3fr;
 }

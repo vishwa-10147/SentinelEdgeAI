@@ -42,6 +42,7 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/device_profiles` | viewer |  |
 | `GET` | `/api/devices/identity` | viewer |  |
 | `GET` | `/api/devices/{ip}/history` | viewer |  |
+| `GET` | `/api/devices/{ip}/peers` | viewer | The learned peer profile containment would restrict this device to. |
 | `GET` | `/api/flows` | viewer |  |
 | `GET` | `/api/health` | viewer |  |
 | `GET` | `/api/incidents/timeline` | viewer |  |
@@ -55,6 +56,7 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/enforcement/protected` | viewer |  |
 | `GET` | `/api/firewall/actions` | viewer |  |
 | `POST` | `/api/firewall/block` | operator |  |
+| `POST` | `/api/firewall/contain` | operator | Restrict an IPv4 device to the peers and ports of its learned profile (DNS and DHCP stay open). |
 | `POST` | `/api/firewall/expire` | operator |  |
 | `GET` | `/api/firewall/policy` | viewer |  |
 | `POST` | `/api/firewall/policy` | admin |  |
@@ -131,6 +133,7 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `POST` | `/api/ot/segmentation` | admin | Set OT segmentation to off, monitor or enforce (enforce needs inline placement). |
 | `POST` | `/api/ot/segmentation/allow` | admin | Let `src` command controller `dst` over `protocol` (an exception to the learned allow-list). |
 | `POST` | `/api/ot/segmentation/refresh` | admin | While enforcing, take a new snapshot of the learned allow-lists. |
+| `GET` | `/api/trust` | viewer | Trust score (0-100), level, reasons and recommended response for every known device, least trusted first. |
 | `GET` | `/metrics` | viewer |  |
 | `GET` | `/openapi.json` | viewer |  |
 | `GET` | `/quarantined` | public |  |

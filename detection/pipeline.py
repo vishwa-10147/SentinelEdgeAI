@@ -32,11 +32,13 @@ class _FeedbackCalibration:
 
 
 class DetectionPipeline:
-    def __init__(self, flow_detectors=None, dns=None, tls=None, ot=None, clock=time.time, calibrate=None, models=True):
+    def __init__(self, flow_detectors=None, dns=None, tls=None, ot=None, peers=None, clock=time.time, calibrate=None,
+                 models=True):
         self.flow_detectors = flow_detectors if flow_detectors is not None else default_flow_detectors()
         self.dns = dns or DNSDetector()
         self.tls = tls or TLSDetector(clock=clock)
         self.ot = ot or OTDetector(clock=clock)
+        self.peers = peers                    # detection.peers.PeerStore: learned peer profiles
         self.fusion = Fusion(clock=clock, calibrate=calibrate)
         self.clock = clock
         self.autoencoder = None
@@ -83,6 +85,11 @@ class DetectionPipeline:
                                      engine_result.get('confidence', 0) or 0, record.get('proto'),
                                      record.get('features'), now=record['ts'])
         fused['new_findings'] = [f.as_dict() for f in findings]
+        if self.peers is not None:
+            try:
+                self.peers.observe(record)
+            except Exception:
+                pass
         return fused
 
     def _intel(self):
@@ -142,5 +149,6 @@ _pipeline = None
 def get_pipeline():
     global _pipeline
     if _pipeline is None:
-        _pipeline = DetectionPipeline(calibrate=_FeedbackCalibration(), ot=OTDetector(store=OTStore()))
+        from detection.peers import PeerStore
+        _pipeline = DetectionPipeline(calibrate=_FeedbackCalibration(), ot=OTDetector(store=OTStore()), peers=PeerStore())
     return _pipeline

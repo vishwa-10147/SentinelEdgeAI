@@ -79,6 +79,13 @@ class FeedbackStore:
                         'precision': round(c['tp'] / total, 3) if total else None})
         return out
 
+    def false_positive_kinds(self, since=0):
+        """{(src, kind)} an analyst labelled false positive since `since`."""
+        with self._lock:
+            rows = self._db().execute("SELECT DISTINCT src, kind FROM feedback WHERE label = 'fp' AND src IS NOT NULL "
+                                      "AND ts >= ?", (int(since),)).fetchall()
+        return {(r['src'], r['kind']) for r in rows}
+
     def false_positive_alerts(self, limit=10000):
         with self._lock:
             rows = self._db().execute("SELECT alert FROM feedback WHERE label = 'fp' AND alert IS NOT NULL "

@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%205%20%7C%20Jetson%20Orin%20Nano-555)
-![Roadmap](https://img.shields.io/badge/roadmap-Phases%201--6%20built%2C%20field%20validation%20pending-yellow)
+![Roadmap](https://img.shields.io/badge/roadmap-v2.x%20%C2%B7%20Phase%207%20in%20progress-blue)
 
 [Overview](#overview) ·
 [Roadmap](#roadmap-and-progress) ·
@@ -57,24 +57,37 @@ Phase 2  Two-node architecture (Pi + Jetson)      v1.3   ███████�
 Phase 3  Enforcement you can trust                v1.4   ████████████████░░░░  built; 72 h inline soak pending
 Phase 4  Detection quality                        v1.5   ███████████████░░░░░  built; public datasets + GPU pending
 Phase 5  Integrations and operations              v1.6   ██████████████████░░  built; real SIEM test pending
-Phase 6  Production release                       v2.0   ██████████████░░░░░░  built; OS images, pen test, beta pending
-Phase 7  Scale and advanced intelligence          v2.x+  ░░░░░░░░░░░░░░░░░░░░  after v2.0
+Phase 6  Production release                       v2.0   ██████████████░░░░░░  released; OS images, pen test, beta pending
+Phase 7  Scale and advanced intelligence          v2.x+  ██████░░░░░░░░░░░░░░  2 of 7 themes done (OT, zero-trust)
 ```
 
-**All software for Phases 2–6 is built and tested** (simulations, real-kernel network-namespace tests and the Pi itself). What remains before v2.0 needs hardware or time rather than code: Jetson validation, a 72-hour inline soak, public-dataset evaluation and GPU models, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta. Each phase's evidence and open items are listed in [PLAN.md](PLAN.md).
+**v2.0 is released and Phase 7 is under way.** Phases 2–6 are built and tested in simulation, in real-kernel network-namespace tests and on the Pi itself. What remains of them needs hardware, outside people or time rather than code: Jetson validation, a 72-hour inline soak, public-dataset evaluation and GPU models, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta. Each phase's evidence and open items are listed in [PLAN.md](PLAN.md).
 
 | Phase | Release | Goal | Status |
 |---|---|---|---|
-| 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released. Open: privileged-runner CI proof |
-| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | ✅ Built and exit checks met (role test per endpoint, clean ZAP baseline); release pending |
-| 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🟡 Built; brain outage, forged/replayed commands and 3 sensors verified in simulation and on the Pi. Pending: Jetson hardware |
-| 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🟡 Built; 22/22 real-kernel checks (routed and bridged), rollback ~100 ms. Pending: 72 h inline soak |
-| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built; 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models |
+| 0 | v1.1 | Fix broken firewall enforcement, remove secrets, safe packaging, signed and attested releases, `sentinelctl` device lifecycle | ✅ Released |
+| 1 | v1.2 | User accounts, roles (Viewer, Analyst, Operator, Admin), MFA, HTTPS, audit log, setup wizard | ✅ Released; exit checks met (role test per endpoint, clean ZAP baseline) |
+| 2 | v1.3 | Pi senses and enforces, Jetson runs all AI and management; mTLS link, signed commands, offline buffering | 🟡 Built; brain outage, forged/replayed commands and 3 sensors verified in simulation and on the Pi. Pending: Jetson hardware, event bus, brain PostgreSQL, sensor upgrades, sensors console panel |
+| 3 | v1.4 | Inline bridge mode, MAC-based quarantine, graduated response playbooks with approval gates | 🟡 Built; 22/22 real-kernel checks (routed and bridged), rollback ~100 ms. Pending: 72 h inline soak, console panels for quarantine, approvals and policy |
+| 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built; 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models, console views |
 | 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
-| 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Installer, OTA, reproducible signed builds, hardening, container, docs, 25–31× faster capture/decisions done. Pending: OS images, pen test, beta |
-| 7 | v2.x+ | Fleet manager, micro-segmentation, federated learning, OT protocols, high availability | 🔜 |
+| 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Released as v2.0; installer, OTA, reproducible Sigstore-signed builds, hardening, container, docs, 25–31× faster capture and decisions. Pending: OS images, pen test, beta |
+| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2) and device trust scores with containment (v2.3) done; 5 themes to go |
 
 Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked done when all of them are met.
+
+### Releases
+
+| Version | Highlights |
+|---|---|
+| **v2.3.0** | Device trust scores (0–100, with reasons), learned peer profiles, `contain` response (keep only normal peers) |
+| v2.2.0 | OT micro-segmentation from learned allow-lists (off / monitor / enforce) |
+| v2.1.0 | OT asset inventory (API and console), learning survives restarts |
+| v2.0.1 | Offline package for both Python 3.11 (Bookworm) and 3.13 (Trixie) |
+| v2.0.0 | Phases 2–6 and OT protocol awareness (Modbus, DNP3, BACnet, OPC UA) |
+| v1.2.0 | Secure management plane: accounts, roles, MFA, HTTPS, audit log |
+
+All releases: [Releases](https://github.com/vishwa-10147/SentinelEdgeAI/releases) · full notes: [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -83,11 +96,11 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 | Environment | What SentinelEdgeAI protects against |
 |---|---|
 | **Small and medium businesses** | Ransomware spreading between PCs, data exfiltration, compromised laptops, brute force against exposed services |
-| **Industrial and OT networks** | Unexpected traffic from PLCs and SCADA, new devices, lateral movement into control networks. Offline operation suits air-gapped sites |
+| **Industrial and OT networks** | New masters commanding PLCs, first-time writes, restart/stop commands and unit-id sweeps over Modbus, DNP3, BACnet and OPC UA; OT micro-segmentation from learned allow-lists. Offline operation suits air-gapped sites |
 | **IoT and CCTV networks** | Hijacked cameras and smart devices joining botnets or calling out to unknown hosts |
 | **Healthcare clinics** | Unpatchable medical devices, sensitive data leaving the network |
 | **Schools, hostels, hotels and guest Wi-Fi** | Infected guest devices, scanning, network abuse |
-| **Branch offices** | One sensor per branch reporting to a central brain (multi-sensor mode 🔜) |
+| **Branch offices** | One sensor per branch reporting to a central brain over mutual TLS |
 | **Managed service providers** | One appliance per customer site; fleet console 🔜 |
 | **Security training labs** | Explainable detection with a built-in attack demo |
 | **Home labs** | The single-Pi "Lite" profile |
@@ -102,45 +115,51 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 
 | Capability | Status |
 |---|---|
-| Live packet capture and flow assembly (5-tuple, idle timeout) | ✅ |
-| 24 statistical features per flow (bytes, packet rates, inter-arrival times, TCP flags) | ✅ |
-| Z-score anomaly detection against adaptive per-IP, per-protocol baselines | ✅ |
-| Isolation Forest anomaly detection with a signed model verified at load time | ✅ |
-| Per-device behavioural fingerprint and long-term drift detection | ✅ |
-| Unified 0–100 risk score with MITRE ATT&CK tactic and technique mapping | ✅ |
-| Attack-type classification | 🟡 Rule-based today |
-| Per-protocol thresholds, confidence scores, multi-stage confirmation | 🔜 |
-| GPU detectors on the Jetson (autoencoder, sequence model, graph model) | 🔜 |
-| Encrypted-traffic analysis (JA3/JA4, SNI, certificate anomalies; no decryption) | 🔜 |
-| Offline threat-intelligence feeds (STIX/TAXII, IP and domain blocklists) | 🔜 |
+| Live packet capture (AF_PACKET fast path, ~121k packets/s on a Pi 5) and flow assembly | ✅ |
+| 24 statistical features per flow; adaptive per-IP, per-protocol and hour-of-day baselines | ✅ |
+| Isolation Forest (compiled, 3,800 decisions/s) and a CPU autoencoder, both signed and verified at load | ✅ |
+| Detectors: port scan, host sweep, brute force, beaconing, exfiltration, new device, DNS tunnelling, DGA | ✅ |
+| Encrypted-traffic metadata: JA3/JA4, SNI, ALPN (no decryption) | ✅ |
+| Fusion with calibrated confidence, multi-stage confirmation and an explanation on every alert | ✅ |
+| MITRE ATT&CK (and ATT&CK for ICS) technique on every finding | ✅ |
+| OT protocols: Modbus/TCP, DNP3, BACnet/IP, OPC UA, with per-controller learning | ✅ |
+| Threat intelligence: STIX 2.1, TAXII 2.1 and plain lists, matched on flows, DNS and TLS | ✅ |
+| Suricata `eve.json` as a detector input | ✅ |
+| Model registry: shadow → canary → active, hot reload, rollback; analyst feedback recalibrates detectors | ✅ |
+| Device trust score (0–100) with reasons and a recommended response | ✅ |
+| GPU detectors on the Jetson (TensorRT autoencoder, sequence and graph models) | 🔜 hardware |
 
 ### Response (adaptive firewall)
 
 | Capability | Status |
 |---|---|
-| Block and unblock IPv4 and IPv6 addresses via nftables or iptables/ip6tables on `INPUT` and `FORWARD`, with TTL expiry | ✅ |
-| Whitelist, response modes (`monitor`, `alert`, `auto_block`), risk-threshold policy | ✅ |
-| Dry run by default, full rollback, systemd rollback guard | ✅ |
-| Inline bridge mode and MAC-based device quarantine | 🔜 |
-| Graduated playbooks (alert → rate-limit → block → quarantine) with approval gates | 🔜 |
-| Signed, authenticated commands from the AI node (mTLS) | 🔜 |
+| Block and unblock IPv4 and IPv6 via nftables or iptables/ip6tables, with TTL expiry | ✅ |
+| Quarantine (DNS, DHCP and a quarantine page only), per-source rate limiting | ✅ |
+| **Containment:** an untrusted device keeps only the peers and ports it normally uses | ✅ |
+| **OT micro-segmentation:** only learned masters reach a controller's industrial ports | ✅ |
+| Graduated playbook (alert → rate-limit → block → quarantine) with Operator approval above a risk threshold | ✅ |
+| Protected hosts (gateway, DNS, DHCP, the appliance, management hosts) are never restricted | ✅ |
+| Inline bridge mode with MAC-based quarantine; fail-open watchdog | ✅ |
+| Response policy as code (YAML, validation, dry-run diff, history) | ✅ |
+| Signed, sequenced, expiring commands from the brain to sensors (mTLS) | ✅ |
+| Dry run by default, full rollback in ~100 ms, systemd rollback guard | ✅ |
 
 ### Operations
 
 | Capability | Status |
 |---|---|
-| FastAPI REST API and WebSocket live stream | ✅ |
-| React console: topology map, device detail, analytics, firewall activity, demo mode | ✅ |
-| SQLite storage with retention; optional PostgreSQL backend and migration script | ✅ |
-| Prometheus metrics, Grafana dashboards, health endpoint | ✅ |
-| Offline installer, `sentinelctl` upgrade with health check and automatic rollback | ✅ |
-| Release pipeline: tests, signature check, dependency audit, SBOM, provenance attestation | ✅ |
-| User accounts with Argon2id passwords, four roles, rotating sessions, login lockout | ✅ |
-| Two-step sign-in (TOTP) for Operators and Admins, with recovery codes | ✅ |
-| HTTPS by default, scoped API tokens, hash-chained audit log, API rate limits, security headers | ✅ |
-| SIEM export (syslog/CEF, webhooks, JSON for Splunk, ELK and Microsoft Sentinel) | 🔜 |
-| Model registry with shadow testing and hot reload | 🔜 |
-| Multi-sensor and multi-site fleet management | 🔜 |
+| FastAPI REST API (90 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
+| React console: topology, device detail, analytics, firewall, trust, OT devices, users, audit, setup | ✅ |
+| User accounts (Argon2id), four roles, TOTP two-step sign-in, scoped API tokens, login lockout | ✅ |
+| HTTPS by default, security headers, API rate limits, hash-chained audit log | ✅ |
+| SIEM export: syslog/CEF (UDP/TCP/TLS), signed webhooks, JSON lines, Slack, Teams, email | ✅ |
+| Prometheus metrics, Grafana dashboard, alert rules, JSON logs | ✅ |
+| Daily/weekly PDF reports, per-device history, compliance export | ✅ |
+| Encrypted backup and restore (`sentinelctl backup|restore`) | ✅ |
+| One-command installer, presets (Home, Office, OT, Enterprise), hardened OS script | ✅ |
+| Over-the-air updates: SHA-256 and cosign verified, health-checked, automatic rollback | ✅ |
+| Releases: reproducible, Sigstore-signed, CycloneDX SBOM, build provenance | ✅ |
+| Multi-site fleet console | 🔜 Phase 7 |
 
 ---
 
@@ -169,8 +188,8 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
                          └──────────────────────────────────────────────┘
 ```
 
-- **Today (v1.2):** everything runs as a single node on a Raspberry Pi. The Pi–Jetson link does not exist yet.
-- **Target (v2.0):** the Pi only senses and enforces; the Jetson runs all AI work and owns users, data and the console. One Jetson can serve several sensors.
+- **Standalone (Lite):** everything runs on one Raspberry Pi. This is how most installs run today.
+- **Sensor + brain:** the Pi senses and enforces, and the brain runs AI work and owns users, data and the console. The link is mutual TLS with signed commands, and one brain serves several sensors. This is built and tested in simulation; it has not yet run on Jetson hardware.
 - **Fail-safe by design:** if the brain is offline, the sensor keeps basic detection running, buffers data to disk, and never blocks traffic because a link failed.
 
 ### Deployment profiles
@@ -178,14 +197,14 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | Profile | Hardware | Intended for | Available |
 |---|---|---|---|
 | **Lite** | 1 × Raspberry Pi 5 | Home labs, very small offices, evaluation | ✅ v1.1 |
-| **Standard** | 1 × Pi 5 + 1 × Jetson Orin Nano | SMBs, clinics, OT cells (reference deployment) | 🔜 v1.3 |
-| **Multi-sensor** | N × Pi 5 + 1 × Jetson | Several segments or floors | 🔜 v1.3 |
+| **Standard** | 1 × Pi 5 + 1 × Jetson Orin Nano | SMBs, clinics, OT cells (reference deployment) | 🟡 v2.0 (Jetson untested) |
+| **Multi-sensor** | N × Pi 5 + 1 × Jetson | Several segments or floors | 🟡 v2.0 (Jetson untested) |
 | **Fleet** | Many sites + central console | MSPs and multi-branch organisations | 🔜 v2.x |
 
 ### Network placement
 
 - **Passive (recommended first):** a managed switch mirrors traffic to the Pi. No risk to the network; it can alert but cannot block forwarded traffic.
-- **Inline 🔜:** the Pi bridges WAN and LAN and can block and quarantine. Needs two NICs and a bypass so traffic keeps flowing if the appliance fails.
+- **Inline:** the Pi bridges WAN and LAN and can block, quarantine, contain and segment. It needs two NICs. A software watchdog fails open, and a hardware bypass is recommended so traffic keeps flowing if the appliance fails.
 
 ### Hardware
 
@@ -329,32 +348,28 @@ Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
 
 ## API
 
-Every endpoint except sign-in requires authentication: a console access token or an API token (`Authorization: Bearer …`), or the shared API key. Each endpoint has a minimum role.
+Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 90 endpoints is in **[docs/API.md](docs/API.md)**.
 
 | Role | Can |
 |---|---|
-| Viewer | Read dashboards, alerts, devices, firewall state, reports |
-| Analyst | Viewer + `POST /api/alerts/explain` |
-| Operator | Analyst + block, unblock, whitelist, expire, rollback, demos |
-| Admin | Operator + `POST /api/firewall/policy` and user management |
+| Viewer | Read dashboards, alerts, devices, trust scores, OT inventory, firewall state, reports |
+| Analyst | Viewer + label alerts (true/false positive) and request explanations |
+| Operator | Analyst + block, quarantine, rate-limit, contain, release, approve playbook actions, rollback |
+| Admin | Operator + users, setup, response policy, integrations, threat intel, models, OT segmentation, audit log |
 
 Operators and Admins must set up two-step sign-in (an authenticator app) at their next sign-in. The first admin does this right after choosing a new password, so have a phone with an authenticator app ready.
 
-| Method and path | Purpose |
+| Area | Main endpoints |
 |---|---|
-| `GET /api/auth/status`, `POST /api/auth/login`, `/refresh`, `/logout`, `/password`, `GET /api/auth/me` | Sign-in and sessions |
-| `GET /api/auth/mfa`, `POST /api/auth/mfa/setup`, `/mfa/enable` | Two-step sign-in status and enrolment |
-| `GET/POST /api/users`, `PATCH/DELETE /api/users/{username}` | User management (Admin) |
-| `GET/POST /api/tokens`, `DELETE /api/tokens/{id}` | API tokens (signed-in Admin) |
-| `GET /api/audit?limit=&before=&action=&actor=`, `GET /api/audit/verify` | Hash-chained audit log and integrity check (Admin) |
-| `GET/POST /api/setup` | Device setup: network role, placement, capture interface, response mode (Admin) |
-| `GET /api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/risk_timeline`, `/api/live_stats` | Detection data |
-| `GET /api/incidents/timeline`, `/api/reports/security`, `POST /api/alerts/explain` | Investigation and reporting |
-| `GET /api/device/{id}/logs` | Per-device history |
-| `GET/POST /api/firewall/policy`, `GET /api/firewall/rules`, `GET /api/firewall/actions` | Firewall policy and audit trail |
-| `POST /api/firewall/block`, `/unblock`, `/whitelist`, `/expire`, `/rollback` | Response actions |
-| `GET /api/health`, `GET /metrics` | Health and Prometheus metrics |
-| `WS /ws/packets` | Live alerts, flows and demo events. Send `{"type": "auth", "token": "…"}` as the first message |
+| Sign-in and accounts | `/api/auth/*`, `/api/users`, `/api/tokens`, `/api/audit` |
+| Detection data | `/api/alerts`, `/api/flows`, `/api/device_profiles`, `/api/live_stats`, `/api/alerts/feedback` |
+| Devices and trust | `/api/devices/identity`, `/api/trust`, `/api/devices/{ip}/peers`, `/api/devices/{ip}/history` |
+| Response | `/api/firewall/block`, `/unblock`, `/quarantine`, `/ratelimit`, `/contain`, `/release`, `/rollback`, `/api/playbook/pending`, `/api/policy` |
+| OT | `/api/ot/assets`, `/api/ot/segmentation` (+ `/allow`, `/refresh`) |
+| Two-node | `/api/brain/*`, `/api/sensor/*` |
+| Models and evaluation | `/api/models`, `/api/eval/latest` |
+| Integrations and reports | `/api/integrations`, `/api/intel`, `/api/reports/*`, `/api/export/compliance` |
+| Health | `/api/health`, `/metrics`, `WS /ws/packets` (send `{"type": "auth", "token": "…"}` first) |
 
 The OpenAPI document is served at `/openapi.json` to authenticated clients only.
 
@@ -363,28 +378,43 @@ The OpenAPI document is served at `/openapi.json` to authenticated clients only.
 ## Repository layout
 
 ```text
-capture/      packet capture and the ingest loop (Scapy)
+capture/      packet capture (AF_PACKET fast path, Scapy for deep inspection) and the ingest loop
 flow/         flow records and the flow table
 features/     per-flow feature extraction
-detection/    baselines, Z-score, Isolation Forest, fingerprinting, risk, MITRE mapping
-core/         engine, firewall enforcement, storage (SQLite/PostgreSQL), health, config
+detection/    baselines, Isolation Forest, autoencoder, detectors, DNS, TLS, OT protocols,
+              fusion, model registry, feedback, peer profiles
+enforcement/  playbook, policy as code, protected hosts, device identity, OT segmentation,
+              trust scores, watchdog
+core/         engine, firewall (nftables/iptables), auth, audit, storage, setup, health
+brain/        two-node brain: CA, enrolment, sensor registry, signed commands
+sensor/       two-node sensor: link client, disk buffer, command executor
+common/       link protocol and PKI shared by brain and sensor
+integrations/ SIEM export, webhooks, chat and email, Suricata input
+intel/        threat-intelligence feeds (STIX/TAXII, lists)
+reporting/    PDF and JSON reports
+ops/          encrypted backup and restore
+evaluation/   evaluation harness and datasets
 security/     model signing and verification
-dashboard/    FastAPI backend (and the legacy Streamlit dashboard)
+dashboard/    FastAPI backend
 frontend/     React web console (Vite)
+presets/      response presets: home, office, ot, enterprise
 packaging/    sentinelctl, systemd units, rollback guard, logrotate, Prometheus alerts
 deploy/       Raspberry Pi, Jetson, monitoring and Grafana deployment files
-scripts/      package build, demo and replay tools, training, signing, CI helpers
-tests/        unit and integration tests
-docs/         additional documentation and archived material
+scripts/      installer, package build, demo and replay tools, training, signing, CI helpers
+tests/        unit tests and real-kernel network-namespace tests (tests/firewall_netns/)
+docs/         admin guide, runbooks, troubleshooting, API reference, performance, pen-test scope, beta plan
 ```
 
 ---
 
-## Known limitations (v1.2)
+## Known limitations (v2.3)
 
 1. **Self-signed certificate by default.** Browsers warn until you import a certificate from your own CA (`sentinelctl tls import`).
-2. **Single node only.** The Jetson is not used until v1.3.
-3. **No inline bridge mode.** Blocks cover traffic to and routed through the appliance; bridge filtering and MAC quarantine arrive in v1.4.
+2. **Jetson brain not yet run on hardware.** Two-node mode is verified in simulation and on the Pi; GPU models wait for the Jetson.
+3. **Passive placement cannot stop traffic.** Blocks, quarantine, containment and OT segmentation act on traffic to or through the device. On a mirror port SentinelEdgeAI alerts only.
+4. **Containment and OT segmentation are IPv4 only.** Use quarantine for IPv6 hosts.
+5. **Bridged traffic has no conntrack on this kernel.** In inline bridge mode, containment stops new TCP connections and off-profile UDP, but packets of existing connections pass.
+6. **Not yet externally tested.** The penetration test and the 30-day field beta are still to come ([PENTEST_SCOPE](docs/PENTEST_SCOPE.md), [BETA_PROGRAM](docs/BETA_PROGRAM.md)).
 
 ---
 
