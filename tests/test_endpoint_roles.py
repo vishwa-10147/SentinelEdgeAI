@@ -85,6 +85,7 @@ ROUTES = {
     ('POST', '/api/fleet/groups'): 'admin',
     ('POST', '/api/fleet/groups/{name}/rollout'): 'admin',
     ('GET', '/api/fleet/agent'): 'viewer',
+    ('POST', '/api/fleet/federated'): 'admin',
     ('GET', '/api/devices/{ip}/peers'): 'viewer',
     ('POST', '/api/firewall/contain'): 'operator',
     ('GET', '/api/ot/segmentation'): 'viewer',

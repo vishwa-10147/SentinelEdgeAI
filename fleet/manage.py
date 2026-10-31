@@ -21,7 +21,7 @@ def overview(st=None):
     return {'server': keys.enabled(), 'ca_fingerprint': keys.ca_fingerprint() if keys.enabled() else None,
             'sites': sites,
             'groups': [{**g, 'rollout': rollout.rollout_status(g, sites, now)} for g in st.list_groups()],
-            'templates': st.list_templates()}
+            'templates': st.list_templates(), 'federated': st.rounds()}
 
 
 def put_template(name, yaml_text=None, preset=None, by='cli', st=None):
@@ -78,3 +78,19 @@ def enrolment_code(group='default', by='cli', st=None):
     code = (st or store()).create_code(group)
     audit.record('fleet_code', actor=by, details={'group': group})
     return {'code': code, 'group': group, 'ca_fingerprint': keys.ca_fingerprint() if keys.enabled() else None}
+
+
+def start_round(min_sites=2, model='autoencoder', by='cli', st=None):
+    if model != 'autoencoder':
+        raise ValueError('only the autoencoder is trained federated')
+    if not 1 <= int(min_sites) <= 1000:
+        raise ValueError('min_sites must be between 1 and 1000')
+    r = (st or store()).start_round(model, int(min_sites), by)
+    audit.record('federated_round_start', actor=by, target=f"round {r['id']}", details={'min_sites': r['min_sites']})
+    return r
+
+
+def close_round(round_id, by='cli', st=None):
+    (st or store()).close_round(int(round_id))
+    audit.record('federated_round_close', actor=by, target=f'round {round_id}')
+    return {'closed': int(round_id)}

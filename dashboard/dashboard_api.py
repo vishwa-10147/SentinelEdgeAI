@@ -801,6 +801,16 @@ def fleet_rollout(name: str, payload: dict, principal: dict = Depends(require_ad
     return _fleet(principal, 'fleet_rollout', manage.set_rollout, name, str((payload or {}).get('action', '')))
 
 
+@app.post('/api/fleet/federated')
+def fleet_federated(payload: dict, principal: dict = Depends(require_admin)):
+    """Start a federated learning round ({"min_sites": n}) or close one ({"close": id})."""
+    from fleet import manage
+    p = payload or {}
+    if p.get('close') is not None:
+        return _fleet(principal, 'federated_round_close', manage.close_round, int(p['close']))
+    return _fleet(principal, 'federated_round_start', manage.start_round, int(p.get('min_sites') or 2))
+
+
 @app.get('/api/fleet/agent')
 def fleet_agent_status(principal: dict = Depends(require_viewer)):
     """This site's own fleet status: enrolment, last report, applied template, pending version."""

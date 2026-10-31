@@ -160,7 +160,55 @@ def collect_report():
         'segmentation': _part(lambda: segmentation.load()['mode'], 'unknown'), 'ot_controllers': _part(ot_controllers, 0),
         'system': _part(_system, {}), 'template': (_read_json('state.json', {}) or {}).get('template'),
         'update': _read_json('update_result.json'),
+        'federated': {'installed_round': ((_read_json('state.json', {}) or {}).get('federated') or {}).get('installed_round'),
+                      'samples': _part(lambda: _samples().stats()['samples'], 0)},
     }
+
+
+def _samples():
+    from detection.samples import SampleStore
+    return SampleStore()
+
+
+def _federated(desired, state, session, ident):
+    """Answer an open round with a local update; install a new global model as a shadow model."""
+    from detection import federated, registry
+    fed = state.setdefault('federated', {})
+    rnd, latest = desired.get('federated_round'), desired.get('federated_model')
+    if not rnd and not latest:
+        return
+    store = _samples()
+    try:
+        rows = store.rows()
+    finally:
+        store.close()
+    if rnd and fed.get('submitted_round') != rnd['round']:
+        if len(rows) < federated.MIN_SAMPLES:
+            fed['note'] = f'round {rnd["round"]}: only {len(rows)} normal flows sampled, need {federated.MIN_SAMPLES}'
+        else:
+            update = federated.local_update(rows, rnd.get('base'))
+            r = session.post(f"{ident['fleet_url']}/v1/federated/update",
+                             json={'round': rnd['round'], 'model': rnd.get('model', 'autoencoder'), 'update': update},
+                             timeout=TIMEOUT)
+            if r.status_code == 200:
+                fed.update(submitted_round=rnd['round'], note=None)
+                audit.record('federated_update', actor='fleet', target=f"round {rnd['round']}",
+                             details={'n_samples': update['n_samples']})
+            else:
+                fed['note'] = f"round {rnd['round']}: update refused ({r.status_code})"
+    if latest and fed.get('installed_round') != latest['round']:
+        model = federated.build_model(latest['global'])
+        local = len(rows) >= federated.MIN_SAMPLES
+        if local:
+            federated.calibrate(model, rows)              # the threshold fits this site's own traffic
+        version = registry.register('autoencoder', model, {
+            'federated_round': latest['round'], 'sites': latest['global'].get('sites'),
+            'n_samples': latest['global'].get('n_samples'), 'threshold': round(model.threshold, 5),
+            'threshold_from': 'local traffic' if local else 'federation'}, model.features,
+            notes=f"federated round {latest['round']}")
+        fed.update(installed_round=latest['round'], installed_version=version)
+        audit.record('federated_model', actor='fleet', target=f'autoencoder v{version}',
+                     details={'round': latest['round'], 'stage': 'shadow'})
 
 
 def _apply_template(template, state):
@@ -210,6 +258,10 @@ def report_once(session=None):
         return state
     state['template_status'] = _apply_template(desired.get('template'), state)
     _apply_version(desired.get('target_version'))
+    try:
+        _federated(desired, state, session, ident)
+    except (requests.RequestException, ValueError, OSError) as exc:
+        state.setdefault('federated', {})['note'] = f'federated learning failed: {str(exc)[:200]}'
     state.update(last_report=int(time.time()), last_error=None, group=desired.get('group'),
                  desired_version=desired.get('target_version'))
     _write('state.json', json.dumps(state, indent=2))

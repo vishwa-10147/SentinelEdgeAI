@@ -58,7 +58,7 @@ Phase 3  Enforcement you can trust                v1.4   ███████�
 Phase 4  Detection quality                        v1.5   ███████████████░░░░░  built; public datasets + GPU pending
 Phase 5  Integrations and operations              v1.6   ██████████████████░░  built; real SIEM test pending
 Phase 6  Production release                       v2.0   ██████████████░░░░░░  released; OS images, pen test, beta pending
-Phase 7  Scale and advanced intelligence          v2.x+  █████████░░░░░░░░░░░  3 of 7 themes done (fleet, OT, zero-trust)
+Phase 7  Scale and advanced intelligence          v2.x+  ███████████░░░░░░░░░  4 of 7 themes done (fleet, federated, OT, zero-trust)
 ```
 
 **v2.0 is released and Phase 7 is under way.** Phases 2–6 are built and tested in simulation, in real-kernel network-namespace tests and on the Pi itself. What remains of them needs hardware, outside people or time rather than code: Jetson validation, a 72-hour inline soak, public-dataset evaluation and GPU models, a real SIEM run, pre-built OS images, an external penetration test and a 30-day beta. Each phase's evidence and open items are listed in [PLAN.md](PLAN.md).
@@ -72,7 +72,7 @@ Phase 7  Scale and advanced intelligence          v2.x+  ███████�
 | 4 | v1.5 | Attack-specific detectors, TLS fingerprints, GPU models, model registry, published accuracy numbers | 🟡 Built, with console views for models, feedback and evaluation (v2.5); 100% detection / 0% FP on the labelled synthetic set. Pending: CIC-IDS/UNSW evaluation, GPU models |
 | 5 | v1.6 | SIEM export, threat-intel feeds, observability, reports, backup and restore | 🟡 Built; SIEM delivery < 5 s and full restore verified. Pending: real Splunk/ELK run |
 | 6 | v2.0 | OS images, OTA updates with A/B rollback, hardened OS, external pen test, 30-day field beta | 🟡 Released as v2.0; installer, OTA, reproducible Sigstore-signed builds, hardening, container, docs, 25–31× faster capture and decisions. Pending: OS images, pen test, beta |
-| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3) and the fleet manager (v2.4) done; 4 themes to go |
+| 7 | v2.x+ | Fleet manager, zero-trust segmentation, federated learning, RL response tuning, OT protocols, high availability, compliance packs | 🟡 OT protocol awareness (v2.0–v2.1), OT micro-segmentation (v2.2), device trust and containment (v2.3), the fleet manager (v2.4) and federated learning (v2.6) done; 3 themes to go |
 
 Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked done when all of them are met.
 
@@ -80,7 +80,8 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 
 | Version | Highlights |
 |---|---|
-| **v2.5.0** | Operations console, live-stream event bus (resume, resync, heartbeats), brain on PostgreSQL, sensor upgrades through the brain |
+| **v2.6.0** | Federated learning: sites train the autoencoder together and share only model updates |
+| v2.5.0 | Operations console, live-stream event bus (resume, resync, heartbeats), brain on PostgreSQL, sensor upgrades through the brain |
 | v2.4.0 | Fleet manager: many sites in one console, configuration templates, staged rollouts that pause on failure |
 | v2.3.1 | Trust scores calibrated on live traffic (one penalty per alert kind; protected hosts and loopback handled) |
 | v2.3.0 | Device trust scores (0–100, with reasons), learned peer profiles, `contain` response (keep only normal peers) |
@@ -130,6 +131,7 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 | Suricata `eve.json` as a detector input | ✅ |
 | Model registry: shadow → canary → active, hot reload, rollback; analyst feedback recalibrates detectors | ✅ |
 | Device trust score (0–100) with reasons and a recommended response | ✅ |
+| Federated learning across sites: only model updates leave a site, results arrive as shadow models | ✅ |
 | GPU detectors on the Jetson (TensorRT autoencoder, sequence and graph models) | 🔜 hardware |
 
 ### Response (adaptive firewall)
@@ -153,7 +155,7 @@ SentinelEdgeAI is the **network layer** of a defence-in-depth setup. It does not
 |---|---|
 | Live stream: event bus with cursors, resume after reconnect, heartbeats | ✅ |
 | Storage: SQLite by default, PostgreSQL for the engine and the brain | ✅ |
-| FastAPI REST API (102 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
+| FastAPI REST API (103 endpoints, [reference](docs/API.md)) and authenticated WebSocket stream | ✅ |
 | React console: topology, device detail, analytics, firewall, operations (approvals, restrictions, policy, sensors, models, evaluation), trust, OT devices, fleet, users, audit, setup | ✅ |
 | User accounts (Argon2id), four roles, TOTP two-step sign-in, scoped API tokens, login lockout | ✅ |
 | HTTPS by default, security headers, API rate limits, hash-chained audit log | ✅ |
@@ -353,7 +355,7 @@ Default ports: console and API `9000`, health `5000`, Prometheus metrics `8001`.
 
 ## API
 
-Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 102 endpoints is in **[docs/API.md](docs/API.md)**.
+Every endpoint except sign-in requires authentication: a console access token, a scoped API token (`Authorization: Bearer …`) or the shared API key. Each endpoint has a minimum role, which a test enforces for every route. The full generated list of all 103 endpoints is in **[docs/API.md](docs/API.md)**.
 
 | Role | Can |
 |---|---|
@@ -395,7 +397,7 @@ core/         engine, firewall (nftables/iptables), auth, audit, storage, setup,
 brain/        two-node brain: CA, enrolment, sensor registry, signed commands
 sensor/       two-node sensor: link client, disk buffer, command executor
 common/       link protocol and PKI shared by brain and sensor
-fleet/        fleet server, site agent, staged rollouts, configuration templates
+fleet/        fleet server, site agent, staged rollouts, configuration templates, federated rounds
 integrations/ SIEM export, webhooks, chat and email, Suricata input
 intel/        threat-intelligence feeds (STIX/TAXII, lists)
 reporting/    PDF and JSON reports

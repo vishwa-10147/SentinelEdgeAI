@@ -134,6 +134,7 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/fleet` | viewer | Fleet server view: sites with their latest reports, groups with rollout progress, templates. |
 | `GET` | `/api/fleet/agent` | viewer | This site's own fleet status: enrolment, last report, applied template, pending version. |
 | `POST` | `/api/fleet/codes` | admin | A one-time enrolment code for a new site (valid for an hour). |
+| `POST` | `/api/fleet/federated` | admin | Start a federated learning round ({"min_sites": n}) or close one ({"close": id}). |
 | `POST` | `/api/fleet/groups` | admin | Create or update a group: its template, target version and rollout stages. |
 | `POST` | `/api/fleet/groups/{name}/rollout` | admin | Pause or resume a group's rollout. |
 | `POST` | `/api/fleet/sites/{site_id}/group` | admin |  |

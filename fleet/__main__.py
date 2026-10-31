@@ -1,4 +1,4 @@
-"""python -m fleet init | code | sites | revoke | template | templates | group | groups | rollout | enroll | report | status"""
+"""python -m fleet init | code | sites | revoke | template | templates | group | groups | rollout | federated | enroll | report | status"""
 import argparse
 import json
 import sys
@@ -36,6 +36,10 @@ def main(argv=None):
     p = sub.add_parser('rollout', help='pause or resume a group\'s rollout')
     p.add_argument('action', choices=['pause', 'resume'])
     p.add_argument('group')
+    p = sub.add_parser('federated', help='federated learning rounds (sites share model updates, never data)')
+    p.add_argument('action', choices=['status', 'start', 'close'])
+    p.add_argument('--min-sites', type=int, default=2, help='aggregate once this many sites have answered')
+    p.add_argument('--round', type=int)
     p = sub.add_parser('enroll', help='enrol this site with a fleet server')
     p.add_argument('url')
     p.add_argument('code')
@@ -80,6 +84,13 @@ def main(argv=None):
                                    json.loads(args.stages) if args.stages else None, 'cli', st))
         elif args.command == 'groups':
             _show(manage.overview(st)['groups'])
+        elif args.command == 'federated':
+            if args.action == 'start':
+                _show(manage.start_round(args.min_sites, by='cli', st=st))
+            elif args.action == 'close':
+                _show(manage.close_round(args.round, by='cli', st=st))
+            else:
+                _show(st.rounds())
         elif args.command == 'rollout':
             _show(manage.set_rollout(args.group, args.action, 'cli', st))
         return 0

@@ -48,6 +48,11 @@ class FleetStore:
                     updated INTEGER NOT NULL, updated_by TEXT);
                 CREATE TABLE IF NOT EXISTS groups (name TEXT PRIMARY KEY, template TEXT, target_version TEXT,
                     stages TEXT NOT NULL DEFAULT '[]', started INTEGER, paused TEXT, updated_by TEXT);
+                CREATE TABLE IF NOT EXISTS fl_rounds (id INTEGER PRIMARY KEY AUTOINCREMENT, model TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'open', created INTEGER NOT NULL, min_sites INTEGER NOT NULL,
+                    base INTEGER, global TEXT, aggregated INTEGER, by TEXT);
+                CREATE TABLE IF NOT EXISTS fl_updates (round INTEGER NOT NULL, site TEXT NOT NULL, ts INTEGER NOT NULL,
+                    n_samples INTEGER NOT NULL, upd TEXT NOT NULL, PRIMARY KEY (round, site));
                 INSERT OR IGNORE INTO groups(name) VALUES ('default');
             """)
             self._conn = conn
@@ -187,3 +192,48 @@ class FleetStore:
 
     def resume_group(self, name):
         self._exec('UPDATE groups SET paused = NULL WHERE name = ?', (name,))
+
+    # ---------- federated learning ----------
+
+    def latest_global(self, model='autoencoder'):
+        """The newest aggregated round as {'round', 'global'} or None."""
+        row = self._one("SELECT id, global FROM fl_rounds WHERE model = ? AND status = 'aggregated' "
+                        'ORDER BY id DESC LIMIT 1', (model,))
+        return {'round': row['id'], 'global': json.loads(row['global'])} if row else None
+
+    def open_round(self, model='autoencoder'):
+        return self._one("SELECT * FROM fl_rounds WHERE model = ? AND status = 'open' ORDER BY id DESC LIMIT 1", (model,))
+
+    def start_round(self, model, min_sites, by):
+        if self.open_round(model):
+            raise ValueError('a round is already open; wait for it or close it first')
+        base = self.latest_global(model)
+        cur = self._exec('INSERT INTO fl_rounds(model, created, min_sites, base, by) VALUES (?,?,?,?,?)',
+                         (model, int(time.time()), int(min_sites), base['round'] if base else None, by))
+        return self._one('SELECT * FROM fl_rounds WHERE id = ?', (cur.lastrowid,))
+
+    def close_round(self, round_id):
+        self._exec("UPDATE fl_rounds SET status = 'closed' WHERE id = ? AND status = 'open'", (round_id,))
+
+    def add_update(self, round_id, site_id, update):
+        self._exec('INSERT OR REPLACE INTO fl_updates VALUES (?,?,?,?,?)',
+                   (round_id, site_id, int(time.time()), int(update['n_samples']), json.dumps(update)))
+        return self._one('SELECT COUNT(*) AS n FROM fl_updates WHERE round = ?', (round_id,))['n']
+
+    def updates(self, round_id):
+        return [json.loads(r['upd']) for r in self._all('SELECT upd FROM fl_updates WHERE round = ? ORDER BY site',
+                                                        (round_id,))]
+
+    def submitted(self, round_id, site_id):
+        return bool(self._one('SELECT 1 AS x FROM fl_updates WHERE round = ? AND site = ?', (round_id, site_id)))
+
+    def finish_round(self, round_id, global_model):
+        self._exec("UPDATE fl_rounds SET status = 'aggregated', global = ?, aggregated = ? WHERE id = ?",
+                   (json.dumps(global_model), int(time.time()), round_id))
+
+    def rounds(self, limit=20):
+        rows = self._all('SELECT r.id, r.model, r.status, r.created, r.min_sites, r.base, r.aggregated, r.by, '
+                         '(SELECT COUNT(*) FROM fl_updates u WHERE u.round = r.id) AS updates, '
+                         '(SELECT SUM(n_samples) FROM fl_updates u WHERE u.round = r.id) AS samples '
+                         'FROM fl_rounds r ORDER BY r.id DESC LIMIT ?', (int(limit),))
+        return rows

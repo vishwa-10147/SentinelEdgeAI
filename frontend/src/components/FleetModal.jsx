@@ -157,6 +157,26 @@ export default function FleetModal({ open, onClose, user }){
             </div>
 
             <div className="rules-section">
+              <h3>Federated learning</h3>
+              <p className="auth-hint">Sites train the flow autoencoder on their own normal traffic and send back only model updates. The result arrives on every site as a shadow model (scored, never acted on) until you promote it in Operations → Models.</p>
+              <div className="users-table">
+                <div className="users-row fleet-group-row users-head"><span>Round</span><span>Status</span><span>Updates</span><span>Samples</span><span></span></div>
+                {(fleet.federated || []).map(r=>(
+                  <div className="users-row fleet-group-row" key={r.id}>
+                    <span>#{r.id}</span><span>{r.status}{r.status === 'open' ? ` (needs ${r.min_sites})` : ''}</span><span>{r.updates}</span><span>{r.samples || 0}</span>
+                    <span>{admin && r.status === 'open' && <button className="ghost-button" disabled={busy} onClick={()=>act(()=>apiPost('/api/fleet/federated', { close: r.id }), `Round ${r.id} closed.`)}>Close</button>}</span>
+                  </div>
+                ))}
+                {(fleet.federated || []).length === 0 && <p className="auth-hint">No rounds yet.</p>}
+              </div>
+              {admin && !(fleet.federated || []).some(r=>r.status === 'open') && (
+                <div className="audit-toolbar">
+                  <button className="ghost-button" disabled={busy} onClick={()=>act(()=>apiPost('/api/fleet/federated', { min_sites: Math.max(1, Math.min(fleet.sites.filter(s=>!s.revoked).length, 3)) }), r=>`Round ${r.id} started; it aggregates when ${r.min_sites} site(s) have answered.`)}>Start a round</button>
+                </div>
+              )}
+            </div>
+
+            <div className="rules-section">
               <h3>Configuration templates</h3>
               <div className="users-table">
                 <div className="users-row ot-seg-row users-head"><span>Template</span><span>Version</span><span>Updated</span></div>

@@ -83,11 +83,63 @@ def desired_state(site, report, now=None):
         audit.record('fleet_rollout_paused', target=group['name'], details={'reason': reason})
         group['paused'] = reason
     template = st.get_template(group['template']) if group.get('template') else None
-    return {'group': group['name'],
+    return {**federated_state(site, report),
+            'group': group['name'],
             'template': {'name': template['name'], 'version': template['version'], 'yaml': template['yaml']}
             if template else None,
             'target_version': rollout.desired_version(group, site['id'], report.get('version'), now),
             'server_time': int(now)}
+
+
+def federated_state(site, report, model='autoencoder'):
+    """An open round this site has not answered (with its starting model), and the newest global model
+    if the site does not have it yet."""
+    st = store()
+    out = {}
+    rnd = st.open_round(model)
+    if rnd and not st.submitted(rnd['id'], site['id']):
+        base = st.latest_global(model)
+        out['federated_round'] = {'round': rnd['id'], 'model': model, 'base': base['global'] if base else None}
+    latest = st.latest_global(model)
+    installed = ((report or {}).get('federated') or {}).get('installed_round')
+    if latest and installed != latest['round']:
+        out['federated_model'] = latest
+    return out
+
+
+@app.post('/v1/federated/update')
+def federated_update(body: dict, site: dict = Depends(site_identity)):
+    """A site's model update for the open round (parameters and counts only, never flows)."""
+    from detection import federated
+    st = store()
+    rnd = st.open_round(str(body.get('model', 'autoencoder')))
+    update = body.get('update') or {}
+    if not rnd or body.get('round') != rnd['id']:
+        raise HTTPException(status_code=409, detail='that round is not open')
+    if not isinstance(update.get('n_samples'), int) or update['n_samples'] < federated.MIN_SAMPLES:
+        raise HTTPException(status_code=400, detail='update needs n_samples >= %d' % federated.MIN_SAMPLES)
+    if update.get('hidden') != list(federated.HIDDEN) or not 0 < len(update.get('features') or []) <= 64:
+        raise HTTPException(status_code=400, detail='update has an unexpected network shape')
+    base = st.latest_global(rnd['model'])
+    if base and update['features'] != base['global']['features']:
+        raise HTTPException(status_code=400, detail='update was trained on different features than the global model')
+    others = st.updates(rnd['id'])
+    try:
+        if others:
+            federated._compatible(others + [update])
+        federated.validate_update(update)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f'invalid update: {exc}')
+    count = st.add_update(rnd['id'], site['id'], update)
+    audit.record('federated_update', actor=site['name'][:64], target=f"round {rnd['id']}",
+                 details={'site': site['id'], 'n_samples': update['n_samples']})
+    if count >= rnd['min_sites']:
+        global_model = federated.aggregate(st.updates(rnd['id']), round_id=rnd['id'], previous=base['global'] if base else None)
+        st.finish_round(rnd['id'], global_model)
+        audit.record('federated_round_done', target=f"round {rnd['id']}",
+                     details={'sites': global_model['sites'], 'n_samples': global_model['n_samples']})
+        return {'accepted': True, 'aggregated': True}
+    return {'accepted': True, 'aggregated': False, 'waiting_for': rnd['min_sites'] - count}
 
 
 @app.post('/v1/report')
