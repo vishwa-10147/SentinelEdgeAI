@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-10-31
+
 ### Added
 - **Compliance packs (Phase 7).** Evidence reports for ISO/IEC 27001:2022 Annex A, IEC 62443-3-3 and NIS2 (Art. 21(2) and 23). Each control is mapped to live evidence from the appliance: audit-log integrity, roles and MFA, TLS, device links, monitoring, detection and evaluation, response readiness, asset and OT inventory, segmentation, threat intelligence, SIEM export, backups, high availability, signed updates, policy history and reports. Each control gets a status of met, partial, gap, manual (organisational controls) or n/a, plus a one-line explanation of how to close any gap. JSON and PDF, `GET /api/compliance`, `/api/compliance/{pack}`, `/api/compliance/{pack}/pdf` (Admin), `python -m compliance report iso27001 --pdf out.pdf`, **Operations → Compliance**. These are documentation support, not a certification, and control descriptions are our own summaries.
 - Backups are now recorded (`data/backup_log.json`), so the last backup date can be shown as evidence.
