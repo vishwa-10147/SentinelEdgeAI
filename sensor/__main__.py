@@ -1,4 +1,4 @@
-"""python -m sensor enroll | run | status"""
+"""python -m sensor enroll | add-brain | run | status"""
 import argparse
 import json
 import logging
@@ -16,6 +16,8 @@ def main(argv=None):
     p.add_argument('--code', required=True, help='one-time enrolment code from the brain')
     p.add_argument('--ca-fingerprint', required=True, help="the brain CA's SHA-256 fingerprint shown with the code")
     p.add_argument('--name', help='name shown on the brain (default: hostname)')
+    p = sub.add_parser('add-brain', help='add a standby brain (paired with the active one) for failover')
+    p.add_argument('url', help='e.g. https://brain-b.local:9443')
     sub.add_parser('run', help='send buffered flows to the brain and execute its signed commands')
     sub.add_parser('status', help='enrolment and buffer state')
     args = parser.parse_args(argv)
@@ -27,6 +29,13 @@ def main(argv=None):
             print(f'enrolment failed: {exc}', file=sys.stderr)
             return 1
         print(f'enrolled as {sensor_id}; start the link with: python -m sensor run')
+        return 0
+    if args.command == 'add-brain':
+        try:
+            print('brains: ' + ', '.join(uplink.add_brain(args.url)))
+        except uplink.EnrolmentError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
         return 0
     if args.command == 'status':
         identity = uplink.load_identity()

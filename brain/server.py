@@ -113,6 +113,13 @@ def receive_health(health: dict, sensor: dict = Depends(sensor_identity)):
     return {'status': 'ok'}
 
 
+@app.get('/v1/status')
+def brain_status(sensor: dict = Depends(sensor_identity)):
+    """Whether this brain is the active or the standby one (sensors may talk to either)."""
+    from brain import ha
+    return ha.status(store())
+
+
 @app.get('/v1/upgrade')
 def upgrade_offer(version: str = '', sensor: dict = Depends(sensor_identity)):
     """The release the brain has staged for its sensors, if this sensor is not on it."""
@@ -160,6 +167,8 @@ def main():
         print('this device does not have the Brain role (choose it in Setup)', file=sys.stderr)
         return 78  # EX_CONFIG: RestartPreventExitStatus=78 stops systemd retrying
     keys.init()
+    from brain import ha
+    ha.start_renewal(store())
     host = os.environ.get('SENTINEL_BRAIN_HOST', '0.0.0.0')  # nosec B104 - sensors connect from the network
     port = int(os.environ.get('SENTINEL_BRAIN_PORT', '9443'))
     print(f'sentineledgeai brain: listening on https://{host}:{port} (CA {keys.ca_fingerprint()[:16]}…)', flush=True)

@@ -101,12 +101,34 @@ def enroll(brain_url, code, ca_fingerprint, name=None, timeout=10):
     return body['sensor_id']
 
 
+def add_brain(url, timeout=10):
+    """Add a standby brain. Its server certificate must come from the CA pinned at enrolment."""
+    identity = load_identity()
+    if not identity:
+        raise EnrolmentError('this device is not enrolled; enrol with the active brain first')
+    url = url.rstrip('/')
+    try:
+        ca = requests.get(f'{url}/v1/ca', verify=_path('ca.pem'), timeout=timeout).json()['ca']
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        raise EnrolmentError(f'could not reach {url} with the pinned brain CA: {exc}')
+    if pki.fingerprint(ca) != pki.fingerprint(open(_path('ca.pem')).read()):
+        raise EnrolmentError('that brain belongs to a different CA; pair it first (python -m brain ha export/import)')
+    urls = [u for u in identity.get('brain_urls', []) if u != url]
+    if url != identity['brain_url']:
+        urls.append(url)
+    identity['brain_urls'] = urls
+    _write('sensor.json', json.dumps(identity, indent=2))
+    return [identity['brain_url'], *urls]
+
+
 class Uplink:
     def __init__(self, identity=None, buffer=None, enforcer=None, timeout=5):
         self.identity = identity or load_identity()
         if not self.identity:
             raise EnrolmentError('this device is not enrolled; run: python -m sensor enroll ...')
-        self.url = self.identity['brain_url']
+        # the enrolment brain first, then any standby brains (python -m sensor add-brain)
+        self.urls = [self.identity['brain_url'], *self.identity.get('brain_urls', [])]
+        self.url = self.urls[0]
         self.buffer = buffer or DiskBuffer()
         self.enforcer = enforcer or Enforcer(self.identity['sensor_id'], open(_path('brain.pub')).read(),
                                              _path('enforcer_state.json'))
@@ -127,9 +149,13 @@ class Uplink:
     def _set_connected(self, ok, error=None):
         if ok != self.connected:
             if ok:
-                logger.warning('brain reachable again; replaying %d buffered flows', len(self.buffer))
+                logger.warning('brain %s reachable; replaying %d buffered flows', self.url, len(self.buffer))
             else:
-                logger.warning('brain unreachable (%s); degraded mode, buffering flows locally', error)
+                logger.warning('brain %s unreachable (%s); buffering flows locally', self.url, error)
+        if not ok and len(self.urls) > 1:
+            # fail over: the brains share their state, so any of them can take over the link
+            self.url = self.urls[(self.urls.index(self.url) + 1) % len(self.urls)]
+            logger.warning('trying brain %s next', self.url)
         self.connected, self.last_error = ok, error
 
     def flush_once(self):

@@ -4,6 +4,7 @@ import json
 import sys
 
 from brain import keys, manage
+from ops.backup import BackupError
 
 
 def main(argv=None):
@@ -26,7 +27,27 @@ def main(argv=None):
     p.add_argument('action', choices=['status', 'stage', 'clear'])
     p.add_argument('--file', help='a local sentineledgeai-pi-X.Y.Z.tar.gz (its .sha256 next to it)')
     p.add_argument('--version', help='download this published release instead')
+    p = sub.add_parser('ha', help='active/standby brains sharing keys and a PostgreSQL database')
+    p.add_argument('action', choices=['status', 'export', 'import'])
+    p.add_argument('file', nargs='?', help='pairing bundle (export: where to write; import: what to read)')
+    p.add_argument('--force', action='store_true', help='import even though this brain has a different CA')
+    p = sub.add_parser('segment', help='put a sensor in a segment (sensors of one segment back each other up)')
+    p.add_argument('sensor_id')
+    p.add_argument('segment', nargs='?', help='leave out to remove the sensor from its segment')
     args = parser.parse_args(argv)
+    if args.command == 'ha' and args.action == 'import':
+        import getpass
+        from brain import ha
+        if not args.file:
+            print('import needs the bundle file', file=sys.stderr)
+            return 2
+        try:
+            out = ha.import_bundle(args.file, getpass.getpass('pairing passphrase: '), force=args.force)
+        except (ValueError, OSError, BackupError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"paired: shared CA {out['ca_fingerprint']}; point SENTINEL_BRAIN_DATABASE_URL at the shared PostgreSQL")
+        return 0
 
     if args.command == 'init':
         created = keys.init()
@@ -47,6 +68,23 @@ def main(argv=None):
         elif args.command == 'revoke':
             manage.store().revoke_sensor(args.sensor_id)
             print(f'revoked {args.sensor_id}')
+        elif args.command == 'ha':
+            from brain import ha
+            if args.action == 'export':
+                import getpass
+                if not args.file:
+                    print('export needs a file to write', file=sys.stderr)
+                    return 2
+                phrase = getpass.getpass('pairing passphrase (12+ characters): ')
+                if phrase != getpass.getpass('again: '):
+                    print('passphrases differ', file=sys.stderr)
+                    return 1
+                print(json.dumps(ha.export_bundle(args.file, phrase), indent=2))
+            else:
+                print(json.dumps(ha.status(manage.store()), indent=2))
+        elif args.command == 'segment':
+            manage.store().set_segment(args.sensor_id, args.segment)
+            print(f"{args.sensor_id}: segment {args.segment or '(none)'}")
         elif args.command == 'upgrade':
             from brain import upgrades
             if args.action == 'stage':
@@ -68,7 +106,7 @@ def main(argv=None):
     except KeyError as exc:
         print(f'no such sensor: {exc.args[0]}', file=sys.stderr)
         return 1
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, BackupError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     return 0

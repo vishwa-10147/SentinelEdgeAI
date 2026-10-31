@@ -91,9 +91,12 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `POST` | `/api/brain/codes` | admin |  |
 | `GET` | `/api/brain/commands` | viewer |  |
 | `GET` | `/api/brain/flows` | viewer |  |
+| `GET` | `/api/brain/ha` | viewer | Active/standby role of this brain and the segments of its sensors. |
+| `POST` | `/api/brain/segments/{segment}/commands` | operator | A signed command for whichever sensor of the segment is healthy. |
 | `GET` | `/api/brain/sensors` | viewer |  |
 | `POST` | `/api/brain/sensors/{sensor_id}/commands` | operator |  |
 | `POST` | `/api/brain/sensors/{sensor_id}/revoke` | admin |  |
+| `POST` | `/api/brain/sensors/{sensor_id}/segment` | admin | Put a sensor in a segment; sensors of one segment back each other up for enforcement. |
 | `GET` | `/api/brain/upgrade` | viewer | The release staged for this brain's sensors, and the version each sensor runs. |
 | `POST` | `/api/brain/upgrade` | admin | Download a published release (checksum verified) and offer it to every sensor of this brain. |
 | `POST` | `/api/brain/upgrade/clear` | admin |  |

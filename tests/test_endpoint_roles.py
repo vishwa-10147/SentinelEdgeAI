@@ -76,6 +76,9 @@ ROUTES = {
     ('GET', '/api/tuning'): 'viewer',
     ('POST', '/api/tuning'): 'admin',
     ('GET', '/api/brain/upgrade'): 'viewer',
+    ('GET', '/api/brain/ha'): 'viewer',
+    ('POST', '/api/brain/sensors/{sensor_id}/segment'): 'admin',
+    ('POST', '/api/brain/segments/{segment}/commands'): 'operator',
     ('POST', '/api/brain/upgrade'): 'admin',
     ('POST', '/api/brain/upgrade/clear'): 'admin',
     ('GET', '/api/fleet'): 'viewer',
@@ -150,7 +153,7 @@ def declared_minimum(route):
 
 
 def concrete(path):
-    return path.replace('{ip}', '192.0.2.1').replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope').replace('{site_id}', 'site-0')
+    return path.replace('{ip}', '192.0.2.1').replace('{name}', 'nomodel').replace('{version}', '1').replace('{pending_id}', '0').replace('{sensor_id}', 'sensor-0').replace('{device_id}', 'dev1').replace('{username}', 'nobody').replace('{token_id}', 'nope').replace('{site_id}', 'site-0').replace('{segment}', 'seg-0')
 
 
 @pytest.fixture(autouse=True)

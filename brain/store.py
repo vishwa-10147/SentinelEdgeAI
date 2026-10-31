@@ -31,6 +31,8 @@ PG_SCHEMA = """
         sensor_id TEXT NOT NULL, seq BIGINT NOT NULL, envelope TEXT NOT NULL,
         created BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', result TEXT,
         PRIMARY KEY (sensor_id, seq));
+    CREATE TABLE IF NOT EXISTS lease (name TEXT PRIMARY KEY, holder TEXT NOT NULL, expires BIGINT NOT NULL);
+    ALTER TABLE sensors ADD COLUMN IF NOT EXISTS segment TEXT;
 """
 
 
@@ -119,7 +121,10 @@ class BrainStore:
                     sensor_id TEXT NOT NULL, seq INTEGER NOT NULL, envelope TEXT NOT NULL,
                     created INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', result TEXT,
                     PRIMARY KEY (sensor_id, seq));
+                CREATE TABLE IF NOT EXISTS lease (name TEXT PRIMARY KEY, holder TEXT NOT NULL, expires INTEGER NOT NULL);
             """)
+            if 'segment' not in {r[1] for r in conn.execute('PRAGMA table_info(sensors)')}:
+                conn.execute('ALTER TABLE sensors ADD COLUMN segment TEXT')   # brains from before 2.8
             self._conn = conn
         return self._conn
 
@@ -177,6 +182,35 @@ class BrainStore:
             r['health'] = json.loads(r['health']) if r['health'] else None
             r['revoked'] = bool(r['revoked'])
         return rows
+
+    def set_segment(self, sensor_id, segment):
+        """Sensors sharing a segment back each other up for enforcement (see brain.manage)."""
+        if not self.get_sensor(sensor_id):
+            raise KeyError(sensor_id)
+        self._exec('UPDATE sensors SET segment = ? WHERE id = ?', (segment or None, sensor_id))
+
+    def segment_sensors(self, segment):
+        return self._all('SELECT * FROM sensors WHERE segment = ? AND revoked = 0 ORDER BY last_seen DESC',
+                         (segment,))
+
+    # ---------- high availability ----------
+
+    def acquire_lease(self, name, holder, ttl):
+        """Take or renew lease `name` for `holder`; True if `holder` has it now."""
+        now = int(time.time())
+        with self._lock:
+            db = self._db()
+            db.execute('INSERT INTO lease(name, holder, expires) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET '
+                       'holder = excluded.holder, expires = excluded.expires '
+                       'WHERE lease.expires < ? OR lease.holder = excluded.holder', (name, holder, now + int(ttl), now))
+            row = db.execute('SELECT holder FROM lease WHERE name = ?', (name,)).fetchone()
+        return bool(row) and row['holder'] == holder
+
+    def lease(self, name):
+        return self._one('SELECT holder, expires FROM lease WHERE name = ?', (name,))
+
+    def release_lease(self, name, holder):
+        self._exec('DELETE FROM lease WHERE name = ? AND holder = ?', (name, holder))
 
     def revoke_sensor(self, sensor_id):
         if not self.get_sensor(sensor_id):

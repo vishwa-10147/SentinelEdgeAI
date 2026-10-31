@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **High availability (Phase 7).** Two brains can run as an active/standby pair. They share their key material through an encrypted pairing bundle (`python -m brain ha export|import`, scrypt + AES-256-GCM), and each brain gets its own server certificate from the shared CA. They share state through one PostgreSQL. A leader lease in the database, renewed every 10 s with a 30 s takeover, decides which brain issues commands; the standby refuses to. Sensors can know several brains (`python -m sensor add-brain URL`, accepted only if the brain's certificate comes from the pinned CA) and fail over on their own. Sensors watching the same segment can be grouped (`python -m brain segment`), and segment commands go to the sensor heard from most recently. New: `GET /api/brain/ha`, `POST /api/brain/sensors/{id}/segment`, `POST /api/brain/segments/{segment}/commands`, `GET /v1/status` on the brain link.
+
 ## [2.7.0] - 2026-10-31
 
 ### Added

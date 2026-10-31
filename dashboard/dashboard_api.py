@@ -1088,6 +1088,49 @@ def brain_command(sensor_id: str, payload: dict, principal: dict = Depends(requi
     return env['payload']
 
 
+@app.get('/api/brain/ha')
+def brain_ha(principal: dict = Depends(require_viewer)):
+    """Active/standby role of this brain and the segments of its sensors."""
+    _, m = _brain()
+    from brain import ha
+    segments = {}
+    for sensor in m.store().list_sensors():
+        if sensor.get('segment') and not sensor['revoked']:
+            segments.setdefault(sensor['segment'], []).append({'id': sensor['id'], 'name': sensor['name'],
+                                                              'last_seen': sensor['last_seen']})
+    return {**ha.status(m.store()), 'segments': segments}
+
+
+@app.post('/api/brain/sensors/{sensor_id}/segment')
+def brain_sensor_segment(sensor_id: str, payload: dict, principal: dict = Depends(require_admin)):
+    """Put a sensor in a segment; sensors of one segment back each other up for enforcement."""
+    _, m = _brain()
+    segment = (payload or {}).get('segment') or None
+    try:
+        m.store().set_segment(sensor_id, segment)
+    except KeyError:
+        raise HTTPException(status_code=404, detail='sensor not found')
+    audit_event(principal, 'sensor_segment', target=sensor_id, details={'segment': segment})
+    return {'sensor_id': sensor_id, 'segment': segment}
+
+
+@app.post('/api/brain/segments/{segment}/commands')
+def brain_segment_command(segment: str, payload: dict, principal: dict = Depends(require_operator)):
+    """A signed command for whichever sensor of the segment is healthy."""
+    _, m = _brain()
+    p = payload or {}
+    try:
+        sensor_id, env = m.issue_segment_command(segment, p.get('action'), p.get('ip'), p.get('ttl'),
+                                                 p.get('reason') or principal.get('username'))
+    except ValueError as exc:
+        audit_event(principal, 'sensor_command_issue', target=f'segment {segment}', outcome='rejected',
+                    details={'error': str(exc)[:300]})
+        raise HTTPException(status_code=409 if 'standby' in str(exc) else 400, detail=str(exc))
+    audit_event(principal, 'sensor_command_issue', target=sensor_id,
+                details={'segment': segment, **{k: env['payload'][k] for k in ('seq', 'action', 'ip')}})
+    return {'sensor_id': sensor_id, **env['payload']}
+
+
 @app.get('/api/brain/upgrade')
 def brain_upgrade_status(principal: dict = Depends(require_viewer)):
     """The release staged for this brain's sensors, and the version each sensor runs."""

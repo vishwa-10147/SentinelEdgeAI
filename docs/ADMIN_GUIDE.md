@@ -138,6 +138,23 @@ Each sensor downloads the package over its mutual-TLS link and checks it against
 
 The brain keeps sensors, flows and commands in SQLite. For brains with many sensors, set `SENTINEL_BRAIN_DATABASE_URL=postgresql://user:pass@host/db` in `/etc/sentinel/sentinel.env`, or `DATABASE_URL`, which the engine also uses.
 
+### High availability: a standby brain and dual sensors
+
+**Two brains.** Both brains use the same PostgreSQL (`SENTINEL_BRAIN_DATABASE_URL` in `/etc/sentinel/sentinel.env` on both), and share their key material:
+
+```bash
+# on the active brain
+sudo -u sentinel .venv/bin/python -m brain ha export /root/brain-pair.seha     # asks for a passphrase
+# copy the file to the second device (it is encrypted), then on it:
+sudo -u sentinel .venv/bin/python -m brain ha import /root/brain-pair.seha     # choose the Brain role in Setup first
+# on every sensor
+sudo -u sentinel .venv/bin/python -m sensor add-brain https://brain-b.local:9443
+```
+
+Both brains accept flows and command polls, and sensors switch to the other brain on their own when one is unreachable. Because the state is shared, nothing is lost. Only the **active** brain issues new commands: it holds a lease in the database, renewed every 10 s, and the standby takes over within 30 s of the active brain stopping. `python -m brain ha status` (or `GET /api/brain/ha`) shows which brain is active. The PostgreSQL itself should be replicated by your usual means. That is outside SentinelEdgeAI.
+
+**Dual sensors.** Put two sensors that watch the same segment in one segment: `python -m brain segment <sensor-id> floor-2`. A command sent to the segment (`POST /api/brain/segments/floor-2/commands`) goes to whichever of them was heard from most recently. **Bypass:** for inline sensors, use a bypass NIC or switch, so traffic keeps flowing if the sensor loses power. In software, the fail-open watchdog already removes every rule when the engine stops.
+
 ## 7a. Fleet manager (many sites, one console)
 
 Any appliance can also be the **fleet server**. Sites report to it over mutual TLS (port 9444, its own CA), and it gives each group of sites a configuration template and a target version.
