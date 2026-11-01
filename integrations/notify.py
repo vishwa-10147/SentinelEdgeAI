@@ -161,6 +161,8 @@ def _link(cfg, fragment):
 
 def approval_requested(pending_id, ip, action, risk, reason, ttl=None):
     """Called by the playbook when an action waits for an Operator. Never raises."""
+    from integrations import webpush                # browsers/phones that turned push on (per user)
+    webpush.approval_requested(pending_id, ip, action, risk, reason)
     try:
         cfg = load_config()
         if not cfg['approvals']['enabled'] or not cfg['approvals']['sinks']:

@@ -186,6 +186,10 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/pcaps` | viewer | List stored forensic PCAP captures, newest first. |
 | `DELETE` | `/api/pcaps/{name}` | admin | Delete a stored forensic PCAP capture. |
 | `GET` | `/api/pcaps/{name}` | viewer | Download a forensic PCAP capture by filename. |
+| `GET` | `/api/push` | viewer | Web Push: the VAPID public key and this user's subscriptions (Admins see all). |
+| `POST` | `/api/push/subscriptions` | operator | Store this browser's push subscription (Operator+: push carries approval requests). |
+| `DELETE` | `/api/push/subscriptions/{sub_id}` | operator | Remove a subscription (your own; Admins can remove anyone's). |
+| `POST` | `/api/push/test` | operator | Send a test notification to your own subscriptions. |
 | `GET` | `/api/sso` | admin |  |
 | `PUT` | `/api/sso` | admin |  |
 | `GET` | `/api/tickets` | viewer | Incidents and the tickets opened for them on each ticketing target. |
@@ -194,7 +198,9 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/trust` | viewer | Trust score (0-100), level, reasons and recommended response for every known device, least trusted first. |
 | `GET` | `/api/tuning` | viewer | Response tuning: mode and bounds, and the evidence per kind of incident and action. |
 | `POST` | `/api/tuning` | admin | Set mode (off | recommend | apply), target, min_action or window_seconds. |
+| `GET` | `/manifest.webmanifest` | public |  |
 | `GET` | `/metrics` | viewer |  |
 | `GET` | `/openapi.json` | viewer |  |
 | `GET` | `/quarantined` | public |  |
 | `GET` | `/quarantined.css` | public |  |
+| `GET` | `/sw.js` | public |  |

@@ -16,6 +16,8 @@ PASSWORD = 'correct horse battery'
 # 'public' routes must work before sign-in (status, sign-in itself, the console)
 ROUTES = {
     ('GET', '/'): 'public',
+    ('GET', '/sw.js'): 'public',
+    ('GET', '/manifest.webmanifest'): 'public',
     ('GET', '/api/auth/status'): 'public',
     ('POST', '/api/auth/login'): 'public',
     ('POST', '/api/auth/refresh'): 'public',   # needs the refresh cookie + CSRF header
@@ -132,6 +134,10 @@ ROUTES = {
     ('POST', '/api/assets/{ip}/criticality'): 'admin',
     ('GET', '/api/assets/{ip}/cves'): 'viewer',
     ('GET', '/api/assets/{ip}/profile'): 'viewer',
+    ('GET', '/api/push'): 'viewer',
+    ('POST', '/api/push/subscriptions'): 'operator',
+    ('DELETE', '/api/push/subscriptions/{sub_id}'): 'operator',
+    ('POST', '/api/push/test'): 'operator',
     ('GET', '/api/assets/profiles'): 'viewer',
     ('GET', '/api/assets'): 'viewer',
     ('POST', '/api/firewall/contain'): 'operator',

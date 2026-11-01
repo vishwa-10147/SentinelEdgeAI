@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { API_BASE, apiGet, apiPost, apiPut, errorMessage, getAccessToken, hasRole } from '../api'
+import { API_BASE, apiDelete, apiGet, apiPost, apiPut, errorMessage, getAccessToken, hasRole } from '../api'
 
 const TABS = [['response', 'Response'], ['policy', 'Policy'], ['sensors', 'Sensors'], ['models', 'Models & evaluation'], ['compliance', 'Compliance'], ['notifications', 'Notifications'], ['assistant', 'Assistant']]
 
@@ -282,7 +282,70 @@ function SinkPicker({ sinks, chosen, onChange }){
   )
 }
 
-function NotificationsTab({ user, act, busy, reloadKey }){
+function urlB64ToUint8Array(text){
+  const pad = '='.repeat((4 - text.length % 4) % 4)
+  const raw = atob((text + pad).replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from(raw, c=>c.charCodeAt(0))
+}
+
+// Web Push on this browser/phone: approval requests as notifications (Operators and Admins)
+function PushSection({ user, act, busy }){
+  const [info, setInfo] = useState(null)
+  const [active, setActive] = useState(false)
+  const supported = typeof window !== 'undefined' && window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window
+  const load = useCallback(()=>{
+    apiGet('/api/push', null).then(setInfo).catch(()=>{})
+    if(supported){
+      navigator.serviceWorker.getRegistration('/').then(reg=>reg ? reg.pushManager.getSubscription() : null)
+        .then(sub=>setActive(!!sub)).catch(()=>{})
+    }
+  }, [supported])
+  useEffect(()=>{ load() }, [load])
+  if(!hasRole(user, 'operator')) return null
+  const turnOn = ()=>act(async ()=>{
+    if((await Notification.requestPermission()) !== 'granted') throw new Error('notifications are blocked for this site in the browser settings')
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(info.public_key) })
+    await apiPost('/api/push/subscriptions', { subscription: sub.toJSON(), label: navigator.userAgent.slice(0, 60) })
+    load()
+  }, 'Push is on for this device.')
+  const turnOff = ()=>act(async ()=>{
+    const reg = await navigator.serviceWorker.getRegistration('/')
+    const sub = reg && await reg.pushManager.getSubscription()
+    if(sub) await sub.unsubscribe()
+    load()
+  }, 'Push is off for this device. Remove it from the list below too.')
+  return (
+    <div className="rules-section">
+      <h3>Push on this device</h3>
+      <p className="auth-hint">Approval requests arrive as a notification on this phone or browser and open the approval page, where you sign in as usual. Needs a certificate this device trusts (Operations guide: sentinelctl tls import); on iPhone, add the console to the home screen first.</p>
+      {!supported && <p className="auth-hint">This browser cannot receive push here (it needs a trusted HTTPS address and push support).</p>}
+      {supported && info && (
+        <div className="audit-toolbar">
+          {!active && <button className="primary-button" disabled={busy} onClick={turnOn}>Turn on push</button>}
+          {active && <button className="ghost-button" disabled={busy} onClick={turnOff}>Turn off on this device</button>}
+          <button className="ghost-button" disabled={busy || !(info.subscriptions || []).length} onClick={()=>act(()=>apiPost('/api/push/test', {}), r=>`Test sent: ${Object.values(r.result).join(', ') || 'no devices'}`)}>Send a test</button>
+        </div>
+      )}
+      {info && (info.subscriptions || []).length > 0 && (
+        <ul className="auth-hint">
+          {info.subscriptions.map(s=>(
+            <li key={s.id}>{s.username} · {s.label || s.service} · {s.last_ok ? `last delivered ${new Date(s.last_ok * 1000).toLocaleString()}` : 'not used yet'}{s.failures ? ` · ${s.failures} failures` : ''}{' '}
+              <button className="ghost-button" disabled={busy} onClick={()=>act(async ()=>{ await apiDelete(`/api/push/subscriptions/${encodeURIComponent(s.id)}`); load() }, 'Removed.')}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function NotificationsTab(props){
+  return <><PushSection {...props} /><NotificationSettings {...props} /></>
+}
+
+function NotificationSettings({ user, act, busy, reloadKey }){
   const [cfg, setCfg] = useState(null)
   const [sinks, setSinks] = useState([])
   const [last, setLast] = useState(null)

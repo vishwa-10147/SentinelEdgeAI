@@ -344,6 +344,10 @@ Set these up under **Operations → Notifications** (Admin), or with `PUT /api/n
 - If the action was already decided, the page says by whom.
 - Set **Console address** so that the links work from outside the appliance's own network.
 
+**Push notifications on the phone (Web Push).** Each Operator or Admin can also get approval requests as a phone or browser notification, with no e-mail or chat in between: **Operations → Notifications → Push on this device → Turn on push**. Tapping the notification opens the approval page; the notification itself carries no credentials. It works in Chrome, Edge and Firefox (desktop and Android) and on iPhone/iPad (iOS 16.4+) after **Add to Home Screen**. Browsers only allow it on a trusted HTTPS address, so first install a certificate the phone trusts (`sudo sentinelctl tls import`), or install the appliance's own certificate on the phone.
+- Messages go through the browser maker's push service (Google, Mozilla, Apple or Microsoft), encrypted end to end (RFC 8291): the push service sees only ciphertext. The appliance must be able to reach that service over HTTPS. Subscriptions can only point at those services; add another host with `SENTINEL_WEBPUSH_HOSTS`.
+- Push goes only to accounts that are Operator or Admin and enabled at the time of sending; demoting or disabling a user stops it. Subscriptions the push service reports as gone are removed. Each user can list, test and remove their own devices there; Admins see and can remove all.
+
 **Digest.** Daily or weekly, at the hour you choose. It covers:
 - open incidents by severity, plus the ones that need attention
 - incidents opened and resolved in the period

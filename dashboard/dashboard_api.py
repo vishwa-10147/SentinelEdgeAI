@@ -1011,6 +1011,53 @@ def notifications_test(payload: dict, principal: dict = Depends(require_admin)):
     return {'sink': name, 'result': result[name]}
 
 
+@app.get('/api/push')
+def push_info(principal: dict = Depends(require_viewer)):
+    """Web Push: the VAPID public key and this user's subscriptions (Admins see all)."""
+    from core import auth
+    from integrations import webpush
+    admin = auth.role_allows(principal.get('role'), 'admin')
+    return {'public_key': webpush.public_key(),
+            'can_subscribe': auth.role_allows(principal.get('role'), 'operator'),
+            'subscriptions': webpush.list_subscriptions(None if admin else principal.get('username'))}
+
+
+@app.post('/api/push/subscriptions')
+def push_subscribe(payload: dict, principal: dict = Depends(require_operator)):
+    """Store this browser's push subscription (Operator+: push carries approval requests)."""
+    from integrations import webpush
+    try:
+        entry = webpush.subscribe(principal.get('username'), payload.get('subscription'), payload.get('label'))
+    except webpush.PushError as exc:
+        audit_event(principal, 'push_subscribe', outcome='rejected', details={'error': str(exc)[:200]})
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'push_subscribe', target=entry['id'], details={'service': entry['service']})
+    return entry
+
+
+@app.delete('/api/push/subscriptions/{sub_id}')
+def push_unsubscribe(sub_id: str, principal: dict = Depends(require_operator)):
+    """Remove a subscription (your own; Admins can remove anyone's)."""
+    from core import auth
+    from integrations import webpush
+    owner = None if auth.role_allows(principal.get('role'), 'admin') else principal.get('username')
+    removed = webpush.unsubscribe(sub_id=sub_id, username=owner)
+    if not removed:
+        raise HTTPException(status_code=404, detail='no such subscription')
+    audit_event(principal, 'push_unsubscribe', target=sub_id)
+    return {'removed': removed}
+
+
+@app.post('/api/push/test')
+def push_test(principal: dict = Depends(require_operator)):
+    """Send a test notification to your own subscriptions."""
+    from integrations import webpush
+    result = webpush.deliver({'title': 'SentinelEdgeAI test', 'body': 'Push notifications work on this device.',
+                              'url': '/#incidents', 'tag': 'test'}, username=principal.get('username'))
+    audit_event(principal, 'push_test', details={'result': {k: str(v) for k, v in result.items()}})
+    return {'result': result}
+
+
 @app.get('/api/notifications/digest/preview')
 def notifications_digest_preview(principal: dict = Depends(require_viewer)):
     from integrations import notify
@@ -1971,6 +2018,23 @@ if os.path.isdir(DIST_DIR):
     assets_dir = os.path.join(DIST_DIR, 'assets')
     if os.path.isdir(assets_dir):
         app.mount('/assets', StaticFiles(directory=assets_dir), name='assets')
+
+
+# Service worker (Web Push) and web app manifest: served from the root so the worker's scope is the console
+@app.get('/sw.js')
+async def _serve_sw():
+    path = os.path.join(DIST_DIR, 'sw.js')
+    if os.path.exists(path):
+        return FileResponse(path, media_type='text/javascript', headers={'Cache-Control': 'no-cache'})
+    raise HTTPException(status_code=404, detail='Not Found')
+
+
+@app.get('/manifest.webmanifest')
+async def _serve_manifest():
+    path = os.path.join(DIST_DIR, 'manifest.webmanifest')
+    if os.path.exists(path):
+        return FileResponse(path, media_type='application/manifest+json')
+    raise HTTPException(status_code=404, detail='Not Found')
 
 
 # The SPA index; registered even without a built console so the route table is the same everywhere
