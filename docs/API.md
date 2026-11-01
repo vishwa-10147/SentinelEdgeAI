@@ -144,6 +144,10 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/assets/{ip}/criticality` | viewer | Get device criticality (critical | important | standard). |
 | `POST` | `/api/assets/{ip}/criticality` | admin | Set device criticality (Admin only). |
 | `GET` | `/api/assets/{ip}/cves` | viewer | Offline CVE matches for a device based on type/OS fingerprint. |
+| `GET` | `/api/assistant` | viewer | Whether the optional local assistant is on, which backend and model, and whether it answers. |
+| `POST` | `/api/assistant/ask` | viewer | Ask the local assistant about one incident (incident_id) or about the open incidents. |
+| `GET` | `/api/assistant/config` | admin |  |
+| `PUT` | `/api/assistant/config` | admin |  |
 | `GET` | `/api/compliance` | admin | Every compliance pack's totals from one evidence collection (documentation support, not certification). |
 | `GET` | `/api/compliance/{pack}` | admin |  |
 | `GET` | `/api/compliance/{pack}/pdf` | admin |  |

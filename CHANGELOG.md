@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Optional local assistant** (Phase 10, `core/assistant.py`): explains an incident or answers a question about it (or about the open incidents) in plain language. Off by default. Read-only by construction: no tools, no API access, the answer is plain text and never acted on. Network-derived text is cleaned (control and bidi characters, data-delimiter tags, length) and fenced in one `<data>` block the system prompt declares untrusted. Local only: the model server must resolve to loopback or the private network, checked when saved and before every call (`allow_remote` to override). One question at a time (others get 429), timeouts, audited. Backends: `template` (no model, factual summary), `ollama`, `openai` (OpenAI-compatible such as llama.cpp `llama-server`). `GET /api/assistant`, `GET/PUT /api/assistant/config`, `POST /api/assistant/ask`; **Ask the assistant** in incident detail, **Operations → Assistant**. `deploy/assistant/`: an Ollama systemd drop-in and a hardened `sentineledgeai-llm.service` with CPU, memory and priority limits.
+
 ## [2.13.0] - 2026-11-01
 
 Phase 10: notifications.

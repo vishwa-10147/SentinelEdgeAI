@@ -1,0 +1,39 @@
+# Optional: llama.cpp's llama-server as the SentinelEdgeAI assistant model, OpenAI-compatible on loopback.
+# Install the llama.cpp build to /opt/llama.cpp and a GGUF model to /var/lib/sentinel/llm/model.gguf, then:
+#   sudo install -m 0644 sentineledgeai-llm.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now sentineledgeai-llm
+# In the console: Operations -> Assistant, backend "openai", base URL http://127.0.0.1:8081.
+[Unit]
+Description=SentinelEdgeAI local assistant model (llama.cpp, read-only helper)
+After=network.target
+
+[Service]
+User=sentinel
+Group=sentinel
+ExecStart=/opt/llama.cpp/llama-server --host 127.0.0.1 --port 8081 --model /var/lib/sentinel/llm/model.gguf --ctx-size 4096 --parallel 1 --threads 2
+Restart=on-failure
+RestartSec=10
+# limits: the assistant must never compete with detection
+CPUQuota=200%
+CPUWeight=10
+MemoryHigh=3G
+MemoryMax=4G
+IOWeight=10
+Nice=15
+TasksMax=64
+OOMScoreAdjust=900
+# hardening: no network beyond loopback, read-only system
+IPAddressDeny=any
+IPAddressAllow=localhost
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/var/lib/sentinel/llm
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

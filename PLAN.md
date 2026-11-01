@@ -375,7 +375,7 @@ The phases below address these, in that order.
 
 **Status (2026-11-01):**
 - [x] Incident view (`core/incidents.py`): grouping, timeline with responses, "what to do now" checklist, acknowledge/resolve with notes, console panel.
-- [ ] Optional local assistant (read-only, off by default, separate resource-limited service).
+- [x] Optional local assistant (`core/assistant.py`): read-only, network text fenced as untrusted data, local-only model server with systemd limits, one question at a time, off by default; template / Ollama / OpenAI-compatible backends. Not yet run with a real model on the Jetson.
 - [x] Notifications (`integrations/notify.py`): immediate approval requests over e-mail / Slack / Teams / webhook with a phone approval page, daily/weekly digests.
 - [ ] Native mobile push (Web Push or an app); today the phone path is a message plus the phone-friendly page.
 - [x] SSO with OpenID Connect (`core/sso.py`): Entra ID / Google / Okta / Keycloak, IdP groups (incl. AD groups synced to the IdP) mapped to roles, MFA from `amr`. Not yet tried against a live IdP.

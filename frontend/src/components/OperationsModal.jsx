@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { API_BASE, apiGet, apiPost, apiPut, errorMessage, getAccessToken, hasRole } from '../api'
 
-const TABS = [['response', 'Response'], ['policy', 'Policy'], ['sensors', 'Sensors'], ['models', 'Models & evaluation'], ['compliance', 'Compliance'], ['notifications', 'Notifications']]
+const TABS = [['response', 'Response'], ['policy', 'Policy'], ['sensors', 'Sensors'], ['models', 'Models & evaluation'], ['compliance', 'Compliance'], ['notifications', 'Notifications'], ['assistant', 'Assistant']]
 
 function when(ts){
   return ts ? new Date(ts * 1000).toLocaleString() : '—'
@@ -336,6 +336,44 @@ function NotificationsTab({ user, act, busy, reloadKey }){
   )
 }
 
+function AssistantTab({ user, act, busy, reloadKey }){
+  const [cfg, setCfg] = useState(null)
+  const [status, setStatus] = useState(null)
+  const [error, setError] = useState('')
+  const admin = hasRole(user, 'admin')
+  useEffect(()=>{
+    apiGet('/api/assistant', null).then(setStatus).catch(()=>{})
+    if(admin) apiGet('/api/assistant/config', null).then(setCfg).catch(e=>setError(errorMessage(e)))
+  }, [admin, reloadKey])
+  const set = (k, v)=>setCfg({ ...cfg, [k]: v })
+  return (
+    <div className="rules-section">
+      <p className="auth-hint">An optional helper that explains incidents in plain language. It only reads and explains: it has no tools, cannot change anything, and treats every hostname or DNS name from the network as untrusted data. It runs on this appliance or your private network, never a cloud service, and is off by default.</p>
+      {status && <div className={status.enabled && status.reachable ? 'audit-integrity audit-ok' : 'audit-integrity'} role="status">
+        {status.enabled ? `On: ${status.backend}${status.model ? ' · ' + status.model : ''}, ${status.reachable ? 'answering' : 'model server not reachable'}` : 'Off'}
+      </div>}
+      {error && <div className="auth-error" role="alert">{error}</div>}
+      {admin && cfg && (
+        <>
+          <label><input type="checkbox" checked={!!cfg.enabled} onChange={e=>set('enabled', e.target.checked)} /> Enabled</label>
+          <div className="audit-toolbar">
+            <select value={cfg.backend} onChange={e=>set('backend', e.target.value)} aria-label="Backend">
+              <option value="template">Template (no model: factual summary)</option>
+              <option value="ollama">Ollama</option>
+              <option value="openai">OpenAI-compatible local server (llama.cpp)</option>
+            </select>
+            {cfg.backend !== 'template' && <input placeholder="http://127.0.0.1:11434" value={cfg.base_url} onChange={e=>set('base_url', e.target.value)} aria-label="Model server URL" />}
+            {cfg.backend !== 'template' && <input placeholder="Model, e.g. llama3.2:3b" value={cfg.model} onChange={e=>set('model', e.target.value)} aria-label="Model" />}
+          </div>
+          <div className="audit-toolbar">
+            <button className="primary-button" disabled={busy} onClick={()=>act(async ()=>setCfg(await apiPut('/api/assistant/config', cfg)), 'Assistant settings saved.')}>Save</button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function OperationsModal({ open, onClose, user }){
   const [tab, setTab] = useState('response')
   const [error, setError] = useState('')
@@ -385,6 +423,7 @@ export default function OperationsModal({ open, onClose, user }){
         {tab === 'models' && <ModelsTab {...props} />}
         {tab === 'compliance' && <ComplianceTab {...props} />}
         {tab === 'notifications' && <NotificationsTab {...props} />}
+        {tab === 'assistant' && <AssistantTab {...props} />}
       </section>
     </div>
   )

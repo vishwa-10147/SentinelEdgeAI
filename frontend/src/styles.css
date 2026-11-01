@@ -1582,3 +1582,8 @@ button:disabled {
 .approval-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
 .approval-buttons button { padding: 14px; font-size: 1.05rem; }
 .digest-preview { white-space: pre-wrap; background: #0a0e1a; border: 1px solid var(--line-soft); border-radius: 7px; padding: 10px; }
+
+/* Local assistant (Phase 10) */
+.assistant-box { border-top: 1px solid var(--line-soft); margin-top: 12px; padding-top: 8px; }
+.assistant-reply { border-left: 3px solid var(--cyan); padding: 6px 10px; background: #0a0e1a; border-radius: 4px; }
+.assistant-text { white-space: pre-wrap; margin: 0 0 6px; }

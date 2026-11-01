@@ -931,6 +931,53 @@ def device_peers(ip: str, principal: dict = Depends(require_viewer)):
             'internet': [{'proto': p, 'port': n} for p, n in profile['external']]}
 
 
+@app.get('/api/assistant')
+def assistant_status(principal: dict = Depends(require_viewer)):
+    """Whether the optional local assistant is on, which backend and model, and whether it answers."""
+    from core import assistant
+    return assistant.status()
+
+
+@app.get('/api/assistant/config')
+def assistant_config_get(principal: dict = Depends(require_admin)):
+    from core import assistant
+    return assistant.load_config()
+
+
+@app.put('/api/assistant/config')
+def assistant_config_put(payload: dict, principal: dict = Depends(require_admin)):
+    from core import assistant
+    try:
+        cfg = assistant.save_config(payload or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'assistant_update', details={k: cfg[k] for k in ('enabled', 'backend', 'base_url', 'model',
+                                                                             'allow_remote')})
+    return cfg
+
+
+@app.post('/api/assistant/ask')
+def assistant_ask(payload: dict, principal: dict = Depends(require_viewer)):
+    """Ask the local assistant about one incident (incident_id) or about the open incidents.
+    It only reads and explains: the answer is plain text and nothing in it is acted on."""
+    from core import assistant, incidents
+    payload = payload or {}
+    items = incidents.current()
+    incident = None
+    if payload.get('incident_id'):
+        incident = next((i for i in items if i['id'] == payload['incident_id']), None)
+        if incident is None:
+            raise HTTPException(status_code=404, detail='incident not found')
+    try:
+        out = assistant.answer(payload.get('question'), incident=incident, incidents=items)
+    except assistant.AssistantError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit_event(principal, 'assistant_ask', target=payload.get('incident_id'),
+                details={'question': str(payload.get('question'))[:200], 'backend': out['backend'],
+                         'model': out['model'], 'seconds': out['seconds']})
+    return out
+
+
 @app.get('/api/notifications')
 def notifications_get(principal: dict = Depends(require_admin)):
     from integrations import notify

@@ -352,6 +352,27 @@ Enabling the digest does not send a catch-up message; the first one goes out at 
 
 Messages are sent in the background, so detection never waits for a mail server or Slack, and a failing destination does not stop the others. The last digest result is shown in the panel.
 
+## 8d. Optional local assistant
+
+The assistant explains incidents in plain language and answers questions about them: **Incidents → an incident → Ask the assistant**. It is **off by default**, and everything else works without it. Turn it on under **Operations → Assistant** (Admin), or with `PUT /api/assistant/config`.
+
+**What it can and cannot do:**
+- It **reads and explains; it never acts.** It has no tools and no access to the API. It receives a text snapshot of one incident (or a list of open incidents) and returns text. Nothing it writes is executed. Every block, quarantine or approval still goes through the console, the policy and the approval gate.
+- **Network text is untrusted.** Hostnames, DNS names, evidence and notes are cleaned (control and bidirectional characters removed, length capped, the data delimiter neutralised) and placed inside one quoted data block. The model is told that this block is never an instruction. Answers are shown as plain text; links are reduced to their label.
+- **It stays local.** The model server must be on this appliance or your private network. Pointing it elsewhere needs `allow_remote` and sends incident data off the network, so think twice. The address is checked again before every question.
+- **It cannot slow detection down.** Only one question runs at a time; a second one gets "busy, try again". The model runs in its own server with CPU, memory and priority limits (below).
+- **It is audited.** Every question is recorded with who asked it, which backend answered and how long it took.
+
+**Backends:**
+
+| Backend | Needs | Notes |
+|---|---|---|
+| `template` | nothing | A factual summary written by code, without AI. Fine on a Raspberry Pi. |
+| `ollama` | [Ollama](https://ollama.com) on the brain | Install it, then `ollama pull <model>`, then install `deploy/assistant/ollama-limits.conf` as a systemd drop-in (loopback only, `CPUQuota=200%`, `MemoryMax=4G`, lowest priority). |
+| `openai` | any OpenAI-compatible local server, e.g. llama.cpp's `llama-server` | `deploy/assistant/sentineledgeai-llm.service` runs it on `127.0.0.1:8081` with the same limits, as the `sentinel` user, with no network access except loopback. |
+
+**Choosing a model.** Use a small instruction-tuned model of about 1–4 billion parameters in a 4-bit quantisation, for example a Llama 3.2 3B, Qwen 2.5 3B or Phi-3.5-mini build. On a Jetson Orin Nano (8 GB) such models fit in memory and run on the GPU. On a Raspberry Pi 5 they run on the CPU and take tens of seconds per answer, so `template` is the better choice there. These are expectations, not measurements: answer speed and quality on your hardware have not been benchmarked yet. Check the model's licence before shipping it in a product.
+
 ## 9. Backups and updates
 
 ```bash

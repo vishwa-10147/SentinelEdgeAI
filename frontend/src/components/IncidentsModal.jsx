@@ -8,6 +8,47 @@ function formatTime(ts){
 const SEVERITY_CLASS = { critical: 'sev-critical', high: 'sev-high', medium: 'sev-medium', low: 'sev-low' }
 const FILTERS = ['open', 'acknowledged', 'resolved', 'all']
 
+function AssistantBox({ incidentId }){
+  const [status, setStatus] = useState(null)
+  const [question, setQuestion] = useState('')
+  const [reply, setReply] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(()=>{ apiGet('/api/assistant', null).then(setStatus).catch(()=>setStatus(null)) }, [])
+  useEffect(()=>{ setReply(null); setError('') }, [incidentId])
+  if(!status?.enabled) return null
+  const ask = async (q)=>{
+    setBusy(true)
+    setError('')
+    try{
+      setReply(await apiPost('/api/assistant/ask', { incident_id: incidentId, question: q }))
+    }catch(e){
+      setError(errorMessage(e))
+    }finally{
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="assistant-box">
+      <h3>Ask the assistant</h3>
+      <div className="audit-toolbar">
+        <button className="ghost-button" disabled={busy} onClick={()=>ask('Explain what happened in plain language and what I should do first.')}>Explain this incident</button>
+      </div>
+      <form className="audit-toolbar" onSubmit={e=>{ e.preventDefault(); if(question.trim()) ask(question.trim()) }}>
+        <input placeholder="Ask about this incident" maxLength={500} value={question} onChange={e=>setQuestion(e.target.value)} aria-label="Question for the assistant" />
+        <button className="ghost-button" disabled={busy || !question.trim()}>{busy ? 'Thinking…' : 'Ask'}</button>
+      </form>
+      {error && <div className="auth-error" role="alert">{error}</div>}
+      {reply && (
+        <div className="assistant-reply" role="status">
+          <p className="assistant-text">{reply.answer}</p>
+          <p className="auth-hint">{reply.disclaimer} ({reply.backend}{reply.model ? ` · ${reply.model}` : ''}, {reply.seconds}s). It cannot take actions; every action goes through the console.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TimelineEntry({ e }){
   if(e.type === 'response'){
     return (
@@ -152,6 +193,7 @@ export default function IncidentsModal({ open, onClose, user }){
                 {selected.status !== 'open' && <button className="ghost-button" disabled={busy} onClick={()=>setStatus('open')}>Reopen</button>}
               </form>
             )}
+            <AssistantBox incidentId={selected.id} />
             <h3>Timeline</h3>
             <ul className="incident-timeline">
               {selected.timeline.map((e, n)=><TimelineEntry key={n} e={e} />)}
