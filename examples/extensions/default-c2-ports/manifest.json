@@ -1,0 +1,11 @@
+{
+  "name": "default-c2-ports",
+  "version": "1.0.0",
+  "publisher": "SentinelEdgeAI examples",
+  "kind": "detector",
+  "entry": "main.py",
+  "events": ["flow"],
+  "network": false,
+  "memory_mb": 64,
+  "description": "Connections from an internal device to the default ports of common attack frameworks (Metasploit 4444, Cobalt Strike team server 50050, Sliver 31337)."
+}

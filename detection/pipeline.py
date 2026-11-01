@@ -37,13 +37,14 @@ class _FeedbackCalibration:
 
 class DetectionPipeline:
     def __init__(self, flow_detectors=None, dns=None, tls=None, ot=None, peers=None, samples=None, clock=time.time,
-                 calibrate=None, models=True, lateral=None, http=None):
+                 calibrate=None, models=True, lateral=None, http=None, extensions=None):
         self.flow_detectors = flow_detectors if flow_detectors is not None else default_flow_detectors()
         self.dns = dns or DNSDetector()
         self.tls = tls or TLSDetector(clock=clock)
         self.ot = ot or OTDetector(clock=clock)
         self.lateral = lateral or LateralDetector(clock=clock)
         self.http = http or HTTPDetector(blocklist=self.tls.blocklist, clock=clock)
+        self.extensions = extensions          # extensions.host.ExtensionHost: signed, sandboxed detectors
         self.server_handshakes = ServerHandshakes()
         self.tuning_rules = RuleSet(clock=clock)          # guided tuning: scoped downgrade/suppress rules
         self.peers = peers                    # detection.peers.PeerStore: learned peer profiles
@@ -100,6 +101,8 @@ class DetectionPipeline:
                 except Exception:
                     continue
             findings.extend(self._model_findings(record))
+            if self.extensions is not None:
+                findings.extend(self._extension_findings(self.extensions.flow, record))
             findings = self._accept(findings)
             fused = self.fusion.fuse(record['src'], engine_result.get('final_risk', 0) or 0,
                                      engine_result.get('confidence', 0) or 0, record.get('proto'),
@@ -116,6 +119,13 @@ class DetectionPipeline:
             except Exception:
                 pass
         return fused
+
+    @staticmethod
+    def _extension_findings(call, *args):
+        try:
+            return call(*args)
+        except Exception:                     # an extension can never break detection
+            return []
 
     def _intel(self):
         try:
@@ -136,6 +146,8 @@ class DetectionPipeline:
                 findings.append(Finding('threat_intel', src, sev, prob, 'T1071.004',
                                         f'lookup of {qname.rstrip(".")}, listed by {hit[0]}' + (f' ({hit[1]})' if hit[1] else ''),
                                         {'indicator': qname.rstrip('.'), 'source': hit[0], 'label': hit[1]}, ts=ts))
+            if self.extensions is not None:
+                findings.extend(self._extension_findings(self.extensions.dns, src, qname, nxdomain, ts))
             findings = self._accept(findings)
         return findings
 
@@ -167,6 +179,8 @@ class DetectionPipeline:
         with self._lock:
             store = self._intel() if self.intel_enabled else None
             findings = self.http.observe(src, dst, req, ts, intel=store.match_fingerprint if store else None)
+            if self.extensions is not None:
+                findings.extend(self._extension_findings(self.extensions.http, src, dst, req, ts))
             findings = self._accept(findings)
         return req, findings
 
@@ -230,6 +244,8 @@ def get_pipeline():
     if _pipeline is None:
         from detection.peers import PeerStore
         from detection.samples import SampleStore
+        from extensions.host import get_host
         _pipeline = DetectionPipeline(calibrate=_FeedbackCalibration(), ot=OTDetector(store=OTStore()), peers=PeerStore(),
-                                      samples=SampleStore(), lateral=LateralDetector(store=LateralStore()))
+                                      samples=SampleStore(), lateral=LateralDetector(store=LateralStore()),
+                                      extensions=get_host())
     return _pipeline

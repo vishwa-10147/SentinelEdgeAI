@@ -208,6 +208,13 @@ class Playbook:
                 except Exception:
                     pass
                 self.fw.add_restriction('quarantine', ip, ttl=ttl, reason=reason, mac=mac)
+            try:                                       # response-action extensions (signed, sandboxed)
+                from extensions.host import get_host
+                host = get_host()
+                if host is not None:
+                    host.action(action, ip, reason)
+            except Exception:
+                pass
             return {'status': 'applied'}
         except ValueError as exc:
             # protected or whitelisted host: never enforced
