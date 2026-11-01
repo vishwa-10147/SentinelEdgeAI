@@ -5,12 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.18.2] - 2026-11-02
+
+The first published 2.18 release. The `v2.18.0` and `v2.18.1` tags exist, but their release builds stopped at the extension-sandbox tests on GitHub's runners and nothing was published from them. This release contains everything listed under 2.18.1 and 2.18.0.
+
 ### Fixed
 - **Extension sandbox availability check** builds the whole sandbox around a trivial extension instead of only trying `unshare(2)`: on hosts that allow `unshare` but deny the namespace setup afterwards (GitHub's Ubuntu runners, AppArmor userns restriction), the old check said yes, extensions were then correctly refused (fail closed), and the sandbox tests failed instead of being skipped.
 
 ## [2.18.1] - 2026-11-01
 
-The first published 2.18 release: the `v2.18.0` tag exists, but its release build failed on the fix below and nothing was published from it. Includes everything listed under 2.18.0.
+Not published (its release build failed; see 2.18.2).
 
 ### Fixed
 - **Extension sandbox on Python 3.11** (Raspberry Pi OS Bookworm): the launcher used `os.unshare` and `os.CLONE_*`, which exist only from Python 3.12, so extensions could not start there. It now calls `unshare(2)` through libc, and any setup failure makes it exit as "sandbox unavailable" (the extension is disabled, fail closed) instead of counting as crashes. Hosts that forbid unprivileged user namespaces (for example Ubuntu with AppArmor's userns restriction) run no extensions; the tests check that and skip the sandbox tests there.

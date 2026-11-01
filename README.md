@@ -40,7 +40,7 @@ branch networks, and the managed service providers who look after them.
 
 | | |
 |---|---|
-| **Current release** | [`v2.18.1`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.18.1) · [all releases](https://github.com/vishwa-10147/SentinelEdgeAI/releases) · [changelog](CHANGELOG.md) |
+| **Current release** | [`v2.18.2`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.18.2) · [all releases](https://github.com/vishwa-10147/SentinelEdgeAI/releases) · [changelog](CHANGELOG.md) |
 | **Hardware** | Raspberry Pi 5 (sensor, or everything on one device) · Jetson Orin Nano (optional brain) · any Linux host for the hosted fleet console · about USD 350 for the two-node kit |
 | **Supply chain** | Reproducible packages, Sigstore/cosign signatures, SHA-256 checksums, build-provenance attestation, CycloneDX SBOM and VEX per release, Ed25519-signed model and update channels |
 | **Quality** | 1,000+ automated tests, real-kernel network-namespace tests for enforcement, live integration tests against Keycloak, Elasticsearch and TheHive, Bandit and pip-audit in CI |
@@ -61,12 +61,12 @@ every dependency, so the Pi needs no internet access.
 
 ```bash
 # 1. Download the package and its checksum from the latest release, then verify both
-sha256sum -c sentineledgeai-pi-2.18.1.tar.gz.sha256
-gh attestation verify sentineledgeai-pi-2.18.1.tar.gz --repo vishwa-10147/SentinelEdgeAI   # optional: build provenance
+sha256sum -c sentineledgeai-pi-2.18.2.tar.gz.sha256
+gh attestation verify sentineledgeai-pi-2.18.2.tar.gz --repo vishwa-10147/SentinelEdgeAI   # optional: build provenance
 
 # 2. Install (versioned, health-checked, rolls back automatically on failure)
-tar -xzf sentineledgeai-pi-2.18.1.tar.gz
-sudo bash sentineledgeai-pi-2.18.1/packaging/sentinelctl install sentineledgeai-pi-2.18.1.tar.gz
+tar -xzf sentineledgeai-pi-2.18.2.tar.gz
+sudo bash sentineledgeai-pi-2.18.2/packaging/sentinelctl install sentineledgeai-pi-2.18.2.tar.gz
 ```
 
 Open `https://<pi-address>:9000`. The certificate is self-signed: compare its fingerprint with
