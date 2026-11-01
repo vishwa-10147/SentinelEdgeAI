@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
-- **Live integration tests** (`tests/live/`, Docker, not part of pytest): `run_keycloak_sso.sh` drives real OIDC and SAML browser sign-ins against Keycloak 26 (analyst in, operator refused without IdP MFA, unmapped user refused; real Keycloak SAML signatures verified); `run_elastic.sh` ships alerts through the JSON-lines, syslog RFC 5424 and CEF sinks into Elasticsearch 8.15 via Filebeat and finds all three.
+- **Live integration tests** (`tests/live/`, Docker, not part of pytest): `run_keycloak_sso.sh` drives real OIDC and SAML browser sign-ins against Keycloak 26 (analyst in, operator refused without IdP MFA, unmapped user refused; real Keycloak SAML signatures verified); `run_elastic.sh` ships alerts through the JSON-lines, syslog RFC 5424 and CEF sinks into Elasticsearch 8.15 via Filebeat and finds all three; `run_thehive.sh` turns an incident into a TheHive 5.4 alert (severity, tags, both devices as observables), updates it and resolves it with the analyst's note.
 - `deploy/elastic/filebeat.yml`: a tested Filebeat 8 configuration (JSON-lines file and syslog TCP, RFC 5424 structured data and CEF parsed into fields, a `sentineledgeai` data stream).
 
 ### Security
