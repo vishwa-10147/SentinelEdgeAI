@@ -68,7 +68,18 @@ class FleetStore:
                 CREATE INDEX IF NOT EXISTS alerts_site ON alerts(site, ts);
                 CREATE INDEX IF NOT EXISTS alerts_src ON alerts(src_ip);
                 INSERT OR IGNORE INTO groups(name) VALUES ('default');
+                CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, name TEXT NOT NULL, branding TEXT NOT NULL
+                    DEFAULT '{}', created INTEGER NOT NULL, created_by TEXT);
+                CREATE TABLE IF NOT EXISTS tenant_members (username TEXT NOT NULL, tenant TEXT NOT NULL,
+                    role TEXT NOT NULL, added INTEGER NOT NULL, PRIMARY KEY (username, tenant));
+                CREATE TABLE IF NOT EXISTS usage_days (site TEXT NOT NULL, day TEXT NOT NULL, PRIMARY KEY (site, day));
             """)
+            # multi-tenancy (2.18): groups belong to a tenant; existing fleets are the 'default' tenant
+            if 'tenant' not in {r[1] for r in conn.execute('PRAGMA table_info(groups)')}:
+                conn.execute("ALTER TABLE groups ADD COLUMN tenant TEXT NOT NULL DEFAULT 'default'")
+            conn.execute("INSERT OR IGNORE INTO tenants(id, name, created, created_by) VALUES "
+                         "('default', 'Default', ?, 'migration')", (int(time.time()),))
+            conn.commit()
             self._conn = conn
         return self._conn
 
@@ -153,6 +164,8 @@ class FleetStore:
             db.execute('UPDATE sites SET last_seen = ?, version = ?, report = ? WHERE id = ?',
                        (now, str(report.get('version', ''))[:32], text, site_id))
             db.execute('INSERT INTO reports(site, ts, report) VALUES (?,?,?)', (site_id, now, text))
+            db.execute('INSERT OR IGNORE INTO usage_days(site, day) VALUES (?, ?)',
+                       (site_id, time.strftime('%Y-%m-%d', time.gmtime(now))))
             db.execute('DELETE FROM reports WHERE site = ? AND id NOT IN '
                        '(SELECT id FROM reports WHERE site = ? ORDER BY id DESC LIMIT ?)', (site_id, site_id, HISTORY))
             db.commit()
@@ -367,3 +380,80 @@ class FleetStore:
         sql = ('SELECT a.*, s.name AS site_name, s.grp AS site_group FROM alerts a LEFT JOIN sites s ON s.id = a.site'
                + (' WHERE ' + ' AND '.join(where) if where else '') + ' ORDER BY a.ts DESC, a.id DESC LIMIT ?')
         return self._all(sql, (*params, max(1, min(int(limit), 1000))))
+
+
+    # ---------- tenants (MSP multi-tenancy) ----------
+
+    def create_tenant(self, tenant_id, name, by='cli'):
+        self._exec('INSERT INTO tenants(id, name, created, created_by) VALUES (?,?,?,?)',
+                   (tenant_id, name, int(time.time()), by))
+
+    def _tenant(self, row):
+        if row is not None:
+            row['branding'] = json.loads(row['branding'] or '{}')
+        return row
+
+    def get_tenant(self, tenant_id):
+        return self._tenant(self._one('SELECT * FROM tenants WHERE id = ?', (tenant_id,)))
+
+    def list_tenants(self):
+        return [self._tenant(r) for r in self._all('SELECT * FROM tenants ORDER BY name')]
+
+    def set_branding(self, tenant_id, branding):
+        return self._exec('UPDATE tenants SET branding = ? WHERE id = ?',
+                          (json.dumps(branding, sort_keys=True), tenant_id)).rowcount == 1
+
+    def set_group_tenant(self, group, tenant_id):
+        return self._exec('UPDATE groups SET tenant = ? WHERE name = ?', (tenant_id, group)).rowcount == 1
+
+    def tenant_of_group(self, group):
+        row = self._one('SELECT tenant FROM groups WHERE name = ?', (group,))
+        return row['tenant'] if row else None
+
+    def tenant_of_site(self, site_id):
+        row = self._one('SELECT g.tenant FROM sites s JOIN groups g ON g.name = s.grp WHERE s.id = ?', (site_id,))
+        return row['tenant'] if row else None
+
+    def add_member(self, username, tenant_id, role):
+        self._exec('INSERT INTO tenant_members VALUES (?,?,?,?) ON CONFLICT(username, tenant) DO UPDATE SET '
+                   'role = excluded.role', (username, tenant_id, role, int(time.time())))
+
+    def remove_member(self, username, tenant_id):
+        return self._exec('DELETE FROM tenant_members WHERE username = ? AND tenant = ?',
+                          (username, tenant_id)).rowcount == 1
+
+    def memberships(self, username):
+        return {r['tenant']: r['role'] for r in
+                self._all('SELECT tenant, role FROM tenant_members WHERE username = ?', (username,))}
+
+    def list_members(self, tenant_id=None):
+        if tenant_id:
+            return self._all('SELECT * FROM tenant_members WHERE tenant = ? ORDER BY username', (tenant_id,))
+        return self._all('SELECT * FROM tenant_members ORDER BY tenant, username')
+
+    def usage(self, month):
+        """Per tenant for 'YYYY-MM': sites, site-days with a report, alerts and remote actions."""
+        import calendar
+        y, m = (int(x) for x in month.split('-'))
+        start = calendar.timegm((y, m, 1, 0, 0, 0))                       # UTC month boundaries
+        end = calendar.timegm((y + (m == 12), (m % 12) + 1, 1, 0, 0, 0))
+        rows = {}
+        for t in self.list_tenants():
+            rows[t['id']] = {'tenant': t['id'], 'name': (t['branding'] or {}).get('display_name') or t['name'],
+                             'month': month, 'sites': 0, 'site_days': 0, 'alerts': 0, 'actions': 0}
+        q = ('SELECT g.tenant AS tenant, COUNT(DISTINCT s.id) AS n FROM sites s JOIN groups g ON g.name = s.grp '
+             'WHERE s.enrolled < ? AND (s.revoked = 0 OR s.last_seen >= ?) GROUP BY g.tenant')
+        for r in self._all(q, (end, start)):
+            rows.setdefault(r['tenant'], {})['sites'] = r['n']
+        q = ('SELECT g.tenant AS tenant, COUNT(*) AS n FROM usage_days u JOIN sites s ON s.id = u.site '
+             'JOIN groups g ON g.name = s.grp WHERE u.day LIKE ? GROUP BY g.tenant')
+        for r in self._all(q, (month + '-%',)):
+            rows.setdefault(r['tenant'], {})['site_days'] = r['n']
+        for table, col in (('alerts', 'alerts'), ('actions', 'actions')):
+            ts = 'ts' if table == 'alerts' else 'created'
+            # table and column come from the fixed tuple above, never from input; values are bound parameters
+            q = (f'SELECT g.tenant AS tenant, COUNT(*) AS n FROM {table} a JOIN sites s ON s.id = a.site '  # nosec B608
+                 f'JOIN groups g ON g.name = s.grp WHERE a.{ts} >= ? AND a.{ts} < ? GROUP BY g.tenant')
+            for r in self._all(q, (start, end)):
+                rows.setdefault(r['tenant'], {})[col] = r['n']
+        return list(rows.values())

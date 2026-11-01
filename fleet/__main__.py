@@ -74,6 +74,19 @@ def main(argv=None):
     p.add_argument('--never-share', action='append', help='a range never to share (your own public addresses); repeatable')
     p.add_argument('--publisher', help='name shown in exported bundles')
     p.add_argument('--out', help='export: where to write the signed STIX bundle')
+    p = sub.add_parser('tenant', help='MSP customers: create | list | brand | member | unmember | assign')
+    p.add_argument('action', choices=['create', 'list', 'brand', 'member', 'unmember', 'assign'])
+    p.add_argument('tenant', nargs='?')
+    p.add_argument('--name')
+    p.add_argument('--display-name')
+    p.add_argument('--accent', help='#rrggbb')
+    p.add_argument('--support', help='support e-mail or https:// link')
+    p.add_argument('--user', help='member / unmember: console account')
+    p.add_argument('--role', choices=['viewer', 'operator', 'admin'])
+    p.add_argument('--group', help='assign: the group to move to this tenant')
+    p = sub.add_parser('usage', help='usage per customer for a month')
+    p.add_argument('--month', help='YYYY-MM (default: this month)')
+    p.add_argument('--csv', action='store_true')
     sub.add_parser('report', help='send one report now and apply the desired state')
     sub.add_parser('status', help='this site\'s fleet status')
     args = parser.parse_args(argv)
@@ -139,6 +152,32 @@ def main(argv=None):
             print(f"{res['count']} alert(s)", file=sys.stderr)
         elif args.command == 'rollout':
             _show(manage.set_rollout(args.group, args.action, 'cli', st))
+        elif args.command == 'tenant':
+            from fleet import tenants
+            if args.action == 'list':
+                _show({'tenants': st.list_tenants(), 'members': st.list_members(),
+                       'groups': {g['name']: g.get('tenant') for g in st.list_groups()}})
+            elif not args.tenant:
+                raise ValueError(f'tenant {args.action} needs a tenant id')
+            elif args.action == 'create':
+                _show(tenants.create(st, args.tenant, args.name or args.tenant))
+                if args.display_name or args.accent or args.support:
+                    _show(tenants.brand(st, args.tenant, args.display_name, args.accent, args.support))
+            elif args.action == 'brand':
+                _show(tenants.brand(st, args.tenant, args.display_name, args.accent, args.support))
+            elif args.action == 'member':
+                _show(tenants.member(st, args.user or '', args.tenant, args.role or 'viewer'))
+            elif args.action == 'unmember':
+                _show({'removed': st.remove_member(args.user or '', args.tenant)})
+            else:
+                tenants.assign_group(st, args.group or '', args.tenant)
+                _show({'group': args.group, 'tenant': args.tenant})
+        elif args.command == 'usage':
+            import time as _t
+            from fleet import tenants
+            month = args.month or _t.strftime('%Y-%m', _t.gmtime())
+            out = tenants.usage(st, month, fmt='csv' if args.csv else 'json')
+            print(out, end='') if args.csv else _show(out)
         elif args.command == 'share':
             _show(manage.share(args.action, st=st, min_sites=args.min_sites, never_share=args.never_share,
                                publisher=args.publisher, out=args.out, by='cli'))

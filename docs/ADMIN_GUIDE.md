@@ -269,6 +269,23 @@ Everything else happens in **Fleet** in the console (or `/api/fleet/*`, or `pyth
 
 **Federated learning.** Start a round from **Fleet** (or `python -m fleet federated start --min-sites 3`). On their next report, sites that have at least 500 normal flows sampled train the flow autoencoder locally and send back model parameters only. When enough sites have answered, the fleet server combines the updates. Every site then installs the result as a **shadow** model with its threshold calibrated on its own traffic. Compare it in **Operations → Models & evaluation**, and promote it to canary and then active when it looks right. Each round starts from the previous global model.
 
+### Customers (MSPs and MSSPs)
+
+One fleet server can serve many customers. Each **customer** (tenant) owns groups, so its sites are the sites in those groups; an existing fleet is the `default` customer.
+
+```bash
+python -m fleet tenant create acme --name "Acme Ltd" --display-name "Acme Security" --accent "#1f6feb" --support soc@acme.example
+python -m fleet tenant assign acme --group acme-hq          # move a group (and its sites) to the customer
+python -m fleet tenant member acme --user alice --role admin  # alice now sees only Acme
+python -m fleet usage --month 2026-11 --csv                  # sites, site-days, alerts, remote actions
+```
+
+- **Who sees what:** an account with no customer membership is MSP staff and sees every customer with its console role. An account with memberships sees only those customers, with its role there capped by its console role (an Operator account made a customer's admin still acts as an Operator). API tokens get their owner's scope. Another customer's sites, alerts and actions are invisible, and acting on them is refused (403, audited).
+- **MSP-wide:** configuration templates, federated learning, community sharing, creating customers and managing memberships are for MSP staff only. Customer admins manage their own customer's groups, enrolment codes, rollouts, branding and sites.
+- **Branding:** display name, accent colour and a support contact per customer, shown in the Fleet panel and on usage reports.
+- **Usage:** `GET /api/fleet/usage?month=YYYY-MM[&format=csv]` (Admin; customer admins see their own customer), or **Fleet → Usage this month (CSV)**.
+- **API:** `GET/POST /api/fleet/tenants`, `PUT /api/fleet/tenants/{id}/branding`, `POST /api/fleet/tenants/{id}/members`, `DELETE /api/fleet/tenants/{id}/members/{user}`, `POST /api/fleet/groups/{name}/tenant`.
+
 ## 7b. Compliance evidence
 
 **Operations → Compliance** (Admin) reports what this appliance can show for **ISO/IEC 27001:2022** (Annex A), **IEC 62443-3-3** and **NIS2** (Art. 21(2) and 23). The evidence is read live, so fix a gap and refresh. Each control is *met*, *partial*, *gap* (with how to close it), *manual* (organisational, e.g. training or physical security: evidence comes from elsewhere) or *n/a*. Download the PDF for your auditor, or run:

@@ -859,30 +859,62 @@ def _fleet(principal, action, fn, *args, **kwargs):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+def _scope(principal):
+    """Tenant scope of a console principal on the fleet server (fleet.tenants)."""
+    from fleet.store import FleetStore
+    from fleet.tenants import Scope
+    st = FleetStore()
+    return Scope(principal, st), st
+
+
+def _require(principal, action, check):
+    try:
+        check()
+    except PermissionError as exc:
+        audit_event(principal, action, outcome='denied', details={'error': str(exc)})
+        raise HTTPException(status_code=403, detail=str(exc))
+
+
+def _site_tenant(st, site_id):
+    tenant = st.tenant_of_site(site_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail='no such site')
+    return tenant
+
+
 @app.get('/api/fleet')
 def fleet_overview(principal: dict = Depends(require_viewer)):
-    """Fleet server view: sites with their latest reports, groups with rollout progress, templates."""
-    from fleet import manage
-    return manage.overview()
+    """Fleet server view: sites with their latest reports, groups with rollout progress, templates (only the
+    customers this account may see)."""
+    from fleet import manage, tenants
+    scope, st = _scope(principal)
+    return tenants.filter_overview(manage.overview(st), scope, st)
 
 
 @app.get('/api/fleet/sites/{site_id}/history')
 def fleet_site_history(site_id: str, principal: dict = Depends(require_viewer)):
-    from fleet.store import FleetStore
-    return {'site_id': site_id, 'reports': FleetStore().history(site_id, limit=288)}
+    scope, st = _scope(principal)
+    tenant = _site_tenant(st, site_id)
+    _require(principal, 'fleet_site_history', lambda: scope.require(tenant, 'viewer'))
+    return {'site_id': site_id, 'reports': st.history(site_id, limit=288)}
 
 
 @app.post('/api/fleet/codes')
 def fleet_code(payload: dict = {}, principal: dict = Depends(require_admin)):
     """A one-time enrolment code for a new site (valid for an hour)."""
     from fleet import manage
-    return _fleet(principal, 'fleet_code', manage.enrolment_code, (payload or {}).get('group') or 'default')
+    scope, st = _scope(principal)
+    group = (payload or {}).get('group') or 'default'
+    _require(principal, 'fleet_code', lambda: scope.require(st.tenant_of_group(group) or 'default', 'admin'))
+    return _fleet(principal, 'fleet_code', manage.enrolment_code, group)
 
 
 @app.post('/api/fleet/sites/{site_id}/revoke')
 def fleet_revoke(site_id: str, principal: dict = Depends(require_admin)):
-    from fleet.store import FleetStore
-    if not FleetStore().revoke_site(site_id):
+    scope, st = _scope(principal)
+    tenant = _site_tenant(st, site_id)
+    _require(principal, 'fleet_revoke', lambda: scope.require(tenant, 'admin'))
+    if not st.revoke_site(site_id):
         raise HTTPException(status_code=404, detail='no such site')
     audit_event(principal, 'fleet_revoke', target=site_id)
     return {'revoked': site_id}
@@ -890,21 +922,27 @@ def fleet_revoke(site_id: str, principal: dict = Depends(require_admin)):
 
 @app.post('/api/fleet/sites/{site_id}/group')
 def fleet_site_group(site_id: str, payload: dict, principal: dict = Depends(require_admin)):
-    from fleet.store import FleetStore
+    scope, st = _scope(principal)
+    group = str((payload or {}).get('group', ''))
+    tenant = _site_tenant(st, site_id)
+    _require(principal, 'fleet_site_group', lambda: (scope.require(tenant, 'admin'),
+                                                     scope.require(st.tenant_of_group(group) or '', 'admin')))
     try:
-        ok = FleetStore().set_site_group(site_id, str((payload or {}).get('group', '')))
+        ok = st.set_site_group(site_id, group)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if not ok:
         raise HTTPException(status_code=404, detail='no such site')
-    audit_event(principal, 'fleet_site_group', target=site_id, details={'group': payload.get('group')})
-    return {'site_id': site_id, 'group': payload.get('group')}
+    audit_event(principal, 'fleet_site_group', target=site_id, details={'group': group})
+    return {'site_id': site_id, 'group': group}
 
 
 @app.post('/api/fleet/templates')
 def fleet_template(payload: dict, principal: dict = Depends(require_admin)):
-    """Store a configuration template: response policy YAML, or one of the presets."""
+    """Store a configuration template: response policy YAML, or one of the presets (MSP-wide)."""
     from fleet import manage
+    scope, _ = _scope(principal)
+    _require(principal, 'fleet_template_put', scope.require_msp)
     p = payload or {}
     return {'version': _fleet(principal, 'fleet_template_put', manage.put_template, str(p.get('name', '')),
                               p.get('yaml'), p.get('preset'))}
@@ -912,24 +950,40 @@ def fleet_template(payload: dict, principal: dict = Depends(require_admin)):
 
 @app.post('/api/fleet/groups')
 def fleet_group(payload: dict, principal: dict = Depends(require_admin)):
-    """Create or update a group: its template, target version and rollout stages."""
-    from fleet import manage
+    """Create or update a group: its template, target version, rollout stages and (new groups) customer."""
+    from fleet import manage, tenants
+    scope, st = _scope(principal)
     p = payload or {}
-    return _fleet(principal, 'fleet_group_put', manage.put_group, str(p.get('name', '')), p.get('template'),
-                  p.get('target_version'), p.get('stages'))
+    name = str(p.get('name', ''))
+    existing = st.tenant_of_group(name)
+    tenant = existing or p.get('tenant') or (next(iter(scope.memberships)) if not scope.msp and
+                                             len(scope.memberships) == 1 else 'default')
+    _require(principal, 'fleet_group_put', lambda: scope.require(tenant, 'admin'))
+    out = _fleet(principal, 'fleet_group_put', manage.put_group, name, p.get('template'),
+                 p.get('target_version'), p.get('stages'))
+    if not existing:
+        try:
+            tenants.assign_group(st, name, tenant)
+        except tenants.TenantError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    return out
 
 
 @app.post('/api/fleet/groups/{name}/rollout')
 def fleet_rollout(name: str, payload: dict, principal: dict = Depends(require_admin)):
     """Pause or resume a group's rollout."""
     from fleet import manage
+    scope, st = _scope(principal)
+    _require(principal, 'fleet_rollout', lambda: scope.require(st.tenant_of_group(name) or '', 'admin'))
     return _fleet(principal, 'fleet_rollout', manage.set_rollout, name, str((payload or {}).get('action', '')))
 
 
 @app.post('/api/fleet/federated')
 def fleet_federated(payload: dict, principal: dict = Depends(require_admin)):
-    """Start a federated learning round ({"min_sites": n}) or close one ({"close": id})."""
+    """Start a federated learning round ({"min_sites": n}) or close one ({"close": id}) (MSP-wide)."""
     from fleet import manage
+    scope, _ = _scope(principal)
+    _require(principal, 'federated_round', scope.require_msp)
     p = payload or {}
     if p.get('close') is not None:
         return _fleet(principal, 'federated_round_close', manage.close_round, int(p['close']))
@@ -938,9 +992,10 @@ def fleet_federated(payload: dict, principal: dict = Depends(require_admin)):
 
 @app.get('/api/fleet/actions')
 def fleet_actions(site: str = None, principal: dict = Depends(require_viewer)):
-    """Remote actions queued on this fleet server, newest first."""
-    from fleet.store import FleetStore
-    return {'actions': FleetStore().list_actions(site)}
+    """Remote actions queued on this fleet server, newest first (only the customers this account may see)."""
+    scope, st = _scope(principal)
+    rows = st.list_actions(site, limit=500)
+    return {'actions': [a for a in rows if scope.can(st.tenant_of_site(a['site']) or '', 'viewer')][:100]}
 
 
 @app.post('/api/fleet/sites/{site_id}/actions')
@@ -948,6 +1003,9 @@ def fleet_queue_action(site_id: str, payload: dict, principal: dict = Depends(re
     """Queue block | unblock | quarantine | ratelimit | contain | release for one site. It reaches the site with
     its next report and runs through that site's own checks (whitelist, protected hosts, TTL limits)."""
     from fleet import manage
+    scope, st = _scope(principal)
+    tenant = _site_tenant(st, site_id)
+    _require(principal, 'fleet_action_queued', lambda: scope.require(tenant, 'operator'))
     p = payload or {}
     return _fleet(principal, 'fleet_action_queued', manage.queue_action, site_id, str(p.get('kind', '')),
                   str(p.get('ip', '')), p.get('ttl', 3600), str(p.get('reason', ''))[:200], p.get('release_kind'))
@@ -956,6 +1014,12 @@ def fleet_queue_action(site_id: str, payload: dict, principal: dict = Depends(re
 @app.post('/api/fleet/actions/{action_id}/cancel')
 def fleet_cancel_action(action_id: int, principal: dict = Depends(require_operator)):
     from fleet import manage
+    scope, st = _scope(principal)
+    action = next((a for a in st.list_actions(limit=100000) if a['id'] == action_id), None)
+    if action is None:
+        raise HTTPException(status_code=404, detail='no such action')
+    _require(principal, 'fleet_action_cancelled',
+             lambda: scope.require(st.tenant_of_site(action['site']) or '', 'operator'))
     return _fleet(principal, 'fleet_action_cancelled', manage.cancel_action, action_id)
 
 
@@ -964,8 +1028,111 @@ def fleet_alerts(q: str = None, ip: str = None, site: str = None, group: str = N
                  since: int = None, until: int = None, limit: int = 200, principal: dict = Depends(require_viewer)):
     """Search alert summaries shared by every site (type, score, addresses, MITRE; no flows or packets)."""
     from fleet import manage
-    return _fleet(principal, 'fleet_alert_search', manage.search_alerts, q=q, ip=ip, site=site, group=group,
-                  min_score=min_score, since=since, until=until, limit=limit)
+    scope, st = _scope(principal)
+    res = _fleet(principal, 'fleet_alert_search', manage.search_alerts, q=q, ip=ip, site=site, group=group,
+                 min_score=min_score, since=since, until=until, limit=limit if scope.msp else 1000)
+    if not scope.msp:
+        groups = {g['name'] for g in st.list_groups() if scope.can(g.get('tenant') or 'default', 'viewer')}
+        res['alerts'] = [a for a in res['alerts'] if a.get('site_group') in groups][:limit]
+        res['count'] = len(res['alerts'])
+    return res
+
+
+# ---------- MSP multi-tenancy ----------
+
+@app.get('/api/fleet/tenants')
+def fleet_tenants(principal: dict = Depends(require_viewer)):
+    """Customers (with branding) this account may see, and their members (MSP staff: all)."""
+    scope, st = _scope(principal)
+    allowed = scope.tenants()
+    out = [t for t in st.list_tenants() if allowed is None or t['id'] in allowed]
+    members = st.list_members() if scope.msp and auth_core.role_allows(principal.get('role'), 'admin') else []
+    return {'tenants': out, 'members': members, 'msp': scope.msp}
+
+
+@app.post('/api/fleet/tenants')
+def fleet_tenant_create(payload: dict, principal: dict = Depends(require_admin)):
+    from fleet import tenants
+    scope, st = _scope(principal)
+    _require(principal, 'fleet_tenant_create', scope.require_msp)
+    p = payload or {}
+    try:
+        t = tenants.create(st, str(p.get('id', '')), str(p.get('name', '')), by=principal.get('username'))
+        if any(k in p for k in ('display_name', 'accent', 'support')):
+            t = tenants.brand(st, t['id'], p.get('display_name'), p.get('accent'), p.get('support'))
+    except tenants.TenantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'fleet_tenant_create', target=t['id'])
+    return t
+
+
+@app.put('/api/fleet/tenants/{tenant_id}/branding')
+def fleet_tenant_brand(tenant_id: str, payload: dict, principal: dict = Depends(require_admin)):
+    from fleet import tenants
+    scope, st = _scope(principal)
+    _require(principal, 'fleet_tenant_brand', lambda: scope.require(tenant_id, 'admin'))
+    p = payload or {}
+    try:
+        t = tenants.brand(st, tenant_id, p.get('display_name'), p.get('accent'), p.get('support'))
+    except tenants.TenantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'fleet_tenant_brand', target=tenant_id, details=t['branding'])
+    return t
+
+
+@app.post('/api/fleet/tenants/{tenant_id}/members')
+def fleet_tenant_member(tenant_id: str, payload: dict, principal: dict = Depends(require_admin)):
+    """Give a console account a role for one customer (it then sees only its customers)."""
+    from fleet import tenants
+    scope, st = _scope(principal)
+    _require(principal, 'fleet_tenant_member', scope.require_msp)
+    p = payload or {}
+    try:
+        roles = tenants.member(st, str(p.get('username', '')), tenant_id, str(p.get('role', '')))
+    except tenants.TenantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'fleet_tenant_member', target=f"{p.get('username')}@{tenant_id}",
+                details={'role': p.get('role')})
+    return {'username': p.get('username'), 'memberships': roles}
+
+
+@app.delete('/api/fleet/tenants/{tenant_id}/members/{username}')
+def fleet_tenant_unmember(tenant_id: str, username: str, principal: dict = Depends(require_admin)):
+    scope, st = _scope(principal)
+    _require(principal, 'fleet_tenant_member', scope.require_msp)
+    if not st.remove_member(username, tenant_id):
+        raise HTTPException(status_code=404, detail='no such membership')
+    audit_event(principal, 'fleet_tenant_unmember', target=f'{username}@{tenant_id}')
+    return {'removed': True}
+
+
+@app.post('/api/fleet/groups/{name}/tenant')
+def fleet_group_tenant(name: str, payload: dict, principal: dict = Depends(require_admin)):
+    """Move a group (and its sites) to another customer (MSP staff)."""
+    from fleet import tenants
+    scope, st = _scope(principal)
+    _require(principal, 'fleet_group_tenant', scope.require_msp)
+    try:
+        tenants.assign_group(st, name, str((payload or {}).get('tenant', '')))
+    except tenants.TenantError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'fleet_group_tenant', target=name, details={'tenant': payload.get('tenant')})
+    return {'group': name, 'tenant': payload.get('tenant')}
+
+
+@app.get('/api/fleet/usage')
+def fleet_usage(month: str = None, format: str = 'json', principal: dict = Depends(require_admin)):
+    """Usage per customer for a month (YYYY-MM, default this month): sites, site-days, alerts, actions."""
+    import re as _re
+    from fleet import tenants
+    month = month or time.strftime('%Y-%m', time.gmtime())
+    if not _re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', month):
+        raise HTTPException(status_code=400, detail='month must look like 2026-11')
+    scope, st = _scope(principal)
+    if format == 'csv':
+        return Response(tenants.usage(st, month, scope, fmt='csv'), media_type='text/csv',
+                        headers={'Content-Disposition': f'attachment; filename="usage-{month}.csv"'})
+    return {'month': month, 'usage': tenants.usage(st, month, scope)}
 
 
 @app.get('/api/fleet/agent')

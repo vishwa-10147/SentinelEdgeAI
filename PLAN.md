@@ -385,7 +385,7 @@ The phases below address these, in that order.
 
 ## Phase 11 — Platform and ecosystem (v4.x and later)
 
-* **Multi-tenant fleet for MSPs and MSSPs:** customers, per-customer roles, branding, usage reports.
+* ~~**Multi-tenant fleet for MSPs and MSSPs:** customers, per-customer roles, branding, usage reports.~~ Done (`fleet/tenants.py`): customers own groups; scoped accounts and API tokens see only their customers (roles capped by the console role); MSP-wide settings for MSP staff; branding; monthly usage (JSON/CSV); console filter and export.
 * **Hardware options:** Pi kit, Jetson kit, a small x86 box with AF_XDP/DPDK capture for 10 Gb/s, and a 1U unit with a bypass NIC.
 * **Product certification:** IEC 62443-4-1 (secure development) and 4-2 (component), CE/FCC for hardware kits (need an accredited lab), ~~a published SBOM and VEX for every release~~ (done: CycloneDX SBOM and VEX attached to every release, `scripts/vex.py`, reviewed statements in `security/vex-statements.json`).
 * ~~**Community threat sharing:** opt-in, anonymised indicators shared between fleets.~~ Done (`intel/sharing.py`): within a fleet (indicators seen at ≥ 2 sites) and between fleets (Ed25519-signed STIX 2.1 bundles, pinned publisher keys); internet addresses only; shared matches never respond on their own.

@@ -30,6 +30,7 @@ export default function FleetModal({ open, onClose, user }){
   const [alertSearch, setAlertSearch] = useState({ q: '', ip: '', site: '', group: '', minScore: '', since: '', limit: 50 })
   const [fleetAlerts, setFleetAlerts] = useState(null)
   const [alertSearchBusy, setAlertSearchBusy] = useState(false)
+  const [tenant, setTenant] = useState('')
 
   const load = useCallback(async ()=>{
     setBusy(true)
@@ -93,8 +94,33 @@ export default function FleetModal({ open, onClose, user }){
           <>
             <div className="rules-section">
               <h3>Sites</h3>
+              {(fleet.tenants || []).length > 1 && (
+                <div className="audit-toolbar">
+                  <select value={tenant} onChange={e=>setTenant(e.target.value)} aria-label="Customer">
+                    <option value="">All customers</option>
+                    {fleet.tenants.map(t=><option key={t.id} value={t.id}>{t.branding?.display_name || t.name}</option>)}
+                  </select>
+                  {tenant && (()=>{ const t = fleet.tenants.find(x=>x.id === tenant) || {}; const b = t.branding || {}; return (
+                    <span className="auth-hint" style={{borderLeft: `4px solid ${/^#[0-9a-f]{6}$/i.test(b.accent || '') ? b.accent : 'transparent'}`, paddingLeft: '8px'}}>
+                      {b.display_name || t.name}{b.support ? ` · support: ${b.support}` : ''} · your role: {fleet.scope?.roles?.[tenant] || '—'}
+                    </span>) })()}
+                </div>
+              )}
               <div className="audit-toolbar">
                 <button className="ghost-button" disabled={busy} onClick={load}>Refresh</button>
+                {admin && (
+                  <button className="ghost-button" disabled={busy} onClick={()=>act(async ()=>{
+                    const u = await apiGet('/api/fleet/usage', null)
+                    const cols = ['month', 'tenant', 'name', 'sites', 'site_days', 'alerts', 'actions']
+                    const quote = v=>`"${String(v ?? '').replace(/"/g, '""')}"`
+                    const csv = [cols.join(','), ...(u?.usage || []).map(r=>cols.map(c=>quote(r[c])).join(','))].join('\n') + '\n'
+                    const a = document.createElement('a')
+                    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+                    a.download = `usage-${u?.month || 'month'}.csv`
+                    a.click()
+                    URL.revokeObjectURL(a.href)
+                  }, 'Usage report downloaded.')}>Usage this month (CSV)</button>
+                )}
                 {admin && (
                   <>
                     <select value={form.group} onChange={e=>setForm({ ...form, group: e.target.value })} aria-label="Group for the new site">
@@ -109,14 +135,14 @@ export default function FleetModal({ open, onClose, user }){
                 <div className="users-row fleet-row users-head">
                   <span>Site</span><span>Group</span><span>Version</span><span>Status</span><span>Alerts 24 h</span><span>Untrusted</span><span>Restricted</span><span>Remote action</span><span></span>
                 </div>
-                {fleet.sites.map(s=>{
+                {fleet.sites.filter(s=>!tenant || s.tenant === tenant).map(s=>{
                   const [label, cls] = siteHealth(s)
                   const r = s.report || {}
                   const restricted = Object.values(r.restrictions || {}).reduce((a, b)=>a + b, 0)
                   return (
                     <div className="users-row fleet-row" key={s.id}>
                       <span title={s.id}>{s.name}</span>
-                      <span>{s.grp}</span>
+                      <span>{s.grp}{(fleet.tenants || []).length > 1 && s.tenant ? ` · ${(fleet.tenants.find(t=>t.id === s.tenant)?.branding?.display_name) || fleet.tenants.find(t=>t.id === s.tenant)?.name || s.tenant}` : ''}</span>
                       <span>{s.version || '—'}</span>
                       <span className={cls}>{label} · {ago(s.last_seen)}</span>
                       <span>{r.alerts_24h ? `${r.alerts_24h.critical} critical, ${r.alerts_24h.high} high` : '—'}</span>
@@ -175,6 +201,7 @@ export default function FleetModal({ open, onClose, user }){
               )}
             </div>
 
+            {fleet.federated !== null && (
             <div className="rules-section">
               <h3>Federated learning</h3>
               <p className="auth-hint">Sites train the flow autoencoder on their own normal traffic and send back only model updates. The result arrives on every site as a shadow model (scored, never acted on) until you promote it in Operations → Models.</p>
@@ -194,6 +221,7 @@ export default function FleetModal({ open, onClose, user }){
                 </div>
               )}
             </div>
+            )}
 
             <div className="rules-section">
               <h3>Fleet-wide alert search</h3>

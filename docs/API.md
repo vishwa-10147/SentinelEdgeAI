@@ -156,20 +156,27 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/compliance` | admin | Every compliance pack's totals from one evidence collection (documentation support, not certification). |
 | `GET` | `/api/compliance/{pack}` | admin |  |
 | `GET` | `/api/compliance/{pack}/pdf` | admin |  |
-| `GET` | `/api/fleet` | viewer | Fleet server view: sites with their latest reports, groups with rollout progress, templates. |
-| `GET` | `/api/fleet/actions` | viewer | Remote actions queued on this fleet server, newest first. |
+| `GET` | `/api/fleet` | viewer | Fleet server view: sites with their latest reports, groups with rollout progress, templates (only the |
+| `GET` | `/api/fleet/actions` | viewer | Remote actions queued on this fleet server, newest first (only the customers this account may see). |
 | `POST` | `/api/fleet/actions/{action_id}/cancel` | operator |  |
 | `GET` | `/api/fleet/agent` | viewer | This site's own fleet status: enrolment, last report, applied template, pending version. |
 | `GET` | `/api/fleet/alerts` | viewer | Search alert summaries shared by every site (type, score, addresses, MITRE; no flows or packets). |
 | `POST` | `/api/fleet/codes` | admin | A one-time enrolment code for a new site (valid for an hour). |
-| `POST` | `/api/fleet/federated` | admin | Start a federated learning round ({"min_sites": n}) or close one ({"close": id}). |
-| `POST` | `/api/fleet/groups` | admin | Create or update a group: its template, target version and rollout stages. |
+| `POST` | `/api/fleet/federated` | admin | Start a federated learning round ({"min_sites": n}) or close one ({"close": id}) (MSP-wide). |
+| `POST` | `/api/fleet/groups` | admin | Create or update a group: its template, target version, rollout stages and (new groups) customer. |
 | `POST` | `/api/fleet/groups/{name}/rollout` | admin | Pause or resume a group's rollout. |
+| `POST` | `/api/fleet/groups/{name}/tenant` | admin | Move a group (and its sites) to another customer (MSP staff). |
 | `POST` | `/api/fleet/sites/{site_id}/actions` | operator | Queue block | unblock | quarantine | ratelimit | contain | release for one site. It reaches the site with |
 | `POST` | `/api/fleet/sites/{site_id}/group` | admin |  |
 | `GET` | `/api/fleet/sites/{site_id}/history` | viewer |  |
 | `POST` | `/api/fleet/sites/{site_id}/revoke` | admin |  |
-| `POST` | `/api/fleet/templates` | admin | Store a configuration template: response policy YAML, or one of the presets. |
+| `POST` | `/api/fleet/templates` | admin | Store a configuration template: response policy YAML, or one of the presets (MSP-wide). |
+| `GET` | `/api/fleet/tenants` | viewer | Customers (with branding) this account may see, and their members (MSP staff: all). |
+| `POST` | `/api/fleet/tenants` | admin |  |
+| `PUT` | `/api/fleet/tenants/{tenant_id}/branding` | admin |  |
+| `POST` | `/api/fleet/tenants/{tenant_id}/members` | admin | Give a console account a role for one customer (it then sees only its customers). |
+| `DELETE` | `/api/fleet/tenants/{tenant_id}/members/{username}` | admin |  |
+| `GET` | `/api/fleet/usage` | admin | Usage per customer for a month (YYYY-MM, default this month): sites, site-days, alerts, actions. |
 | `GET` | `/api/guided-tuning/rules` | viewer |  |
 | `POST` | `/api/guided-tuning/rules` | analyst | A rule written by hand: {kind, scope: {src?, dst?, dport?}, action, days, note}. |
 | `DELETE` | `/api/guided-tuning/rules/{rule_id}` | analyst |  |
