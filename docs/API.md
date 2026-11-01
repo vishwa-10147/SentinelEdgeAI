@@ -45,7 +45,10 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/devices/{ip}/peers` | viewer | The learned peer profile containment would restrict this device to. |
 | `GET` | `/api/flows` | viewer |  |
 | `GET` | `/api/health` | viewer |  |
+| `GET` | `/api/incidents` | viewer | Related alerts, devices and responses grouped into incidents, newest activity first. |
 | `GET` | `/api/incidents/timeline` | viewer |  |
+| `GET` | `/api/incidents/{incident_id}` | viewer | One incident with its timeline, responses and the "what to do now" checklist. |
+| `POST` | `/api/incidents/{incident_id}/status` | analyst | Acknowledge, resolve or reopen an incident, with a note (audited). |
 | `GET` | `/api/live_stats` | viewer |  |
 | `GET` | `/api/risk_timeline` | viewer |  |
 

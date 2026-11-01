@@ -373,6 +373,14 @@ The phases below address these, in that order.
 * **Ticketing and SOAR:** Jira, ServiceNow, TheHive and generic webhooks, both ways.
 * **Guided tuning:** "this detector produced 40 false alarms on the printer VLAN this week. Raise its threshold there?"
 
+**Status (2026-11-01):**
+- [x] Incident view (`core/incidents.py`): grouping, timeline with responses, "what to do now" checklist, acknowledge/resolve with notes, console panel.
+- [ ] Optional local assistant (read-only, off by default, separate resource-limited service).
+- [ ] Notifications: mobile push with approve/deny, digest e-mails.
+- [ ] SSO (OIDC/SAML), LDAP/AD group mapping.
+- [ ] Ticketing and SOAR (Jira, ServiceNow, TheHive, generic webhooks both ways).
+- [ ] Guided tuning suggestions from analyst feedback.
+
 ## Phase 11 — Platform and ecosystem (v4.x and later)
 
 * **Multi-tenant fleet for MSPs and MSSPs:** customers, per-customer roles, branding, usage reports.

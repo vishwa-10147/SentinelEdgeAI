@@ -873,6 +873,47 @@ def device_peers(ip: str, principal: dict = Depends(require_viewer)):
             'internet': [{'proto': p, 'port': n} for p, n in profile['external']]}
 
 
+@app.get('/api/incidents')
+def incidents_list(status: Optional[str] = None, since: Optional[float] = None,
+                   principal: dict = Depends(require_viewer)):
+    """Related alerts, devices and responses grouped into incidents, newest activity first."""
+    from core import incidents
+    items = incidents.current(since=since)
+    if status:
+        items = [i for i in items if i['status'] == status]
+    counts = {s: 0 for s in incidents.STATUSES}
+    for i in items:
+        counts[i['status']] = counts.get(i['status'], 0) + 1
+    return maybe_sanitize({'incidents': [incidents.summary(i) for i in items[:500]], 'counts': counts})
+
+
+@app.get('/api/incidents/{incident_id}')
+def incident_detail(incident_id: str, principal: dict = Depends(require_viewer)):
+    """One incident with its timeline, responses and the "what to do now" checklist."""
+    from core import incidents
+    for i in incidents.current():
+        if i['id'] == incident_id:
+            return maybe_sanitize(i)
+    raise HTTPException(status_code=404, detail='incident not found')
+
+
+@app.post('/api/incidents/{incident_id}/status')
+def incident_status(incident_id: str, payload: dict, principal: dict = Depends(require_analyst)):
+    """Acknowledge, resolve or reopen an incident, with a note (audited)."""
+    from core import incidents
+    payload = payload or {}
+    if not any(i['id'] == incident_id for i in incidents.current()):
+        raise HTTPException(status_code=404, detail='incident not found')
+    try:
+        entry = incidents.set_status(incident_id, payload.get('status'), payload.get('note', ''),
+                                     by=principal.get('username'))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'incident_status', target=incident_id,
+                details={'status': entry['status'], 'note': entry['note'][:200]})
+    return {k: v for k, v in entry.items() if k != 'history'}
+
+
 @app.get('/api/ot/assets')
 def ot_assets(principal: dict = Depends(require_viewer)):
     """Industrial controllers seen on the network, the hosts that command them and the functions they use."""
