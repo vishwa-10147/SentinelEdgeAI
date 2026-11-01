@@ -1,4 +1,5 @@
 """Fleet management actions shared by the CLI and the console API (validated, audited)."""
+import json
 import os
 import time
 
@@ -140,6 +141,53 @@ def cancel_action(action_id, by='cli', st=None):
         raise ValueError('only queued (not yet delivered) actions can be cancelled')
     audit.record('fleet_action_cancelled', actor=by, target=f'action {action_id}')
     return {'cancelled': int(action_id)}
+
+
+def _sharing_keys():
+    """The fleet's Ed25519 key for signing community bundles (created on first use, private key mode 600)."""
+    from common import signing
+    os.makedirs(keys.fleet_dir(), mode=0o700, exist_ok=True)
+    if not os.path.exists(keys.path('sharing.key')):
+        private, public = signing.generate_keypair()
+        keys._write('sharing.key', private, True)
+        keys._write('sharing.pub', public, False)
+    return keys.read('sharing.key'), keys.read('sharing.pub')
+
+
+def share(action, st=None, min_sites=None, never_share=None, publisher=None, out=None, by='cli', now=None):
+    """Community threat sharing (intel.sharing): status | enable | disable | export | key."""
+    import time as _time
+    from intel import sharing
+    cfg = sharing.load_config()
+    if action in ('enable', 'disable'):
+        cfg['enabled'] = action == 'enable'
+        if min_sites:
+            cfg['min_sites'] = min_sites
+        if never_share:
+            cfg['never_share'] = list(never_share)
+        if publisher:
+            cfg['publisher'] = publisher
+        cfg = sharing.save_config(cfg)
+        audit.record('fleet_sharing', actor=by, details={k: cfg[k] for k in ('enabled', 'min_sites', 'never_share')})
+        return cfg
+    if action == 'key':
+        _, public = _sharing_keys()
+        from common import signing
+        return {'public_key': public, 'kid': signing.key_id(public)}
+    st = st or store()
+    now = now or _time.time()
+    indicators = sharing.collect(st.search_alerts(since=now - cfg['days'] * 86400, min_score=cfg['min_score'],
+                                                  limit=1000), cfg, now)
+    if action == 'status':
+        return {**cfg, 'indicators': len(indicators), 'sample': indicators[:10]}
+    if not out:
+        raise ValueError('export needs --out FILE')
+    private, public = _sharing_keys()
+    doc = sharing.sign_bundle(sharing.bundle(indicators, cfg, now), private, public)
+    with open(out, 'w', encoding='utf-8') as f:
+        json.dump(doc, f, indent=1)
+    audit.record('fleet_sharing_export', actor=by, details={'indicators': len(indicators), 'file': out})
+    return {'file': out, 'indicators': len(indicators), 'kid': doc.get('kid')}
 
 
 def search_alerts(by='cli', st=None, **filters):

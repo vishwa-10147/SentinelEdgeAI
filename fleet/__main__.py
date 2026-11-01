@@ -65,6 +65,12 @@ def main(argv=None):
     p.add_argument('code')
     p.add_argument('fingerprint')
     p.add_argument('--name')
+    p = sub.add_parser('share', help='community threat sharing: indicators seen at several sites (opt-in)')
+    p.add_argument('action', choices=['status', 'enable', 'disable', 'export', 'key'])
+    p.add_argument('--min-sites', type=int)
+    p.add_argument('--never-share', action='append', help='a range never to share (your own public addresses); repeatable')
+    p.add_argument('--publisher', help='name shown in exported bundles')
+    p.add_argument('--out', help='export: where to write the signed STIX bundle')
     sub.add_parser('report', help='send one report now and apply the desired state')
     sub.add_parser('status', help='this site\'s fleet status')
     args = parser.parse_args(argv)
@@ -130,6 +136,9 @@ def main(argv=None):
             print(f"{res['count']} alert(s)", file=sys.stderr)
         elif args.command == 'rollout':
             _show(manage.set_rollout(args.group, args.action, 'cli', st))
+        elif args.command == 'share':
+            _show(manage.share(args.action, st=st, min_sites=args.min_sites, never_share=args.never_share,
+                               publisher=args.publisher, out=args.out, by='cli'))
         return 0
     except (ValueError, agent.AgentError, OSError) as exc:
         print(f'error: {exc}', file=sys.stderr)

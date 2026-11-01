@@ -114,7 +114,9 @@ class HTTPDetector:
                 hit = intel(fp)
                 listed = (hit[1] or 'listed fingerprint', hit[0]) if hit else None
             if listed and self.cooldown.ready(('http_known_bad', src, fp), ts):
-                out.append(Finding('http_known_bad', src, 85, 0.85, 'T1071.001',
+                from intel.sharing import trust_for
+                sev, prob = trust_for(listed[1]) or (85, 0.85)
+                out.append(Finding('http_known_bad', src, sev, prob, 'T1071.001',
                                    f'HTTP client fingerprint {fp} from {src} to {host} is listed by {listed[1]} '
                                    f'({listed[0]})', {'fingerprint': fp, 'host': host, 'target': dst,
                                                       'protocol': 'http'}, ts=ts))

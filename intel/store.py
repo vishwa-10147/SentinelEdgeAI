@@ -128,6 +128,7 @@ class IntelStore:
                 CREATE TABLE IF NOT EXISTS feeds (
                     name TEXT PRIMARY KEY, url TEXT NOT NULL, format TEXT NOT NULL,
                     last_update INTEGER, last_count INTEGER, last_error TEXT);
+                CREATE TABLE IF NOT EXISTS feed_keys (name TEXT PRIMARY KEY, public_key TEXT NOT NULL);
             """)
             conn.commit()
             self._conn = conn
@@ -161,14 +162,27 @@ class IntelStore:
             out.setdefault(r['source'], {})[r['type']] = r['n']
         return out
 
-    def add_feed(self, name, url, fmt):
-        if fmt not in ('plain', 'stix', 'taxii'):
-            raise ValueError('format must be plain, stix or taxii')
+    def add_feed(self, name, url, fmt, public_key=None):
+        """`signed-stix`: a community bundle (intel.sharing), checked against the pinned publisher `public_key`."""
+        if fmt not in ('plain', 'stix', 'taxii', 'signed-stix'):
+            raise ValueError('format must be plain, stix, taxii or signed-stix')
         if not url.startswith('https://') and not url.startswith('file://'):
             raise ValueError('feed URL must use https:// (or file:// for a local mirror)')
+        if fmt == 'signed-stix':
+            from common import signing
+            if not public_key or 'PUBLIC KEY' not in public_key:
+                raise ValueError("a signed-stix feed needs the publisher's public key (PEM)")
+            signing.key_id(public_key)
         with self._lock:
             self._db().execute('INSERT OR REPLACE INTO feeds(name, url, format) VALUES (?, ?, ?)', (name, url, fmt))
+            if fmt == 'signed-stix':
+                self._db().execute('INSERT OR REPLACE INTO feed_keys(name, public_key) VALUES (?, ?)', (name, public_key))
             self._db().commit()
+
+    def _feed_key(self, name):
+        with self._lock:
+            row = self._db().execute('SELECT public_key FROM feed_keys WHERE name = ?', (name,)).fetchone()
+        return row['public_key'] if row else None
 
     def feeds(self):
         with self._lock:
@@ -180,8 +194,17 @@ class IntelStore:
         for feed in self.feeds():
             try:
                 text = (fetch or _fetch)(feed['url'], feed['format'])
-                indicators = parse_plain(text) if feed['format'] == 'plain' else parse_stix(text)
-                n = self.replace_source(feed['name'], indicators)
+                source = feed['name']
+                if feed['format'] == 'signed-stix':
+                    from intel import sharing
+                    key = self._feed_key(feed['name'])
+                    if not key:
+                        raise ValueError('no pinned public key for this signed feed')
+                    indicators = parse_stix(sharing.verify_bundle(text, key))
+                    source = f"community:{feed['name']}"           # second-hand: lower trust (intel.sharing)
+                else:
+                    indicators = parse_plain(text) if feed['format'] == 'plain' else parse_stix(text)
+                n = self.replace_source(source, indicators)
                 err = None
             except Exception as exc:
                 n, err = None, str(exc)[:300]
@@ -270,7 +293,8 @@ def main(argv=None):
     p = sub.add_parser('add-feed')
     p.add_argument('name')
     p.add_argument('url')
-    p.add_argument('--format', choices=['plain', 'stix', 'taxii'], default='plain')
+    p.add_argument('--format', choices=['plain', 'stix', 'taxii', 'signed-stix'], default='plain')
+    p.add_argument('--public-key', help="signed-stix: the publisher's public key file (PEM)")
     sub.add_parser('update')
     sub.add_parser('list')
     p = sub.add_parser('check')
@@ -285,7 +309,8 @@ def main(argv=None):
             n = store.replace_source(args.source, parse_plain(text) if fmt == 'plain' else parse_stix(text))
             print(f'imported {n} indicators as {args.source}')
         elif args.command == 'add-feed':
-            store.add_feed(args.name, args.url, args.format)
+            key = open(args.public_key, encoding='ascii').read() if args.public_key else None
+            store.add_feed(args.name, args.url, args.format, public_key=key)
             print(f'added feed {args.name}; fetch it with: python -m intel update')
         elif args.command == 'update':
             print(json.dumps(store.update_feeds(), indent=2))

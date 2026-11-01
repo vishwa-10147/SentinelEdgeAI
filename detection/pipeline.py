@@ -9,6 +9,7 @@ from detection.guided_tuning import RuleSet
 from detection.lateral import LateralDetector, LateralStore, parse_lateral
 from detection.ot import OTDetector, OTStore, parse_ot
 from detection.http import HTTPDetector, parse_http_request
+from intel.sharing import trust_for
 from detection.tls import ServerHandshakes, TLSDetector, parse_client_hello
 
 
@@ -131,7 +132,8 @@ class DetectionPipeline:
             store = self._intel() if self.intel_enabled else None
             hit = store.match_domain(qname) if store else None
             if hit and self.dns.cooldown.ready(('intel_domain', src, qname), ts):
-                findings.append(Finding('threat_intel', src, 85, 0.9, 'T1071.004',
+                sev, prob = trust_for(hit[0]) or (85, 0.9)
+                findings.append(Finding('threat_intel', src, sev, prob, 'T1071.004',
                                         f'lookup of {qname.rstrip(".")}, listed by {hit[0]}' + (f' ({hit[1]})' if hit[1] else ''),
                                         {'indicator': qname.rstrip('.'), 'source': hit[0], 'label': hit[1]}, ts=ts))
             findings = self._accept(findings)
@@ -149,7 +151,8 @@ class DetectionPipeline:
             for fp in (hello['ja3'], hello['ja4']):
                 hit = store.match_fingerprint(fp) if store else None
                 if hit and self.tls.cooldown.ready(('intel_fp', src, fp), ts):
-                    findings.append(Finding('tls_known_bad', src, 90, 0.9, 'T1071.001',
+                    sev, prob = trust_for(hit[0]) or (90, 0.9)
+                    findings.append(Finding('tls_known_bad', src, sev, prob, 'T1071.001',
                                             f'TLS fingerprint {fp} listed by {hit[0]}' + (f' ({hit[1]})' if hit[1] else ''),
                                             {'fingerprint': fp, 'source': hit[0], 'target': dst}, ts=ts))
             findings = self._accept(findings)
@@ -181,7 +184,8 @@ class DetectionPipeline:
             store = self._intel() if self.intel_enabled else None
             hit = store.match_fingerprint(hello['ja4s']) if store else None
             if hit and self.tls.cooldown.ready(('intel_fp', server, hello['ja4s']), ts):
-                findings.append(Finding('tls_known_bad', client, 90, 0.9, 'T1071.001',
+                sev, prob = trust_for(hit[0]) or (90, 0.9)
+                findings.append(Finding('tls_known_bad', client, sev, prob, 'T1071.001',
                                         f'TLS server fingerprint {hello["ja4s"]} of {server} listed by {hit[0]}'
                                         + (f' ({hit[1]})' if hit[1] else ''),
                                         {'fingerprint': hello['ja4s'], 'source': hit[0], 'target': server}, ts=ts))

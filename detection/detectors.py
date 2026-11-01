@@ -326,7 +326,9 @@ class IntelDetector:
             hit = self.store().match_ip(peer)
             if hit and self.cooldown.ready(('threat_intel', local, peer), f['ts']):
                 source, label = hit
-                out.append(Finding('threat_intel', local, 85, 0.9, 'T1071',
+                from intel.sharing import trust_for
+                severity, probability = trust_for(source) or (85, 0.9)     # shared intel is second-hand
+                out.append(Finding('threat_intel', local, severity, probability, 'T1071',
                                    f'traffic with {peer}, listed by {source}' + (f' ({label})' if label else ''),
                                    {'indicator': peer, 'source': source, 'label': label, 'target': peer}, ts=f['ts']))
         return out

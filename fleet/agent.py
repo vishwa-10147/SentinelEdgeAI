@@ -303,6 +303,17 @@ def _federated(desired, state, session, ident):
                      details={'round': latest['round'], 'stage': 'shadow'})
 
 
+def _fleet_intel(desired):
+    """Load the indicators other sites of this fleet saw (intel source 'fleet'); clear them when sharing stops."""
+    from intel import sharing
+    from intel.store import get_store
+    shared = desired.get('fleet_intel')
+    if _off('SENTINEL_FLEET_RECEIVE_INTEL'):
+        shared = None
+    rows = sharing.to_store(shared.get('indicators') or [], int(shared.get('valid_days') or 14)) if shared else []
+    return get_store().replace_source('fleet', rows)
+
+
 def _apply_template(template, state):
     """Validate and apply the group's policy template if it changed. Returns a status string."""
     if not template:
@@ -356,6 +367,7 @@ def report_once(session=None):
     state['template_status'] = _apply_template(desired.get('template'), state)
     _apply_version(desired.get('target_version'))
     _actions(desired, state, session, ident)
+    state['fleet_intel'] = _part(lambda: _fleet_intel(desired), 'failed')
     try:
         _federated(desired, state, session, ident)
     except (requests.RequestException, ValueError, OSError) as exc:

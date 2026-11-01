@@ -91,7 +91,23 @@ def desired_state(site, report, now=None):
             if template else None,
             'target_version': rollout.desired_version(group, site['id'], report.get('version'), now),
             'actions': st.pending_actions(site['id'], now),
+            **_shared_intel(st, now),
             'server_time': int(now)}
+
+
+_shared_cache = {'at': 0.0, 'value': None}
+
+
+def _shared_intel(st, now):
+    """Indicators seen at several sites (intel.sharing), recomputed at most every 5 minutes."""
+    from intel import sharing
+    cfg = sharing.load_config()
+    if not cfg['enabled']:
+        return {'fleet_intel': None}
+    if _shared_cache['value'] is None or now - _shared_cache['at'] > 300:
+        alerts = st.search_alerts(since=now - cfg['days'] * 86400, min_score=cfg['min_score'], limit=1000)
+        _shared_cache.update(at=now, value=sharing.collect(alerts, cfg, now))
+    return {'fleet_intel': {'indicators': _shared_cache['value'], 'valid_days': cfg['valid_days']}}
 
 
 def federated_state(site, report, model='autoencoder'):
