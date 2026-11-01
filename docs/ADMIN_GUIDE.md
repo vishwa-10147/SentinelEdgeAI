@@ -386,6 +386,16 @@ sudo sentinelctl rollback                                      # back to the pre
 
 Store backups off the device: they contain the signing keys and the user database (encrypted).
 
+**Update channels.** `sentinelctl update` follows the channel in `SENTINEL_UPDATE_CHANNEL` (`/etc/sentinel/sentinel.env`; new installs use `stable`), or `--channel stable|beta` for one run. **beta** gets each release when it is published; **stable** gets it once it has run on beta without trouble. A channel is a small manifest (`channels/<name>.json` in the repository) naming one release and the SHA-256 of its exact package, signed with the project's Ed25519 release key, which the device pinned in `/etc/sentinel/release_signing.pub` at its first install. The device installs only that release, and only if the downloaded package has the signed SHA-256 (on top of the checksum file and the Sigstore signature). It refuses an expired manifest (they are re-signed at least every 120 days), and one older than the last it accepted, so a mirror cannot hold a device back on an old version. Without a channel setting, `update` takes the latest GitHub release as before; `--to X.Y.Z` (used by fleet rollouts) always names an exact release. For an offline mirror, set `SENTINEL_CHANNEL_URL=file:///path` to a directory with `stable.json` / `beta.json`.
+
+Maintainers sign channels where the release key lives:
+
+```bash
+python -m ops.channels sign --channel beta --version 2.17.0          # after the release is published
+python -m ops.channels promote --from beta --to stable               # after the beta period
+python -m ops.channels refresh                                       # re-sign both before they expire
+```
+
 ## 10. Hardening the operating system
 
 `sudo bash /opt/sentineledgeai/current/deploy/pi/harden_os.sh` shows the changes; add `--apply` to make them: SSH keys only (refused until a regular user has a key), the management ports restricted to `MGMT_NETS`, automatic security updates and capped logs. Disk encryption and a read-only root are described in the script's output.

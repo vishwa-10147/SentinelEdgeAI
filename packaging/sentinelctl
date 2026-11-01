@@ -10,7 +10,8 @@
 #   sentinelctl tls show                           # certificate details and fingerprint
 #   sudo sentinelctl backup  /root/sentinel.seab   # encrypted backup of config, keys, policy, data
 #   sudo sentinelctl restore /root/sentinel.seab   # onto this device (install first on a fresh one)
-#   sudo sentinelctl update [--check] [--to X.Y.Z] # over-the-air: verified download, health-checked, auto-rollback
+#   sudo sentinelctl update [--check] [--to X.Y.Z] [--channel stable|beta]
+#                                                  # over-the-air: verified download, health-checked, auto-rollback
 #   sudo sentinelctl fleet-update                  # install the version a fleet rollout asks for (run by a timer)
 #   sudo sentinelctl preset home|office|ot|enterprise
 #
@@ -18,7 +19,7 @@
 #   /opt/sentineledgeai/releases/<version>/   code + its own Python venv
 #   /opt/sentineledgeai/current  -> releases/<version>   (active version)
 #   /opt/sentineledgeai/previous -> releases/<version>   (rollback target)
-#   /etc/sentinel/      sentinel.env, config.yaml, model_signing.pub (pinned release model key), tls/
+#   /etc/sentinel/      sentinel.env, config.yaml, release_signing.pub (pinned release key), tls/
 #   /var/lib/sentinel/  database, firewall state, alerts, profiles
 #   /var/log/sentinel/  logs
 set -euo pipefail
@@ -103,6 +104,9 @@ DASHBOARD_API_KEY=$api_key
 FIREWALL_DRY_RUN=1
 SENTINEL_FIREWALL_BACKEND=auto
 SENTINEL_DB_PATH=data/sentinel.db
+# Update channel for 'sentinelctl update': stable (releases after their beta period) or beta.
+# Channel manifests are signed with the release key pinned in release_signing.pub.
+SENTINEL_UPDATE_CHANNEL=stable
 # Firewall rollback guard (timer): set to 1 once enforcement is enabled.
 ENABLE_ROLLBACK_GUARD=0
 # Engine Prometheus metrics (the API serves its own on /metrics)
@@ -129,10 +133,10 @@ EOF
 }
 
 # The release model is signed with the maintainer's Ed25519 key. The first install pins the
-# public key in $ETC_DIR/model_signing.pub; every later install checks the new package's
+# public key in $ETC_DIR/release_signing.pub; every later install checks the new package's
 # model against that pinned key, so a package signed with another key is refused.
 verify_release_model() {
-  local release="$1" pinned="$ETC_DIR/model_signing.pub"
+  local release="$1" pinned="$ETC_DIR/release_signing.pub"
   [ -f "$release/model/isolation_forest.pkl" ] || return 0
   if [ ! -f "$pinned" ]; then
     install -m 644 -o root -g root "$release/security/release_model.pub" "$pinned"
@@ -536,6 +540,17 @@ cmd_restore() {
 
 UPDATE_URL="${SENTINEL_UPDATE_URL:-https://api.github.com/repos/vishwa-10147/SentinelEdgeAI/releases/latest}"
 COSIGN_IDENTITY="${SENTINEL_COSIGN_IDENTITY:-^https://github.com/vishwa-10147/SentinelEdgeAI/}"
+CHANNEL_URL="${SENTINEL_CHANNEL_URL:-https://raw.githubusercontent.com/vishwa-10147/SentinelEdgeAI/main/channels}"
+
+# channel_release <channel> <workdir>: verify the signed manifest; prints "<version> <url> <sha256>"
+channel_release() {
+  local channel="$1" dir="$2" pinned="$ETC_DIR/release_signing.pub"
+  [ -f "$pinned" ] || die "no pinned release key ($pinned): this device predates signed channels;
+     update once without a channel (sudo sentinelctl update --to X.Y.Z), then channels work"
+  fetch "$CHANNEL_URL/$channel.json" "$dir/$channel.json" || die "could not download the $channel channel from $CHANNEL_URL"
+  (cd "$PREFIX/current" && .venv/bin/python -m ops.channels verify --channel "$channel" --file "$dir/$channel.json" \
+     --public-key "$pinned" --state "$STATE_DIR/data/update_channel.json")
+}
 
 current_version() {
   basename "$(readlink "$PREFIX/current" 2>/dev/null || echo none)"
@@ -569,16 +584,27 @@ fetch() {  # fetch <url> <dest>
 }
 
 cmd_update() {
-  local check_only=0 want="" latest url current tmp file
+  local check_only=0 want="" latest url current tmp file channel="" signed_sha=""
+  channel="${SENTINEL_UPDATE_CHANNEL:-$(env_value SENTINEL_UPDATE_CHANNEL 2>/dev/null || true)}"
   while [ $# -gt 0 ]; do
     case "$1" in
       --check) check_only=1 ;;
       --to) shift; want="${1:-}"; [[ "$want" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "--to needs a version like 2.4.0" ;;
+      --channel) shift; channel="${1:-}" ;;
       *) die "unknown update option: $1" ;;
     esac
     shift
   done
-  read -r latest url < <(latest_release "$want") || die "could not read release ${want:-latest} from $UPDATE_URL"
+  [ -z "$channel" ] || [ "$channel" = stable ] || [ "$channel" = beta ] || die "--channel must be stable or beta"
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  if [ -n "$channel" ] && [ -z "$want" ]; then
+    # the signed channel names the release and the SHA-256 of its exact package
+    read -r latest url signed_sha < <(channel_release "$channel" "$tmp") || die "the $channel channel manifest was refused"
+    log "$channel channel (signed): $latest"
+  else
+    read -r latest url < <(latest_release "$want") || die "could not read release ${want:-latest} from $UPDATE_URL"
+  fi
   [ -n "$latest" ] && [ -n "$url" ] || die "no release found at $UPDATE_URL"
   [ -z "$want" ] || [ "$latest" = "$want" ] || die "release $want is not available (the source offers $latest)"
   current="$(current_version)"
@@ -593,10 +619,13 @@ cmd_update() {
   log "update available: $current -> $latest"
   [ "$check_only" -eq 1 ] && return 0
   require_root
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
   file="$tmp/sentineledgeai-pi-$latest.tar.gz"
   fetch "$url" "$file" || die "download failed"
+  if [ -n "$signed_sha" ]; then
+    (cd "$PREFIX/current" && .venv/bin/python -m ops.channels check-file --sha256 "$signed_sha" "$file") \
+      || die "the downloaded package does not match the signed $channel channel; not installing"
+    log "package matches the signed $channel channel (SHA-256)"
+  fi
   fetch "$url.sha256" "$file.sha256" || die "checksum file missing; refusing to install"
   if fetch "$url.cosign.bundle" "$file.cosign.bundle" 2>/dev/null && command -v cosign >/dev/null; then
     cosign verify-blob --bundle "$file.cosign.bundle" --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -608,8 +637,17 @@ cmd_update() {
   else
     log "WARNING: signature not checked (install cosign to verify releases); checksum still enforced"
   fi
-  # same path as a manual upgrade: checksum, health check, automatic rollback
+  local pending="$STATE_DIR/data/update_channel.pending.json"
+  [ -z "$signed_sha" ] || install -m 644 "$tmp/$channel.json" "$pending"
+  # same path as a manual upgrade: checksum, health check, automatic rollback (exits on failure)
   cmd_install "$file"
+  if [ -n "$signed_sha" ]; then
+    # remember the accepted manifest: an older one (a rollback) is refused from now on
+    (cd "$PREFIX/current" && .venv/bin/python -m ops.channels accept --channel "$channel" --file "$pending" \
+       --public-key "$ETC_DIR/release_signing.pub" --state "$STATE_DIR/data/update_channel.json") \
+      || log "WARNING: could not record the accepted $channel manifest"
+    rm -f "$pending"
+  fi
 }
 
 cmd_fleet_update() {

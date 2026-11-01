@@ -4,7 +4,7 @@
 |---|---|---|
 | Install fails with `dpkg was interrupted` | the system package manager | `sudo dpkg --configure -a`, then run the installer again |
 | `sentinelctl install` says `health check failed` and rolls back | `journalctl -u sentineledgeai-engine -u sentineledgeai-api -n 100` | fix the error shown; a service that restarts in a loop also fails the check |
-| `the release model is not signed by the pinned key` during install | `/etc/sentinel/model_signing.pub` | the package's model was signed with a different key. Only if the project announced a key rotation: `sudo rm /etc/sentinel/model_signing.pub` and install again; otherwise do not install that package |
+| `the release model is not signed by the pinned key` during install | `/etc/sentinel/release_signing.pub` | the package's model was signed with a different key. Only if the project announced a key rotation: `sudo rm /etc/sentinel/release_signing.pub` and install again; otherwise do not install that package |
 | Browser: certificate warning | `sentinelctl tls show` | compare the fingerprint and accept, or `sentinelctl tls import` your own |
 | API refuses to start: `set both SENTINEL_TLS_CERT and SENTINEL_TLS_KEY` | `/etc/sentinel/sentinel.env` | set both or neither |
 | `429 rate limit exceeded` | many clients behind one proxy share a limit | raise `SENTINEL_RATE_LIMIT_READ` / `_WRITE` |

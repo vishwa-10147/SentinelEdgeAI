@@ -1,0 +1,13 @@
+{
+  "kid": "03c02c785199bcdb",
+  "payload": {
+    "channel": "stable",
+    "expires_at": 1803907509,
+    "issued_at": 1793539509,
+    "serial": 1793539509,
+    "sha256": "b72788c2aba5e384946ae4bcd7f077f4e1b6a0670366764a031d2b255dcc5286",
+    "tarball": "https://github.com/vishwa-10147/SentinelEdgeAI/releases/download/v2.16.0/sentineledgeai-pi-2.16.0.tar.gz",
+    "version": "2.16.0"
+  },
+  "sig": "CTdGpjtBkslo3mrx+MPjE7fBBPDzarZsnsE7s+LIEtiMKf4hUoND0k4wcDX4Lo102ZjCokLIMMvOPKopo/QjDA=="
+}

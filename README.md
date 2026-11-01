@@ -326,7 +326,7 @@ sudo sentinelctl tls renew                                 # new self-signed cer
 |---|---|---|
 | `/opt/sentineledgeai/releases/<version>/` | Code and its own Python environment | Added; last 3 kept |
 | `/opt/sentineledgeai/current` | Symlink to the active release | Switched atomically |
-| `/etc/sentinel/` | `sentinel.env`, `config.yaml`, `model_signing.pub` (pinned release model key) | Never |
+| `/etc/sentinel/` | `sentinel.env`, `config.yaml`, `release_signing.pub` (pinned release model key) | Never |
 | `/var/lib/sentinel/` | Database, firewall state, alerts, device profiles | Never |
 | `/var/log/sentinel/` | Logs and the firewall action log | Never |
 
