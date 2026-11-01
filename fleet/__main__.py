@@ -16,7 +16,10 @@ def _show(obj):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='python -m fleet', description='SentinelEdgeAI fleet manager.')
     sub = parser.add_subparsers(dest='command', required=True)
-    sub.add_parser('init', help='make this device a fleet server (keys + start marker)')
+    p = sub.add_parser('init', help='make this device a fleet server (keys + start marker)')
+    p.add_argument('--hostname', action='append', help='name sites use to reach the server (repeatable; '
+                                                        'default: this machine\'s names)')
+    p.add_argument('--ip', action='append', help='address sites use to reach the server (repeatable)')
     p = sub.add_parser('code', help='one-time enrolment code for a new site')
     p.add_argument('--group', default='default')
     sub.add_parser('sites', help='enrolled sites and their latest reports')
@@ -86,7 +89,7 @@ def main(argv=None):
             _show(agent.status())
             return 0
         if args.command == 'init':
-            keys.init()
+            keys.init(hostnames=args.hostname, ips=args.ip)
             print(f'fleet server ready; CA fingerprint {keys.ca_fingerprint()}')
             return 0
         st = FleetStore()

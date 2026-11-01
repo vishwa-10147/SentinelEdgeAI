@@ -3,9 +3,17 @@
 #   docker build -t sentineledgeai .
 #   docker run -p 9000:9000 -e SENTINEL_HOST=0.0.0.0 -v sentinel-data:/app/data sentineledgeai
 #
-# Builder stage installs the pinned dependencies (all available as wheels for
-# amd64 and arm64, so no compilers are needed); the final stage has no build
-# tools, no package manager cache and runs as an unprivileged user.
+# A Node stage builds the console; the builder stage installs the pinned Python
+# dependencies (all available as wheels for amd64 and arm64, so no compilers are
+# needed); the final stage has no build tools, no Node, no package manager cache
+# and runs as an unprivileged user.
+
+FROM node:20.19.0-slim AS frontend
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
 
 FROM python:3.11-slim AS builder
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
@@ -24,6 +32,7 @@ RUN groupadd --system --gid 10001 sentinel \
 COPY --from=builder /venv /venv
 WORKDIR /app
 COPY --chown=root:root . /app
+COPY --from=frontend --chown=root:root /fe/dist /app/frontend/dist
 RUN mkdir -p /app/data /app/logs && chown -R sentinel:sentinel /app/data /app/logs \
     && touch /app/alerts.json /app/firewall_rules.json /app/firewall_policy.json \
     && chown sentinel:sentinel /app/alerts.json /app/firewall_rules.json /app/firewall_policy.json

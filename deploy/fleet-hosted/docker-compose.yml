@@ -1,0 +1,58 @@
+# Hosted fleet console (Phase 11): the fleet server and the console on any Linux host or cloud VM,
+# without packet capture or enforcement. Sites (Pi / Jetson appliances) enrol with it and keep working
+# fully offline when it is unreachable.
+#
+#   cd deploy/fleet-hosted
+#   FLEET_HOSTNAME=fleet.example.org docker compose up -d --build
+#   docker compose exec console python -m core.auth create admin --role admin      # first Admin
+#   docker compose exec fleet python -m fleet code --group default                 # an enrolment code
+#
+# Ports: 9443 console (HTTPS), 9444 fleet server (mutual TLS, sites only). Put the console behind your own
+# reverse proxy / certificate if you like; the fleet port must stay end to end (sites pin its CA).
+services:
+  init:
+    build: ../..
+    command: ["sh", "-c", "python -m fleet init --hostname \"$${FLEET_HOSTNAME:-localhost}\" --hostname localhost && python /app/deploy/fleet-hosted/console_tls.py"]
+    environment:
+      - FLEET_HOSTNAME=${FLEET_HOSTNAME:-localhost}
+      - SENTINEL_FLEET_DIR=/app/data/fleet
+    volumes: [fleet-data:/app/data]
+    restart: "no"
+  fleet:
+    build: ../..
+    command: ["python", "-m", "fleet.server"]
+    depends_on:
+      init: {condition: service_completed_successfully}
+    environment:
+      - SENTINEL_FLEET_DIR=/app/data/fleet
+    ports: ["9444:9444"]
+    volumes: [fleet-data:/app/data]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 9444), 3)"]
+      interval: 30s
+  console:
+    build: ../..
+    command: ["python", "-m", "dashboard.serve"]
+    depends_on:
+      init: {condition: service_completed_successfully}
+    environment:
+      - SENTINEL_PORT=9000
+      - SENTINEL_TLS_CERT=/app/data/console-tls/cert.pem
+      - SENTINEL_TLS_KEY=/app/data/console-tls/key.pem
+      - SENTINEL_FLEET_DIR=/app/data/fleet
+      - SENTINEL_COOKIE_SECURE=1
+      - CAPTURE_IN_PROCESS=0
+      - FIREWALL_DRY_RUN=1
+      - SENTINEL_HOSTED_FLEET=1
+    ports: ["9443:9000"]
+    volumes: [fleet-data:/app/data]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+volumes:
+  fleet-data:

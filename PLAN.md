@@ -390,7 +390,7 @@ The phases below address these, in that order.
 * **Product certification:** IEC 62443-4-1 (secure development) and 4-2 (component), CE/FCC for hardware kits (need an accredited lab), ~~a published SBOM and VEX for every release~~ (done: CycloneDX SBOM and VEX attached to every release, `scripts/vex.py`, reviewed statements in `security/vex-statements.json`).
 * ~~**Community threat sharing:** opt-in, anonymised indicators shared between fleets.~~ Done (`intel/sharing.py`): within a fleet (indicators seen at ≥ 2 sites) and between fleets (Ed25519-signed STIX 2.1 bundles, pinned publisher keys); internet addresses only; shared matches never respond on their own.
 * ~~**Extension SDK:** third-party detectors and response actions, signed and sandboxed.~~ Done (`extensions/`, docs/EXTENSIONS.md): Ed25519-signed packages from pinned publishers; user/network/mount-namespace sandbox with resource limits, fail closed; findings checked and capped, never a response alone; action extensions notified only.
-* **Optional hosted fleet console** for organisations that want it. The appliances stay fully functional offline.
+* ~~**Optional hosted fleet console** for organisations that want it. The appliances stay fully functional offline.~~ Done (`deploy/fleet-hosted/`): fleet server + console in Docker on any host, verified with a real appliance enrolling over mutual TLS.
 
 ## How far it can go
 
