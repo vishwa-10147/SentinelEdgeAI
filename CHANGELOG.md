@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Passive OS and device-type fingerprinting** (Phase 9, asset context, `enforcement/os_fingerprint.py`): the SYN of every connection an internal host opens is fingerprinted (initial TTL and hop count, window and scale, MSS, TCP option order, quirks; a p0f-v3-style signature with our own rules) on both the AF_PACKET fast path and the scapy path, IPv4 and IPv6. Windows, Linux/Android, macOS/iOS, FreeBSD and minimal embedded/network stacks are told apart. The result is combined with what the device announced (DHCP vendor class and option 55, OUI vendor, hostname) into one OS and device-type guess with a confidence and the evidence behind it. Nothing is sent to the device. Flood-safe: one parse per source per minute, a bounded table and a database write budget. `GET /api/assets/{ip}/profile`, `GET /api/assets/profiles` (Viewer), `python -m enforcement osfp list|show`, and OS / device type / evidence in the console's device detail.
+
+### Fixed
+- Device detail showed a stray "0" under Asset Context when a device had no CVE matches.
+
 ## [2.15.0] - 2026-11-01
 
 Phase 9 complete: IPv6 parity for containment and OT segmentation.

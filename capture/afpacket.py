@@ -26,6 +26,9 @@ TLS_FOLLOW_SEGMENTS = 7                                     # detection.tls.TLS_
 _tls_follow = BoundedDict(4096)
 SLOW_TCP_PORTS = frozenset({502, 4840, 20000, 2404, 102, 44818, 1883})  # OT protocols (detection.ot.OT_PORTS)
 _IP6_EXT = frozenset({0, 43, 44, 50, 51, 60})   # extension headers the fast path does not walk
+# called with the IP packet (memoryview) of every TCP SYN without ACK: passive OS fingerprinting
+# (enforcement.os_fingerprint.observe_ip, set by capture.sniffer); it must return quickly
+syn_observer = None
 
 
 def parse(frame):
@@ -68,6 +71,8 @@ def parse(frame):
         return None
     if proto == 6 and len(frame) >= l4 + 14:
         sport, dport = struct.unpack_from('!HH', frame, l4)
+        if syn_observer is not None and frame[l4 + 13] & 0x12 == 0x02:
+            syn_observer(memoryview(frame)[off:])
         data_off = (frame[l4 + 12] >> 4) * 4
         payload = l4 + data_off
         size = len(frame) - payload

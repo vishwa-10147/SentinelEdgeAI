@@ -131,6 +131,8 @@ ROUTES = {
     ('GET', '/api/assets/{ip}/criticality'): 'viewer',
     ('POST', '/api/assets/{ip}/criticality'): 'admin',
     ('GET', '/api/assets/{ip}/cves'): 'viewer',
+    ('GET', '/api/assets/{ip}/profile'): 'viewer',
+    ('GET', '/api/assets/profiles'): 'viewer',
     ('GET', '/api/assets'): 'viewer',
     ('POST', '/api/firewall/contain'): 'operator',
     ('GET', '/api/ot/segmentation'): 'viewer',

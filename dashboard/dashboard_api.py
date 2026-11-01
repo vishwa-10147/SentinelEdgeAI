@@ -1832,6 +1832,25 @@ def asset_cves(ip: str, principal: dict = Depends(require_viewer)):
     return {'ip': ip, 'cves': get_asset_context().cves_for(ip)}
 
 
+@app.get('/api/assets/{ip}/profile')
+def asset_profile(ip: str, principal: dict = Depends(require_viewer)):
+    """Passive OS and device-type guess for a device, with the evidence behind it."""
+    import ipaddress
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        raise HTTPException(status_code=400, detail='not an IP address')
+    from enforcement import os_fingerprint
+    return os_fingerprint.profile(ip)
+
+
+@app.get('/api/assets/profiles')
+def asset_profiles(principal: dict = Depends(require_viewer)):
+    """OS and device-type guesses for every known device."""
+    from enforcement import os_fingerprint
+    return {'profiles': os_fingerprint.profiles()}
+
+
 @app.get('/api/assets')
 def list_assets(principal: dict = Depends(require_viewer)):
     """List all tracked assets with criticality."""

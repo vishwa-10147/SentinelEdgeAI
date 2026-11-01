@@ -19,7 +19,7 @@ from core.health import HealthMonitor
 from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
 import core.audit as audit
-from enforcement import identity
+from enforcement import identity, os_fingerprint
 from detection.fusion import alert_explanation
 import core.firewall as firewall
 import asyncio
@@ -109,6 +109,8 @@ def process_packet(packet):
         if IP not in packet:
             return
         _observe_dns_tls(packet)
+        if TCP in packet and int(packet[TCP].flags) & 0x12 == 0x02:
+            os_fingerprint.observe_ip(bytes(packet[IP]))      # passive OS fingerprint from the SYN
 
         ip_layer = packet[IP]
 
@@ -226,6 +228,7 @@ def start_sniffing(interface=None):
     if mode == "afpacket" or (mode == "auto" and afpacket.available()):
         from scapy.layers.l2 import Ether
         logger.warning("capture: AF_PACKET fast path on %s", interface or "all interfaces")
+        afpacket.syn_observer = os_fingerprint.observe_ip
         afpacket.run(interface, handle_parsed, lambda frame: process_packet(Ether(frame)))
         return
     logger.warning("capture: scapy on %s", interface or "all interfaces")

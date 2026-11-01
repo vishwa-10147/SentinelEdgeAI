@@ -23,6 +23,7 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
   const [busy, setBusy] = useState(false)
   const [criticality, setCriticality] = useState('standard')
   const [cves, setCves] = useState([])
+  const [profile, setProfile] = useState(null)
   const [ctxBusy, setCtxBusy] = useState(false)
 
   const device = useMemo(()=>{
@@ -77,12 +78,14 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
   const loadAssetContext = async ()=>{
     const ip = device.ip || device.id
     try{
-      const [c, cveRes] = await Promise.all([
+      const [c, cveRes, prof] = await Promise.all([
         apiGet(`/api/assets/${encodeURIComponent(ip)}/criticality`, {criticality: 'standard'}),
-        apiGet(`/api/assets/${encodeURIComponent(ip)}/cves`, {cves: []})
+        apiGet(`/api/assets/${encodeURIComponent(ip)}/cves`, {cves: []}),
+        apiGet(`/api/assets/${encodeURIComponent(ip)}/profile`, null)
       ])
       setCriticality(c?.criticality || 'standard')
       setCves(Array.isArray(cveRes?.cves) ? cveRes.cves : [])
+      setProfile(prof && typeof prof === 'object' ? prof : null)
     }catch(e){
       // asset context endpoint may not exist on older deployments
     }
@@ -215,14 +218,35 @@ export default function DeviceDetail({ deviceId, devices = [], alerts = [], flow
               <option value="critical">Critical</option>
             </select>
           </div>
-          {cves.length && (
+          <div>
+            <span>Operating system</span>
+            <strong>{profile?.os || 'Unknown'}</strong>
+          </div>
+          <div>
+            <span>Device type</span>
+            <strong>{profile?.device_type || 'Unknown'}</strong>
+          </div>
+          {profile?.confidence && (
+            <div>
+              <span>Confidence</span>
+              <strong>{profile.confidence}</strong>
+            </div>
+          )}
+          {cves.length > 0 && (
             <div>
               <span>CVEs</span>
               <strong style={{color:'#ef4444'}}>{cves.length} match{(cves.length !== 1 ? 'es' : '')}</strong>
             </div>
           )}
         </div>
-        {cves.length && (
+        {Array.isArray(profile?.evidence) && profile.evidence.length > 0 && (
+          <ul className="auth-hint" title="Passive: nothing is sent to the device">
+            {profile.evidence.map((e, i)=>(
+              <li key={i}><strong>{e.source}</strong>: {e.says} ({e.confidence}){e.detail ? ` - ${e.detail}` : ''}</li>
+            ))}
+          </ul>
+        )}
+        {cves.length > 0 && (
           <div className="cve-list">
             {cves.map(c=>(
               <div key={c.id} className="cve-row">

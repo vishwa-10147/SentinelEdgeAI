@@ -347,7 +347,7 @@ The phases below address these, in that order.
 
 **Status (2026-11-01):**
 - [x] Forensic packet buffer and PCAP export (`capture/packet_buffer.py`, Forensics panel).
-- [x] Asset context: device criticality and offline CVE matching (`core/asset_context.py`). Passive OS fingerprinting beyond the existing DHCP/OUI identity is still open.
+- [x] Asset context: device criticality and offline CVE matching (`core/asset_context.py`); passive OS and device-type fingerprinting (`enforcement/os_fingerprint.py`): TCP SYN signatures (initial TTL, window, MSS, option order) of internal hosts on both capture paths, combined with DHCP vendor class / option 55, OUI vendor and hostname into one guess with its evidence (`/api/assets/{ip}/profile`, device detail, `python -m enforcement osfp`). Checked against this Pi's own kernel SYN on the AF_PACKET path; not yet tried on a mixed real network.
 - [x] IPv6 parity: containment and OT segmentation now cover IPv6 (per-family sets, ICMPv6 neighbour discovery and DHCPv6 allowed, internal IPv6 = unique-local, link-local and `SENTINEL_INTERNAL_PREFIXES6`); IPv6 peer profiles; this also fixed IPv6 quarantine, which dropped neighbour discovery and so cut the host off from the quarantine page. Verified on the real kernel (`tests/firewall_netns/run_ipv6_netns.sh`, 20/20; IPv4 containment 11/11, segmentation 9/9, enforcement 22/22 unchanged).
 - [x] More OT: IEC 60870-5-104, S7comm, EtherNet/IP (CIP), MQTT, fed into the per-controller command baselines (`detection/ot.py`).
 - [x] Lateral movement: SMB2 / DCE-RPC / Kerberos header metadata and seven detectors (`detection/lateral.py`), plus the console panel. LDAP query metadata is not parsed yet.

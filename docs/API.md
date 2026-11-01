@@ -141,9 +141,11 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 |---|---|---|---|
 | `GET` | `/` | public |  |
 | `GET` | `/api/assets` | viewer | List all tracked assets with criticality. |
+| `GET` | `/api/assets/profiles` | viewer | OS and device-type guesses for every known device. |
 | `GET` | `/api/assets/{ip}/criticality` | viewer | Get device criticality (critical | important | standard). |
 | `POST` | `/api/assets/{ip}/criticality` | admin | Set device criticality (Admin only). |
 | `GET` | `/api/assets/{ip}/cves` | viewer | Offline CVE matches for a device based on type/OS fingerprint. |
+| `GET` | `/api/assets/{ip}/profile` | viewer | Passive OS and device-type guess for a device, with the evidence behind it. |
 | `GET` | `/api/assistant` | viewer | Whether the optional local assistant is on, which backend and model, and whether it answers. |
 | `POST` | `/api/assistant/ask` | viewer | Ask the local assistant about one incident (incident_id) or about the open incidents. |
 | `GET` | `/api/assistant/config` | admin |  |

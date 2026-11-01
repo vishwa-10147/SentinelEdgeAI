@@ -20,6 +20,9 @@ def main(argv=None):
     p.add_argument('--by', default='cli')
     sub.add_parser('protected', help='hosts that are never blocked, and why')
     sub.add_parser('devices', help='known devices by MAC (refreshes from the ARP table)')
+    p = sub.add_parser('osfp', help='passive OS and device-type fingerprints')
+    p.add_argument('action', choices=['list', 'show'])
+    p.add_argument('ip', nargs='?')
     for name in ('quarantine', 'ratelimit', 'contain'):
         p = sub.add_parser(name, help=f'{name} an IP')
         p.add_argument('ip')
@@ -108,6 +111,16 @@ def main(argv=None):
             reg.refresh_from_arp()
             for d in reg.list():
                 print(f"{d['mac']}  {d['ip'] or '-':<16} {(d['vendor'] or '?')[:28]:<28} {d['hostname'] or ''}")
+        elif args.command == 'osfp':
+            from enforcement import os_fingerprint
+            if args.action == 'show':
+                if not args.ip:
+                    raise ValueError('osfp show needs an IP')
+                _show(os_fingerprint.profile(args.ip))
+            else:
+                for d in os_fingerprint.profiles():
+                    print(f"{d['ip']:<40} {(d['os'] or '?')[:26]:<26} {(d['device_type'] or '?')[:24]:<24} "
+                          f"{d['confidence'] or '-'}")
         elif args.command in ('quarantine', 'ratelimit', 'contain'):
             _show(firewall.add_restriction(args.command, args.ip, ttl=args.ttl, reason=args.reason))
         elif args.command == 'release':
