@@ -380,7 +380,7 @@ The phases below address these, in that order.
 - [x] SSO with OpenID Connect (`core/sso.py`): Entra ID / Google / Okta / Keycloak, IdP groups (incl. AD groups synced to the IdP) mapped to roles, MFA from `amr`. Not yet tried against a live IdP.
 - [ ] SAML 2.0 and direct LDAP/AD password sign-in.
 - [x] Ticketing and SOAR (`integrations/ticketing.py`): Jira, ServiceNow, TheHive 5 and signed webhooks, one ticket per incident, comments, resolve both ways through an authenticated inbound endpoint. Not yet run against live Jira/ServiceNow/TheHive instances.
-- [ ] Guided tuning suggestions from analyst feedback.
+- [x] Guided tuning (`detection/guided_tuning.py`): scoped, expiring downgrade/suppress rules suggested from analyst false-positive labels, console **Tuning** panel.
 
 ## Phase 11 — Platform and ecosystem (v4.x and later)
 

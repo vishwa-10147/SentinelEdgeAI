@@ -306,6 +306,32 @@ Examples:
 
 The inbound endpoint can only change an incident's status. A SOAR that should **act** (block, contain) uses a scoped Operator API token (section 4) on `/api/firewall/block` or `/api/firewall/contain`. Those requests go through the same policy, protected-host list and approval gate as a person would.
 
+## 8b. Guided tuning
+
+When analysts mark alerts as false positives (**Alerts → feedback**), SentinelEdgeAI looks for places where the false alarms concentrate. Open **Tuning** in the console to see the suggestions, for example:
+
+> Beaconing raised 12 false alarms from 10.0.5.0/24 (4 devices) in the last 14 days and none were confirmed. Downgrade it there?
+
+When suggestions are made:
+- A suggestion needs at least 5 false-positive labels for one detector, from one source host, source subnet (/24, or /64 for IPv6) or destination, within 14 days.
+- If any alert of that kind from that place was confirmed as a true positive, no suggestion is made.
+- A subnet is only suggested when several hosts share the problem. If one host explains all the false alarms, the suggestion is for that host alone.
+
+What you can do with a suggestion:
+
+| Choice | Effect | Who |
+|---|---|---|
+| **Downgrade** | The alert is still shown, with severity −25 and half the confidence, so it no longer triggers an automatic response there. | Analyst |
+| **Suppress** | The alert is dropped. Not possible for DCSync, OT stop/restart and threat-intelligence detections. | Operator |
+| **Not now** | The suggestion is hidden for 30 days. | Analyst |
+
+Every rule:
+- expires (7–180 days, default 30)
+- is audited, with who made it and why
+- applies to every detector and to Zeek and Suricata input
+
+You can also write a rule by hand with `POST /api/guided-tuning/rules`, for example `{"kind": "port_scan", "scope": {"src": "10.0.9.9", "dport": 161}, "action": "downgrade", "days": 30, "note": "SNMP poller"}`. A rule's scope must name a source and/or destination of /16 or narrower: a detector cannot be switched off for the whole network this way. Rules are stored in `data/guided_tuning.json`; the engine picks up changes within 10 seconds.
+
 ## 9. Backups and updates
 
 ```bash

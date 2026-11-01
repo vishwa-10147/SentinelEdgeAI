@@ -97,7 +97,10 @@ def start_in_engine(alert_logger=None):
 
     def handle(f):
         from detection.pipeline import get_pipeline
-        get_pipeline().fusion.add_findings([f])
+        kept = get_pipeline().accept([f])            # guided-tuning rules apply to Suricata alerts too
+        if not kept:
+            return
+        f = kept[0]
         if alert_logger and f.severity >= 50:
             alert_logger.log({'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'), 'initiator_ip': f.src,
                               'responder_ip': f.details.get('target'), 'protocol': f.details.get('proto'),

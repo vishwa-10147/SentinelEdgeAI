@@ -926,6 +926,84 @@ def device_peers(ip: str, principal: dict = Depends(require_viewer)):
             'internet': [{'proto': p, 'port': n} for p, n in profile['external']]}
 
 
+@app.get('/api/guided-tuning/suggestions')
+def guided_tuning_suggestions(principal: dict = Depends(require_viewer)):
+    """Where analysts' false-positive labels concentrate, with a proposed scoped rule for each."""
+    from detection import guided_tuning
+    return maybe_sanitize({'suggestions': guided_tuning.current_suggestions()})
+
+
+def _tuning_action_allowed(principal, action):
+    from core import auth as auth_core
+    if action == 'suppress' and not auth_core.role_allows(principal.get('role'), 'operator'):
+        raise HTTPException(status_code=403, detail='suppressing a detector needs the operator role')
+
+
+@app.post('/api/guided-tuning/suggestions/{suggestion_id}/accept')
+def guided_tuning_accept(suggestion_id: str, payload: dict = {}, principal: dict = Depends(require_analyst)):
+    """Turn a suggestion into a rule: downgrade (Analyst) or suppress (Operator), for 1-180 days."""
+    from detection import guided_tuning
+    payload = payload or {}
+    action = payload.get('action', 'downgrade')
+    _tuning_action_allowed(principal, action)
+    try:
+        rule = guided_tuning.accept(suggestion_id, action, payload.get('days', guided_tuning.DEFAULT_DAYS),
+                                    by=principal.get('username'), note=payload.get('note', ''))
+    except KeyError:
+        raise HTTPException(status_code=404, detail='no such suggestion (it may already be covered by a rule)')
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'guided_tuning_rule', target=rule['kind'],
+                details={'rule': rule['id'], 'action': rule['action'], 'scope': rule['scope'],
+                         'expires': rule['expires'], 'suggestion': suggestion_id})
+    return rule
+
+
+@app.post('/api/guided-tuning/suggestions/{suggestion_id}/dismiss')
+def guided_tuning_dismiss(suggestion_id: str, principal: dict = Depends(require_analyst)):
+    """Hide a suggestion for 30 days."""
+    from detection import guided_tuning
+    guided_tuning.dismiss(suggestion_id)
+    audit_event(principal, 'guided_tuning_dismiss', target=suggestion_id)
+    return {'dismissed': suggestion_id, 'days': guided_tuning.DISMISS_DAYS}
+
+
+@app.get('/api/guided-tuning/rules')
+def guided_tuning_rules(principal: dict = Depends(require_viewer)):
+    from detection import guided_tuning
+    return maybe_sanitize({'rules': guided_tuning.list_rules()})
+
+
+@app.post('/api/guided-tuning/rules')
+def guided_tuning_rule_add(payload: dict, principal: dict = Depends(require_analyst)):
+    """A rule written by hand: {kind, scope: {src?, dst?, dport?}, action, days, note}."""
+    from detection import guided_tuning
+    payload = payload or {}
+    action = payload.get('action', 'downgrade')
+    _tuning_action_allowed(principal, action)
+    try:
+        rule = guided_tuning.add_rule(payload.get('kind'), payload.get('scope') or {}, action,
+                                      payload.get('days', guided_tuning.DEFAULT_DAYS), by=principal.get('username'),
+                                      note=payload.get('note', ''))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'guided_tuning_rule', target=rule['kind'],
+                details={'rule': rule['id'], 'action': rule['action'], 'scope': rule['scope'],
+                         'expires': rule['expires']})
+    return rule
+
+
+@app.delete('/api/guided-tuning/rules/{rule_id}')
+def guided_tuning_rule_delete(rule_id: str, principal: dict = Depends(require_analyst)):
+    from detection import guided_tuning
+    try:
+        guided_tuning.remove_rule(rule_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail='no such rule')
+    audit_event(principal, 'guided_tuning_rule_delete', target=rule_id)
+    return {'deleted': rule_id}
+
+
 @app.get('/api/incidents')
 def incidents_list(status: Optional[str] = None, since: Optional[float] = None,
                    principal: dict = Depends(require_viewer)):

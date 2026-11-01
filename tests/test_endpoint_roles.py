@@ -77,6 +77,12 @@ ROUTES = {
     ('GET', '/api/devices/identity'): 'viewer',
     ('GET', '/api/ot/assets'): 'viewer',
     ('GET', '/api/incidents'): 'viewer',
+    ('GET', '/api/guided-tuning/suggestions'): 'viewer',
+    ('POST', '/api/guided-tuning/suggestions/{suggestion_id}/accept'): 'analyst',
+    ('POST', '/api/guided-tuning/suggestions/{suggestion_id}/dismiss'): 'analyst',
+    ('GET', '/api/guided-tuning/rules'): 'viewer',
+    ('POST', '/api/guided-tuning/rules'): 'analyst',
+    ('DELETE', '/api/guided-tuning/rules/{rule_id}'): 'analyst',
     ('GET', '/api/tickets'): 'viewer',
     ('POST', '/api/tickets/sync'): 'operator',
     ('POST', '/api/tickets/inbound/{target}'): 'public',   # authenticated by the target's inbound token or HMAC

@@ -20,6 +20,7 @@ const UsersModal = lazy(() => import('./components/UsersModal'))
 const AuditModal = lazy(() => import('./components/AuditModal'))
 const OtModal = lazy(() => import('./components/OtModal'))
 const IncidentsModal = lazy(() => import('./components/IncidentsModal'))
+const TuningModal = lazy(() => import('./components/TuningModal'))
 const TrustModal = lazy(() => import('./components/TrustModal'))
 const FleetModal = lazy(() => import('./components/FleetModal'))
 const OperationsModal = lazy(() => import('./components/OperationsModal'))
@@ -226,7 +227,7 @@ function Sparkline({ values = [] }){
   )
 }
 
-function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onOt, onIncidents, onTrust, onFleet, onOps, onSetup, onChangePassword, onLogout, onForensics }){
+function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter, onOpenFirewall, user, onUsers, onAudit, onOt, onIncidents, onTuning, onTrust, onFleet, onOps, onSetup, onChangePassword, onLogout, onForensics }){
   const utc = useUtcClock()
   return (
     <header className={`top-nav ${criticalPulse ? 'critical-pulse' : ''}`}>
@@ -253,6 +254,7 @@ function TopNav({ counts, enforcementMode, connected, criticalPulse, onPresenter
         <button className="ghost-button" onClick={onTrust}>Trust</button>
         <button className="ghost-button" onClick={onFleet}>Fleet</button>
         <button className="ghost-button" onClick={onIncidents}>Incidents</button>
+        <button className="ghost-button" onClick={onTuning}>Tuning</button>
         <button className="ghost-button" onClick={onOt}>OT devices</button>
         {hasRole(user, 'admin') && <button className="ghost-button" onClick={onAudit}>Audit log</button>}
         {hasRole(user, 'admin') && user?.username !== 'local' && <button className="ghost-button" onClick={onSetup}>Setup</button>}
@@ -585,6 +587,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
   const [auditOpen, setAuditOpen] = useState(false)
   const [otOpen, setOtOpen] = useState(false)
   const [incidentsOpen, setIncidentsOpen] = useState(false)
+  const [tuningOpen, setTuningOpen] = useState(false)
   const [trustOpen, setTrustOpen] = useState(false)
   const [fleetOpen, setFleetOpen] = useState(false)
   const [opsOpen, setOpsOpen] = useState(false)
@@ -786,6 +789,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
         onAudit={()=>setAuditOpen(true)}
         onOt={()=>setOtOpen(true)}
         onIncidents={()=>setIncidentsOpen(true)}
+        onTuning={()=>setTuningOpen(true)}
         onTrust={()=>setTrustOpen(true)}
         onFleet={()=>setFleetOpen(true)}
         onOps={()=>setOpsOpen(true)}
@@ -870,6 +874,11 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
       {trustOpen && (
         <Suspense fallback={null}>
           <TrustModal open={trustOpen} onClose={()=>setTrustOpen(false)} user={user} />
+        </Suspense>
+      )}
+      {tuningOpen && (
+        <Suspense fallback={null}>
+          <TuningModal open={tuningOpen} onClose={()=>setTuningOpen(false)} user={user} />
         </Suspense>
       )}
       {incidentsOpen && (

@@ -136,8 +136,7 @@ class ZeekFeeder:
             out.append(Finding('tls_cert_anomaly', src, min(70, 35 + 10 * len(reasons)), 0.35, 'T1573',
                                f'certificate of {dst}' + (f' ({sni})' if sni else '') + ': ' + '; '.join(reasons),
                                {'target': dst, 'sni': sni, 'reasons': reasons, 'source': 'zeek'}, ts=ts))
-        self.pipe.fusion.add_findings(out)
-        return out
+        return self.pipe._accept(out)
 
     def _notice(self, rec):
         src = rec.get('src') or rec.get('id.orig_h')
@@ -152,14 +151,11 @@ class ZeekFeeder:
         f = Finding('zeek_notice', src, severity, 0.6, technique, f'Zeek {note}: {rec.get("msg", "")}'.strip(),
                     {'target': rec.get('dst') or rec.get('id.resp_h'), 'note': note, 'sub': rec.get('sub')},
                     ts=rec.get('ts') or time.time())
-        self.pipe.fusion.add_findings([f])
-        return [f]
+        return self.pipe.accept([f])
 
     def _lateral(self, method, *args):
         with self.pipe._lock:
-            found = getattr(self.pipe.lateral, method)(*args)
-            self.pipe.fusion.add_findings(found)
-        return found
+            return self.pipe._accept(getattr(self.pipe.lateral, method)(*args))
 
     def _smb_mapping(self, rec):
         src, dst, _, _ = _ids(rec)
@@ -185,9 +181,7 @@ class ZeekFeeder:
     def _ot(self, rec, protocol, msg):
         src, dst, _, _ = _ids(rec)
         with self.pipe._lock:
-            found = self.pipe.ot.observe(src, dst, protocol, [msg], rec.get('ts'))
-            self.pipe.fusion.add_findings(found)
-        return found
+            return self.pipe._accept(self.pipe.ot.observe(src, dst, protocol, [msg], rec.get('ts')))
 
     def _modbus(self, rec):
         code = MODBUS_NAMES.get(str(rec.get('func') or '').upper())

@@ -1563,3 +1563,15 @@ button:disabled {
 .sso-tag { color: var(--cyan); font-style: normal; font-size: 0.85em; margin-left: 4px; }
 .sso-settings textarea { width: 100%; font: inherit; }
 .sso-settings label { display: block; margin: 4px 0; }
+
+/* Guided tuning (Phase 10) */
+.tuning-card {
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #0a0e1a;
+}
+.tuning-card p { margin: 0 0 6px; }
+.tuning-row { grid-template-columns: 1.1fr 1.6fr 0.8fr 0.9fr 0.8fr 0.8fr; }
+@media (max-width: 700px) { .tuning-row { grid-template-columns: 1fr 1fr; } }

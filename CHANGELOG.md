@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Guided tuning** (Phase 10, `detection/guided_tuning.py`): suggestions from analysts' false-positive labels, grouped per detector by source host, source subnet or destination (at least 5 false alarms in 14 days, none confirmed; a subnet only when several hosts share the noise), each with a proposed scoped rule. Rules downgrade (shown, severity −25, half confidence, so no automatic response; Analyst) or suppress (dropped; Operator; never for DCSync, OT stop, threat intel), always expire (7–180 days), need a src/dst scope of /16 or narrower, are audited, and apply in one place for every detector including Zeek and Suricata. `/api/guided-tuning/suggestions[/{id}/accept|dismiss]`, `/api/guided-tuning/rules`; console **Tuning** panel.
+
 ## [2.11.0] - 2026-11-01
 
 Phase 10: single sign-on.

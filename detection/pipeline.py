@@ -5,6 +5,7 @@ import time
 from detection.detectors import default_flow_detectors
 from detection.dns_analysis import DNSDetector
 from detection.fusion import Fusion
+from detection.guided_tuning import RuleSet
 from detection.lateral import LateralDetector, LateralStore, parse_lateral
 from detection.ot import OTDetector, OTStore, parse_ot
 from detection.tls import ServerHandshakes, TLSDetector, parse_client_hello
@@ -41,6 +42,7 @@ class DetectionPipeline:
         self.ot = ot or OTDetector(clock=clock)
         self.lateral = lateral or LateralDetector(clock=clock)
         self.server_handshakes = ServerHandshakes()
+        self.tuning_rules = RuleSet(clock=clock)          # guided tuning: scoped downgrade/suppress rules
         self.peers = peers                    # detection.peers.PeerStore: learned peer profiles
         self.samples = samples                # detection.samples.SampleStore: normal flows for local training
         self.fusion = Fusion(clock=clock, calibrate=calibrate)
@@ -52,6 +54,17 @@ class DetectionPipeline:
         self.shadow_scores = 0
         self.intel_enabled = models
         self._lock = threading.Lock()
+
+    def _accept(self, findings):
+        """Apply guided-tuning rules, then hand the findings to fusion. Callers hold self._lock."""
+        findings = self.tuning_rules.apply(findings)
+        self.fusion.add_findings(findings)
+        return findings
+
+    def accept(self, findings):
+        """Thread-safe _accept for findings from outside the pipeline (Zeek, Suricata)."""
+        with self._lock:
+            return self._accept(findings)
 
     def _model_findings(self, record):
         if self.autoencoder is None or not record.get('features'):
@@ -84,7 +97,7 @@ class DetectionPipeline:
                 except Exception:
                     continue
             findings.extend(self._model_findings(record))
-            self.fusion.add_findings(findings)
+            findings = self._accept(findings)
             fused = self.fusion.fuse(record['src'], engine_result.get('final_risk', 0) or 0,
                                      engine_result.get('confidence', 0) or 0, record.get('proto'),
                                      record.get('features'), now=record['ts'])
@@ -119,7 +132,7 @@ class DetectionPipeline:
                 findings.append(Finding('threat_intel', src, 85, 0.9, 'T1071.004',
                                         f'lookup of {qname.rstrip(".")}, listed by {hit[0]}' + (f' ({hit[1]})' if hit[1] else ''),
                                         {'indicator': qname.rstrip('.'), 'source': hit[0], 'label': hit[1]}, ts=ts))
-            self.fusion.add_findings(findings)
+            findings = self._accept(findings)
         return findings
 
     def observe_tls(self, src, dst, payload, ts=None):
@@ -137,7 +150,7 @@ class DetectionPipeline:
                     findings.append(Finding('tls_known_bad', src, 90, 0.9, 'T1071.001',
                                             f'TLS fingerprint {fp} listed by {hit[0]}' + (f' ({hit[1]})' if hit[1] else ''),
                                             {'fingerprint': fp, 'source': hit[0], 'target': dst}, ts=ts))
-            self.fusion.add_findings(findings)
+            findings = self._accept(findings)
         return hello, findings
 
     def observe_tls_server(self, server, sport, client, cport, payload, ts=None):
@@ -158,7 +171,7 @@ class DetectionPipeline:
                                         f'TLS server fingerprint {hello["ja4s"]} of {server} listed by {hit[0]}'
                                         + (f' ({hit[1]})' if hit[1] else ''),
                                         {'fingerprint': hello['ja4s'], 'source': hit[0], 'target': server}, ts=ts))
-            self.fusion.add_findings(findings)
+            findings = self._accept(findings)
         return hello, findings
 
     def observe_ot(self, src, dst, proto, dport, payload, ts=None):
@@ -169,7 +182,7 @@ class DetectionPipeline:
         ts = ts or self.clock()
         with self._lock:
             findings = self.ot.observe(src, dst, protocol, messages, ts)
-            self.fusion.add_findings(findings)
+            findings = self._accept(findings)
         return protocol, messages, findings
 
     def observe_lateral(self, src, dst, proto, dport, payload, ts=None):
@@ -185,7 +198,7 @@ class DetectionPipeline:
                 findings = self.lateral.observe_rpc(src, dst, parsed, ts)
             else:
                 findings = self.lateral.observe_kerberos(src, dst, parsed, ts)
-            self.fusion.add_findings(findings)
+            findings = self._accept(findings)
         return service, parsed, findings
 
 

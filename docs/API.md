@@ -160,6 +160,12 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/fleet/sites/{site_id}/history` | viewer |  |
 | `POST` | `/api/fleet/sites/{site_id}/revoke` | admin |  |
 | `POST` | `/api/fleet/templates` | admin | Store a configuration template: response policy YAML, or one of the presets. |
+| `GET` | `/api/guided-tuning/rules` | viewer |  |
+| `POST` | `/api/guided-tuning/rules` | analyst | A rule written by hand: {kind, scope: {src?, dst?, dport?}, action, days, note}. |
+| `DELETE` | `/api/guided-tuning/rules/{rule_id}` | analyst |  |
+| `GET` | `/api/guided-tuning/suggestions` | viewer | Where analysts' false-positive labels concentrate, with a proposed scoped rule for each. |
+| `POST` | `/api/guided-tuning/suggestions/{suggestion_id}/accept` | analyst | Turn a suggestion into a rule: downgrade (Analyst) or suppress (Operator), for 1-180 days. |
+| `POST` | `/api/guided-tuning/suggestions/{suggestion_id}/dismiss` | analyst | Hide a suggestion for 30 days. |
 | `GET` | `/api/ot/assets` | viewer | Industrial controllers seen on the network, the hosts that command them and the functions they use. |
 | `GET` | `/api/ot/segmentation` | viewer |  |
 | `POST` | `/api/ot/segmentation` | admin | Set OT segmentation to off, monitor or enforce (enforce needs inline placement). |
