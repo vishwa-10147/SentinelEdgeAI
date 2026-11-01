@@ -290,7 +290,6 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
    ```bash
    sha256sum -c sentineledgeai-pi-2.16.0.tar.gz.sha256
    tar -xzf sentineledgeai-pi-2.16.0.tar.gz
-   sudo bash sentineledgeai-pi-2.16.0/deploy/pi/provision_key.sh /path/to/model_signing.key
    sudo bash sentineledgeai-pi-2.16.0/packaging/sentinelctl install sentineledgeai-pi-2.16.0.tar.gz
    ```
 
@@ -327,7 +326,7 @@ sudo sentinelctl tls renew                                 # new self-signed cer
 |---|---|---|
 | `/opt/sentineledgeai/releases/<version>/` | Code and its own Python environment | Added; last 3 kept |
 | `/opt/sentineledgeai/current` | Symlink to the active release | Switched atomically |
-| `/etc/sentinel/` | `sentinel.env`, `config.yaml`, `model_signing.key` | Never |
+| `/etc/sentinel/` | `sentinel.env`, `config.yaml`, `model_signing.pub` (pinned release model key) | Never |
 | `/var/lib/sentinel/` | Database, firewall state, alerts, device profiles | Never |
 | `/var/log/sentinel/` | Logs and the firewall action log | Never |
 

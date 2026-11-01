@@ -327,7 +327,7 @@ The phases below address these, in that order.
 * Jetson Orin Nano as the brain: install, GPU autoencoder (TensorRT), measured speed-up.
 * Pre-built OS images for Pi and Jetson (first boot opens the setup wizard).
 * UNSW-NB15 and CIC-IoT2023 evaluation, and a Suricata comparison on the same traffic.
-* The release Isolation Forest moves to Ed25519 (devices hold only a public key).
+* ~~The release Isolation Forest moves to Ed25519 (devices hold only a public key).~~ Done (v2.17): signed offline with Ed25519, public key pinned on each device at first install, CI verifies with the public key only.
 * A real Splunk/Elastic run; signed update channels (`stable`, `beta`).
 
 **Exit:** pen-test report clean; beta report published; zero appliance-caused outages.

@@ -18,7 +18,7 @@
 #   /opt/sentineledgeai/releases/<version>/   code + its own Python venv
 #   /opt/sentineledgeai/current  -> releases/<version>   (active version)
 #   /opt/sentineledgeai/previous -> releases/<version>   (rollback target)
-#   /etc/sentinel/      sentinel.env, config.yaml, model_signing.key, tls/
+#   /etc/sentinel/      sentinel.env, config.yaml, model_signing.pub (pinned release model key), tls/
 #   /var/lib/sentinel/  database, firewall state, alerts, profiles
 #   /var/log/sentinel/  logs
 set -euo pipefail
@@ -102,7 +102,6 @@ DASHBOARD_API_KEY=$api_key
 # 1 = record firewall actions only. Set 0 to enforce, then restart the services.
 FIREWALL_DRY_RUN=1
 SENTINEL_FIREWALL_BACKEND=auto
-SENTINEL_MODEL_SIGNING_KEY_FILE=$ETC_DIR/model_signing.key
 SENTINEL_DB_PATH=data/sentinel.db
 # Firewall rollback guard (timer): set to 1 once enforcement is enabled.
 ENABLE_ROLLBACK_GUARD=0
@@ -123,15 +122,32 @@ EOF
     install -m 640 -o root -g "$SERVICE_USER" "$release/config.yaml" "$ETC_DIR/config.yaml"
     log "created $ETC_DIR/config.yaml from the release defaults"
   fi
-  local key="$ETC_DIR/model_signing.key"
-  if [ -f "$key" ]; then
-    chown root:"$SERVICE_USER" "$key"
-    chmod 640 "$key"
-  elif ! grep -q '^SENTINEL_ALLOW_UNSIGNED_MODELS=1' "$env_file"; then
-    die "model signing key missing: install it with
-       sudo bash $release/deploy/pi/provision_key.sh /path/to/model_signing.key
-     then run this command again."
+  if [ -f "$ETC_DIR/model_signing.key" ]; then
+    # up to v2.16 devices held the shared HMAC model key; nothing uses it any more
+    log "note: $ETC_DIR/model_signing.key (the old shared model key) is no longer used and can be deleted"
   fi
+}
+
+# The release model is signed with the maintainer's Ed25519 key. The first install pins the
+# public key in $ETC_DIR/model_signing.pub; every later install checks the new package's
+# model against that pinned key, so a package signed with another key is refused.
+verify_release_model() {
+  local release="$1" pinned="$ETC_DIR/model_signing.pub"
+  [ -f "$release/model/isolation_forest.pkl" ] || return 0
+  if [ ! -f "$pinned" ]; then
+    install -m 644 -o root -g root "$release/security/release_model.pub" "$pinned"
+    log "pinned the release model key in $pinned"
+  fi
+  if ! (cd "$release" && SENTINEL_MODEL_PUBLIC_KEY_FILE="$pinned" .venv/bin/python scripts/sign_model.py \
+        model/isolation_forest.pkl --verify --quiet >/dev/null); then
+    if grep -q '^SENTINEL_ALLOW_UNSIGNED_MODELS=1' "$ETC_DIR/sentinel.env" 2>/dev/null; then
+      log "WARNING: release model signature not valid for the pinned key (allowed by SENTINEL_ALLOW_UNSIGNED_MODELS=1)"
+      return 0
+    fi
+    die "the release model is not signed by the pinned key ($pinned). If the project rotated its key,
+     check the announcement, then: sudo rm $pinned and run this command again."
+  fi
+  log "release model signature verified (Ed25519)"
 }
 
 TLS_DIR="$ETC_DIR/tls"
@@ -373,6 +389,7 @@ cmd_install() {
   ensure_config "$release"
   ensure_tls
   build_venv "$release"
+  verify_release_model "$release"
   # code is root-owned and read-only to the service; state links are added after
   chown -R root:root "$release"
   chmod -R u+rwX,go+rX,go-w "$release"

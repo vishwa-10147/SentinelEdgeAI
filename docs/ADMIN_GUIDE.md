@@ -7,7 +7,7 @@ This guide covers installing, configuring and running a SentinelEdgeAI appliance
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/vishwa-10147/SentinelEdgeAI/main/scripts/install.sh
 less install.sh
-sudo bash install.sh --preset office --signing-key /path/to/model_signing.key
+sudo bash install.sh --preset office
 ```
 
 The installer downloads the latest release, checks its SHA-256 (and its Sigstore signature when `cosign` is installed), installs a private Python if the package needs a different version than the system's, runs `sentinelctl install` (health-checked) and applies the preset. Air-gapped sites pass `--mirror file:///path` (a directory with `latest.json`, the package and its `.sha256`) or `--package FILE`.

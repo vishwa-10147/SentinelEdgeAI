@@ -95,7 +95,6 @@ Built: $(date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ) (commit time; rep
 Install (first time):
   sha256sum -c $PKG_NAME.tar.gz.sha256
   tar -xzf $PKG_NAME.tar.gz
-  sudo bash $PKG_NAME/deploy/pi/provision_key.sh /path/to/model_signing.key
   sudo bash $PKG_NAME/packaging/sentinelctl install $PKG_NAME.tar.gz
 
 Upgrade:

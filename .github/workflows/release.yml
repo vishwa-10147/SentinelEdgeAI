@@ -40,10 +40,10 @@ jobs:
       - name: Unit tests
         run: PYTHONPATH=. pytest -q
 
-      - name: Verify model signatures
-        env:
-          SENTINEL_MODEL_SIGNING_KEY: ${{ secrets.SENTINEL_MODEL_SIGNING_KEY }}
-        run: python scripts/ci_check_model_signatures.py
+      - name: Verify model signatures (public key only)
+        run: |
+          python scripts/sign_model.py model/isolation_forest.pkl --verify --quiet
+          python scripts/ci_check_model_signatures.py
 
       - name: Dependency audit (runtime)
         run: pip-audit -r requirements.txt

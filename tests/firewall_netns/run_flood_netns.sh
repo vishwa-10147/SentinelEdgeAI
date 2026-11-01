@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Flood safety against the real engine, in throwaway network namespaces.
 #
-#   sudo SENTINEL_MODEL_SIGNING_KEY_FILE=/path/model_signing.key bash tests/firewall_netns/run_flood_netns.sh [seconds]
+#   sudo bash tests/firewall_netns/run_flood_netns.sh [seconds]
 #
 #   attacker (spoofed-source TCP SYN flood, ~300k packets/s) ---veth--- appliance (the real engine, AF_PACKET)
 #
@@ -15,7 +15,6 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PY="${PYTHON:-$REPO/.venv/bin/python}"
 SECS="${1:-120}"; LIMIT_MB="${LIMIT_MB:-400}"
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)"; exit 2; }
-[ -r "${SENTINEL_MODEL_SIGNING_KEY_FILE:-}" ] || { echo "set SENTINEL_MODEL_SIGNING_KEY_FILE (the engine verifies its model)"; exit 2; }
 A=flood-appl-$$; X=flood-atk-$$; WORK="$(mktemp -d)"
 cleanup() { [ -n "${EPID:-}" ] && kill "$EPID" 2>/dev/null || true; sleep 1
             ip netns del "$A" 2>/dev/null || true; ip netns del "$X" 2>/dev/null || true; rm -rf "$WORK"; }
@@ -32,7 +31,7 @@ MAC=$(ip netns exec "$A" cat /sys/class/net/fla$$/address)
 
 cd "$WORK"
 ip netns exec "$A" env -i PATH=/usr/bin:/bin HOME=/root PYTHONPATH="$WORK" PYTHONDONTWRITEBYTECODE=1 \
-  SENTINEL_MODEL_SIGNING_KEY_FILE="$SENTINEL_MODEL_SIGNING_KEY_FILE" CAPTURE_IFACE=fla$$ SENTINEL_CAPTURE=afpacket \
+  CAPTURE_IFACE=fla$$ SENTINEL_CAPTURE=afpacket \
   FIREWALL_DRY_RUN=1 SENTINEL_AUDIT_DB="$WORK/audit.db" SENTINEL_SETUP_FILE="$WORK/setup.json" \
   "$PY" -u main.py > "$WORK/engine.log" 2>&1 &
 EPID=$!

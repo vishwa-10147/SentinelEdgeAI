@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure the capture and decision path on this machine (Phase 6 performance).
 
-    SENTINEL_MODEL_SIGNING_KEY_FILE=/etc/sentinel/model_signing.key python scripts/benchmark_capture.py
+    python scripts/benchmark_capture.py
 
 Stages, each measured on synthetic traffic:
   1. frame parsing: scapy vs the AF_PACKET fast path (capture/afpacket.py)

@@ -133,11 +133,10 @@ All Phase 1 features are in place; the remaining Phase 1 work is the exit checks
 
 | Secret | How to provide it | Never |
 |---|---|---|
-| Model signing key | `SENTINEL_MODEL_SIGNING_KEY_FILE=/etc/sentinel/model_signing.key` (mode `600`, owned by the service user), provisioned by `deploy/pi/provision_key.sh` or Vault Agent (`deploy/pi/VAULT_PROVISION.md`) | Commit it, put it in Docker images, or pass it on the command line |
+| Release model signing key (Ed25519 private key) | Only on the maintainer's signing machine (`~/.sentinel/release_model.key`, mode `600`), used by `scripts/sign_model.py`. Devices and CI hold only the public key (`security/release_model.pub`, pinned on a device in `/etc/sentinel/model_signing.pub` at the first install) | Commit it, put it on a device, in CI or in a Docker image |
 | API key | systemd `EnvironmentFile` with mode `600` | Put it in URLs or front-end code |
 | Health credentials | `/etc/sentinel/health.env` (mode `600`) | Commit `.env` files |
 | Database password | `DATABASE_URL` in an `EnvironmentFile` | Log it |
-| CI signing key | GitHub Actions secret `SENTINEL_MODEL_SIGNING_KEY` | Echo it in workflow logs |
 
 `.gitignore` blocks `*.key`, `*.pem`, `*.env` and runtime data.
 
@@ -153,6 +152,9 @@ Earlier commits contained `model_signing.key` at the repository root, and `.ci_t
 | Install the new key on every device (`deploy/pi/provision_key.sh`) — devices with the old key will refuse the newly signed model | ⏳ per device |
 | Change any health-check credentials that match the old `.ci_test_health.env` values | ⏳ per device |
 | Optionally purge both files from history (`git filter-repo`) and force-push; everyone must then re-clone | Optional |
+
+### Model signing moved to Ed25519 (2026-11-01, v2.17)
+The release model used to carry an HMAC-SHA256 signature, so every device and every CI job needed the same secret key, and anyone holding a device's key could sign a model all devices would accept. It is now signed with an Ed25519 key that exists only on the maintainer's machine; the public key ships in the package and is pinned on each device at its first install, and every later package's model must verify against the pinned key. The model was confirmed byte-identical (SHA-256 `6ce839cb…a5a8`) before re-signing. Version 1 (HMAC) signatures are refused. Devices can delete `/etc/sentinel/model_signing.key`, and the `SENTINEL_MODEL_SIGNING_KEY` GitHub secret is no longer used and can be deleted. The per-device key steps in the table above no longer apply.
 
 ### Key moved to the release device (2026-10-30)
 Development moved from a PC to the Raspberry Pi, and the only copy of the signing key was on the PC. The key was rotated again from the Pi: the model was first confirmed byte-identical (SHA-256 `6ce839cb…a5a8`) to the one the v1.2.0 release pipeline verified with the previous key, then re-signed with a new 256-bit key generated on the Pi (`~/.sentinel/model_signing.key`, mode `600`). The GitHub secret was updated to match. The PC key no longer verifies the committed model. Releases from v1.2.1 onwards need this key on the device.

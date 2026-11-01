@@ -1,5 +1,9 @@
 name: Model Signing
 
+# The release model is signed offline with the maintainer's Ed25519 key
+# (scripts/sign_model.py); CI holds no secret and only verifies with the
+# public key shipped in security/release_model.pub.
+
 on:
   workflow_dispatch:
   push:
@@ -15,11 +19,10 @@ permissions:
   contents: read
 
 jobs:
-  sign-and-verify-model:
+  verify-model:
     runs-on: ubuntu-latest
     env:
       MODEL_PATH: model/isolation_forest.pkl
-      SENTINEL_MODEL_SIGNING_KEY: ${{ secrets.SENTINEL_MODEL_SIGNING_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,33 +32,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Require model signing secret
+      - name: Install dependencies
         run: |
-          if [ -z "${SENTINEL_MODEL_SIGNING_KEY:-}" ]; then
-            echo "Missing required GitHub secret: SENTINEL_MODEL_SIGNING_KEY" >&2
-            exit 2
-          fi
+          python -m pip install --upgrade pip
+          pip install cryptography
 
-      - name: Check model artifact exists
-        run: |
-          test -f "$MODEL_PATH"
-
-      - name: Sign model artifact
-        run: |
-          python scripts/sign_model.py "$MODEL_PATH" \
-            --signer "github-actions:${GITHUB_RUN_ID}:${GITHUB_SHA}" \
-            --quiet
-
-      - name: Verify model signature
+      - name: Verify model signature (public key only)
         run: |
           python scripts/sign_model.py "$MODEL_PATH" --verify --quiet
 
       - name: Verify tamper detection
         run: |
-          cp "$MODEL_PATH" /tmp/tampered-model.pkl
-          cp "$MODEL_PATH.sig" /tmp/tampered-model.pkl.sig
-          printf tamper >> /tmp/tampered-model.pkl
-          if python scripts/sign_model.py /tmp/tampered-model.pkl --verify --quiet; then
+          cp "$MODEL_PATH" /tmp/isolation_forest.pkl
+          cp "$MODEL_PATH.sig" /tmp/isolation_forest.pkl.sig
+          printf tamper >> /tmp/isolation_forest.pkl
+          if python scripts/sign_model.py /tmp/isolation_forest.pkl --verify --quiet; then
             echo "Tampered model verification unexpectedly passed" >&2
             exit 1
           fi

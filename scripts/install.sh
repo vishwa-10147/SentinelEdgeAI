@@ -5,11 +5,11 @@ set -euo pipefail
 #
 #   curl -fsSLO https://raw.githubusercontent.com/vishwa-10147/SentinelEdgeAI/main/scripts/install.sh
 #   less install.sh                       # read it first
-#   sudo bash install.sh --preset office --signing-key /path/to/model_signing.key
+#   sudo bash install.sh --preset office
 #
 # Options:
 #   --preset home|office|ot|enterprise   response policy to start with (default: home)
-#   --signing-key FILE                   model signing key (skip if /etc/sentinel/model_signing.key exists)
+#   --signing-key FILE                   ignored (kept so older instructions still run)
 #   --package FILE                       install this package instead of downloading the latest release
 #   --mirror file:///path                offline mirror containing latest.json, the package and its .sha256
 #
@@ -96,11 +96,9 @@ if [ -n "$WANT" ] && [ "$WANT" != "$HAVE" ]; then
 fi
 
 if [ -n "$KEY" ]; then
-  install -d -m 750 /etc/sentinel
-  install -m 600 -o root -g root "$KEY" /etc/sentinel/model_signing.key
-  log "installed the model signing key"
+  # since v2.17 the release model is verified with the public key shipped in the package
+  log "note: --signing-key is no longer needed and is ignored"
 fi
-[ -f /etc/sentinel/model_signing.key ] || die "no model signing key: pass --signing-key FILE"
 
 tar -xzf "$PKG" -C "$WORK"
 SRC="$(find "$WORK" -mindepth 1 -maxdepth 1 -type d -name 'sentineledgeai-pi-*' | head -1)"

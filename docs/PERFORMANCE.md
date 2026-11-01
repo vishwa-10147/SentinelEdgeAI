@@ -3,7 +3,7 @@
 Measured on a **Raspberry Pi 5 (8 GB), Python 3.13**, with `scripts/benchmark_capture.py` (synthetic mixed traffic: 85% TCP/443, 12% UDP, 3% DNS). Reproduce:
 
 ```bash
-SENTINEL_MODEL_SIGNING_KEY_FILE=/etc/sentinel/model_signing.key .venv/bin/python scripts/benchmark_capture.py --markdown
+.venv/bin/python scripts/benchmark_capture.py --markdown
 ```
 
 | Stage | Before Phase 6 | Now |
@@ -25,7 +25,7 @@ What this means: a Pi 5 sensor keeps up with roughly 100k packets/s of typical t
 
 ## Under a flood (2.9.2)
 
-A spoofed-source TCP SYN flood from a second network namespace into the real engine (AF_PACKET capture, firewall in dry run), every packet a new flow. Reproduce with `sudo SENTINEL_MODEL_SIGNING_KEY_FILE=… bash tests/firewall_netns/run_flood_netns.sh 180`.
+A spoofed-source TCP SYN flood from a second network namespace into the real engine (AF_PACKET capture, firewall in dry run), every packet a new flow. Reproduce with `sudo bash tests/firewall_netns/run_flood_netns.sh 180`.
 
 | | v2.9.1 | v2.9.2 |
 |---|---|---|
