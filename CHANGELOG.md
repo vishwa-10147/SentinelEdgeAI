@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-11-01
+
+Phase 9 complete: IPv6 parity for containment and OT segmentation.
+
 ### Added
 - **IPv6 containment and OT segmentation** (Phase 9 IPv6 parity): per-family nftables sets (`contain6`, `contain_peers6`, `contain_ext6`, `ot_guarded6`, `ot_allowed6`) in the inet and bridge tables; peer profiles for IPv6 devices; IPv6 controllers guarded with same-family masters only. Internal IPv6 = unique-local, link-local and `SENTINEL_INTERNAL_PREFIXES6`, one definition shared by the profiles and the firewall. New real-kernel test `tests/firewall_netns/run_ipv6_netns.sh` (20/20).
 
