@@ -375,7 +375,7 @@ The phases below address these, in that order.
 
 **Status (2026-11-01):**
 - [x] Incident view (`core/incidents.py`): grouping, timeline with responses, "what to do now" checklist, acknowledge/resolve with notes, console panel.
-- [x] Optional local assistant (`core/assistant.py`): read-only, network text fenced as untrusted data, local-only model server with systemd limits, one question at a time, off by default; template / Ollama / OpenAI-compatible backends. Not yet run with a real model on the Jetson.
+- [x] Optional local assistant (`core/assistant.py`): read-only, network text fenced as untrusted data, local-only model server with systemd limits, one question at a time, off by default; template / Ollama / OpenAI-compatible backends. Run with a real model (qwen2.5:1.5b, Ollama, Pi 5 CPU: 12–80 s per answer); that run found the model following injected instructions, now removed before the model and flagged in the answer. Not yet run on the Jetson.
 - [x] Notifications (`integrations/notify.py`): immediate approval requests over e-mail / Slack / Teams / webhook with a phone approval page, daily/weekly digests.
 - [x] Native mobile push: Web Push (`integrations/webpush.py`, service worker and web app manifest): approval requests as phone/browser notifications per Operator, RFC 8291 encryption (checked against the RFC's test vector) and VAPID with `cryptography`, push-service allowlist, only current Operators/Admins. Not yet tried on a real phone (needs a trusted certificate on the console).
 - [x] SSO with OpenID Connect (`core/sso.py`): Entra ID / Google / Okta / Keycloak, IdP groups (incl. AD groups synced to the IdP) mapped to roles, MFA from `amr`. Not yet tried against a live IdP.
