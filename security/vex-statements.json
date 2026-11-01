@@ -1,0 +1,4 @@
+{
+  "_comment": "Human-reviewed VEX statements for the dependencies in requirements.txt. Each entry: id (CVE/GHSA/PYSEC), package, state (not_affected | affected | fixed | under_investigation), justification (CycloneDX: code_not_present, code_not_reachable, requires_configuration, requires_dependency, requires_environment, protected_by_compiler, protected_at_runtime, protected_at_perimeter, protected_by_mitigating_control), detail. scripts/vex.py merges them with the pip-audit results into a CycloneDX VEX published with every release.",
+  "statements": []
+}

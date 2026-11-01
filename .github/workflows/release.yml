@@ -99,6 +99,12 @@ jobs:
           pip-audit -r requirements.txt --format cyclonedx-json \
             --output "dist/sentineledgeai-pi-${GITHUB_REF_NAME#v}.sbom.cdx.json" || true
 
+      - name: Generate VEX (CycloneDX)
+        run: |
+          pip-audit -r requirements.txt -f json -o audit.json || true
+          python scripts/vex.py --audit audit.json --version "${GITHUB_REF_NAME#v}" \
+            --out "dist/sentineledgeai-pi-${GITHUB_REF_NAME#v}.vex.cdx.json"
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:

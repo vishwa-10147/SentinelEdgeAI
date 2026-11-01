@@ -387,7 +387,7 @@ The phases below address these, in that order.
 
 * **Multi-tenant fleet for MSPs and MSSPs:** customers, per-customer roles, branding, usage reports.
 * **Hardware options:** Pi kit, Jetson kit, a small x86 box with AF_XDP/DPDK capture for 10 Gb/s, and a 1U unit with a bypass NIC.
-* **Product certification:** IEC 62443-4-1 (secure development) and 4-2 (component), CE/FCC for hardware kits, a published SBOM and VEX for every release.
+* **Product certification:** IEC 62443-4-1 (secure development) and 4-2 (component), CE/FCC for hardware kits (need an accredited lab), ~~a published SBOM and VEX for every release~~ (done: CycloneDX SBOM and VEX attached to every release, `scripts/vex.py`, reviewed statements in `security/vex-statements.json`).
 * ~~**Community threat sharing:** opt-in, anonymised indicators shared between fleets.~~ Done (`intel/sharing.py`): within a fleet (indicators seen at ≥ 2 sites) and between fleets (Ed25519-signed STIX 2.1 bundles, pinned publisher keys); internet addresses only; shared matches never respond on their own.
 * **Extension SDK:** third-party detectors and response actions, signed and sandboxed.
 * **Optional hosted fleet console** for organisations that want it. The appliances stay fully functional offline.
