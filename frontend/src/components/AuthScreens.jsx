@@ -20,12 +20,39 @@ export function AuthCard({ title, subtitle, children }){
   )
 }
 
-export function LoginScreen({ onSignedIn }){
+const SSO_ERRORS = {
+  state: 'The single sign-on attempt expired or was interrupted. Try again.',
+  invalid_token: 'The identity provider\'s answer could not be verified. Ask your administrator to check the SSO settings.',
+  idp_error: 'The identity provider refused the sign-in. Ask your administrator to check the SSO settings.',
+  idp_unreachable: 'The identity provider could not be reached. Try again, or sign in with a local account.',
+  no_role: 'Your account is not in a group that may use this console. Ask your administrator for access.',
+  mfa_required: 'Your role needs multi-factor sign-in. Sign in again at your identity provider with a second factor.',
+  sso_conflict: 'Your username already belongs to another account here. Ask your administrator.',
+  disabled: 'Your account here is disabled.',
+  denied: 'Single sign-on was cancelled or refused.',
+  throttled: 'Too many sign-in attempts. Wait a few minutes and try again.',
+}
+
+function ssoErrorFromUrl(){
+  try{
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('sso_error')
+    if(!code) return ''
+    params.delete('sso_error')
+    const rest = params.toString()
+    window.history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash)
+    return SSO_ERRORS[code] || SSO_ERRORS.denied
+  }catch(e){
+    return ''
+  }
+}
+
+export function LoginScreen({ onSignedIn, sso }){
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
   const [needCode, setNeedCode] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(ssoErrorFromUrl)
   const [busy, setBusy] = useState(false)
 
   const submit = async (event)=>{
@@ -83,6 +110,12 @@ export function LoginScreen({ onSignedIn }){
         <input id="login-password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} />
         {error && <div className="auth-error" role="alert">{error}</div>}
         <button className="primary-button" type="submit" disabled={busy || !username || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        {sso?.enabled && (
+          <>
+            <p className="auth-hint auth-divider">or</p>
+            <a className="ghost-button sso-button" href="/api/auth/oidc/login">{sso.label || 'Sign in with SSO'}</a>
+          </>
+        )}
       </form>
     </AuthCard>
   )

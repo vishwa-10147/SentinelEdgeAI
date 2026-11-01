@@ -377,7 +377,8 @@ The phases below address these, in that order.
 - [x] Incident view (`core/incidents.py`): grouping, timeline with responses, "what to do now" checklist, acknowledge/resolve with notes, console panel.
 - [ ] Optional local assistant (read-only, off by default, separate resource-limited service).
 - [ ] Notifications: mobile push with approve/deny, digest e-mails.
-- [ ] SSO (OIDC/SAML), LDAP/AD group mapping.
+- [x] SSO with OpenID Connect (`core/sso.py`): Entra ID / Google / Okta / Keycloak, IdP groups (incl. AD groups synced to the IdP) mapped to roles, MFA from `amr`. Not yet tried against a live IdP.
+- [ ] SAML 2.0 and direct LDAP/AD password sign-in.
 - [x] Ticketing and SOAR (`integrations/ticketing.py`): Jira, ServiceNow, TheHive 5 and signed webhooks, one ticket per incident, comments, resolve both ways through an authenticated inbound endpoint. Not yet run against live Jira/ServiceNow/TheHive instances.
 - [ ] Guided tuning suggestions from analyst feedback.
 

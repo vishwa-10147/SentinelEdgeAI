@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from '../api'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, errorMessage } from '../api'
 
 const ROLES = ['viewer', 'analyst', 'operator', 'admin']
 const ROLE_HELP = {
@@ -117,9 +117,9 @@ export default function UsersModal({ open, onClose, currentUser }){
               const self = u.username.toLowerCase() === currentUser?.username?.toLowerCase()
               return (
                 <div className="users-row" key={u.username}>
-                  <span>{u.username}{self && <em> (you)</em>}</span>
+                  <span>{u.username}{self && <em> (you)</em>}{u.auth_source === 'oidc' && <em className="sso-tag" title="Signs in through single sign-on; the role follows the identity provider groups"> SSO</em>}</span>
                   <span>
-                    <select value={u.role} disabled={busy || self} onChange={e=>run(()=>apiPatch(`/api/users/${encodeURIComponent(u.username)}`, { role: e.target.value }))}>
+                    <select value={u.role} disabled={busy || self || u.auth_source === 'oidc'} onChange={e=>run(()=>apiPatch(`/api/users/${encodeURIComponent(u.username)}`, { role: e.target.value }))}>
                       {ROLES.map(r=><option key={r} value={r}>{r}</option>)}
                     </select>
                   </span>
@@ -129,7 +129,7 @@ export default function UsersModal({ open, onClose, currentUser }){
                   </span>
                   <span>{formatDate(u.last_login)}</span>
                   <span className="users-actions">
-                    <button className="ghost-button" disabled={busy} onClick={()=>resetPassword(u.username)}>Reset password</button>
+                    {u.auth_source !== 'oidc' && <button className="ghost-button" disabled={busy} onClick={()=>resetPassword(u.username)}>Reset password</button>}
                     {u.mfa_enabled && <button className="ghost-button" disabled={busy} onClick={()=>resetMfa(u.username)}>Reset MFA</button>}
                     <button className="ghost-button" disabled={busy || self} onClick={()=>run(()=>apiPatch(`/api/users/${encodeURIComponent(u.username)}`, { disabled: !u.disabled }))}>
                       {u.disabled ? 'Enable' : 'Disable'}
@@ -184,6 +184,7 @@ export default function UsersModal({ open, onClose, currentUser }){
             </div>
           )}
         </div>
+        <SsoSettings />
         <form className="rules-section users-create" onSubmit={createToken}>
           <h3>New API token</h3>
           <input placeholder="Name, e.g. grafana or backup job" autoComplete="off" value={tokenForm.name} onChange={e=>setTokenForm({ ...tokenForm, name: e.target.value })} />
@@ -198,5 +199,65 @@ export default function UsersModal({ open, onClose, currentUser }){
         </form>
       </section>
     </div>
+  )
+}
+
+
+function parseGroupRoles(text){
+  const out = {}
+  for(const line of text.split('\n')){
+    const [group, role] = line.split('=').map(x=>x && x.trim())
+    if(group && role) out[group] = role
+  }
+  return out
+}
+
+function SsoSettings(){
+  const [cfg, setCfg] = useState(null)
+  const [groups, setGroups] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(()=>{
+    apiGet('/api/sso', null).then(c=>{
+      setCfg(c)
+      setGroups(Object.entries(c?.group_roles || {}).map(([g, r])=>`${g} = ${r}`).join('\n'))
+    }).catch(()=>{})
+  }, [])
+
+  if(!cfg) return null
+  const set = (k, v)=>setCfg({ ...cfg, [k]: v })
+  const save = async (e)=>{
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try{
+      const saved = await apiPut('/api/sso', { ...cfg, group_roles: parseGroupRoles(groups), default_role: cfg.default_role || null })
+      setCfg(saved)
+      setMessage('Saved.')
+    }catch(err){
+      setMessage(errorMessage(err))
+    }finally{
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="rules-section users-create sso-settings" onSubmit={save}>
+      <h3>Single sign-on (OpenID Connect)</h3>
+      <label><input type="checkbox" checked={!!cfg.enabled} onChange={e=>set('enabled', e.target.checked)} /> Enabled</label>
+      <input placeholder="Button label, e.g. Sign in with Microsoft" value={cfg.label || ''} onChange={e=>set('label', e.target.value)} aria-label="Button label" />
+      <input placeholder="Issuer, e.g. https://login.microsoftonline.com/<tenant>/v2.0" value={cfg.issuer || ''} onChange={e=>set('issuer', e.target.value)} aria-label="Issuer" />
+      <input placeholder="Client id" value={cfg.client_id || ''} onChange={e=>set('client_id', e.target.value)} aria-label="Client id" />
+      <input placeholder="Client secret" type="password" autoComplete="off" value={cfg.client_secret || ''} onChange={e=>set('client_secret', e.target.value)} aria-label="Client secret" />
+      <input placeholder="Redirect URI (default: this console + /api/auth/oidc/callback)" value={cfg.redirect_uri || ''} onChange={e=>set('redirect_uri', e.target.value)} aria-label="Redirect URI" />
+      <textarea rows={4} placeholder={'One per line: group = role\nSecOps = operator\nIT-Admins = admin'} value={groups} onChange={e=>setGroups(e.target.value)} aria-label="Group to role mapping" />
+      <select value={cfg.default_role || ''} onChange={e=>set('default_role', e.target.value)} aria-label="Default role">
+        <option value="">Users in no mapped group: refused</option>
+        {ROLES.map(r=><option key={r} value={r}>Users in no mapped group: {r}</option>)}
+      </select>
+      <label><input type="checkbox" checked={!!cfg.trust_idp_mfa} onChange={e=>set('trust_idp_mfa', e.target.checked)} /> The identity provider always enforces MFA (otherwise Operator and Admin need MFA in the token's amr claim)</label>
+      <button className="primary-button" type="submit" disabled={busy}>Save SSO settings</button>
+      {message && <p className="auth-hint" role="status">{message}</p>}
+    </form>
   )
 }

@@ -932,6 +932,7 @@ export default function App(){
   const [user, setUser] = useState(null)
   const [changingPassword, setChangingPassword] = useState(false)
   const [minLength, setMinLength] = useState(12)
+  const [sso, setSso] = useState(null)
 
   const start = useCallback(async ()=>{
     try{
@@ -944,6 +945,7 @@ export default function App(){
     try{
       const status = await authStatus()
       setMinLength(status.password_min_length || 12)
+      setSso(status.sso || null)
       if(status.local_dev_mode){
         setUser({ username: 'local', role: 'admin', must_change_password: false })
         setState('signed-in')
@@ -968,7 +970,7 @@ export default function App(){
 
   if(state === 'loading') return <div className="auth-screen"><p className="auth-hint">Connecting…</p></div>
   if(state === 'signed-out' || !user){
-    return <LoginScreen onSignedIn={(u)=>{ setUser(u); setState('signed-in') }} />
+    return <LoginScreen sso={sso} onSignedIn={(u)=>{ setUser(u); setState('signed-in') }} />
   }
   if(user.must_change_password || changingPassword){
     return (

@@ -20,6 +20,10 @@ ROUTES = {
     ('POST', '/api/auth/login'): 'public',
     ('POST', '/api/auth/refresh'): 'public',   # needs the refresh cookie + CSRF header
     ('POST', '/api/auth/logout'): 'public',    # needs the CSRF header
+    ('GET', '/api/auth/oidc/login'): 'public',     # SSO: redirect to the identity provider
+    ('GET', '/api/auth/oidc/callback'): 'public',  # SSO: signed state cookie + verified ID token
+    ('GET', '/api/sso'): 'admin',
+    ('PUT', '/api/sso'): 'admin',
     ('GET', '/api/auth/me'): 'viewer',
     ('GET', '/api/auth/mfa'): 'viewer',
     ('POST', '/api/auth/mfa/setup'): 'viewer',

@@ -14,6 +14,8 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/auth/mfa` | viewer |  |
 | `POST` | `/api/auth/mfa/enable` | viewer |  |
 | `POST` | `/api/auth/mfa/setup` | viewer |  |
+| `GET` | `/api/auth/oidc/callback` | public | The identity provider sends the browser back here; on success the console session starts. |
+| `GET` | `/api/auth/oidc/login` | public | Start an SSO sign-in: redirect to the identity provider. |
 | `POST` | `/api/auth/password` | viewer |  |
 | `POST` | `/api/auth/refresh` | public |  |
 | `GET` | `/api/auth/status` | public |  |
@@ -166,6 +168,8 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/pcaps` | viewer | List stored forensic PCAP captures, newest first. |
 | `DELETE` | `/api/pcaps/{name}` | admin | Delete a stored forensic PCAP capture. |
 | `GET` | `/api/pcaps/{name}` | viewer | Download a forensic PCAP capture by filename. |
+| `GET` | `/api/sso` | admin |  |
+| `PUT` | `/api/sso` | admin |  |
 | `GET` | `/api/tickets` | viewer | Incidents and the tickets opened for them on each ticketing target. |
 | `POST` | `/api/tickets/inbound/{target}` | public | A ticket system reports a status change. Authenticated by the target's inbound token or HMAC |
 | `POST` | `/api/tickets/sync` | operator | Create, update and resolve tickets now instead of waiting for the next minute. |

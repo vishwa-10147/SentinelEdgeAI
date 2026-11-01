@@ -130,6 +130,11 @@ export async function apiPost(path, body = {}){
   return res.data
 }
 
+export async function apiPut(path, body = {}){
+  const res = await client.put(path, body)
+  return res.data
+}
+
 export async function apiPatch(path, body = {}){
   const res = await client.patch(path, body)
   return res.data

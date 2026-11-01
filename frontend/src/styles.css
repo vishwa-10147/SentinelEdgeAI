@@ -1549,3 +1549,17 @@ button:disabled {
   .incident-row { grid-template-columns: 1fr 2fr; }
   .incident-event { grid-template-columns: 1fr; }
 }
+
+/* SSO sign-in (Phase 10) */
+.sso-button {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+.auth-divider {
+  text-align: center;
+  margin: 4px 0;
+}
+.sso-tag { color: var(--cyan); font-style: normal; font-size: 0.85em; margin-left: 4px; }
+.sso-settings textarea { width: 100%; font: inherit; }
+.sso-settings label { display: block; margin: 4px 0; }

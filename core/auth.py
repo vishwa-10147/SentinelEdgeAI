@@ -127,6 +127,13 @@ def validate_password(password, username=None):
     return password
 
 
+def _local(user):
+    try:
+        return (user['auth_source'] or 'local') == 'local'
+    except (KeyError, IndexError):
+        return True
+
+
 def role_allows(role, minimum):
     return ROLE_RANK.get(role, -1) >= ROLE_RANK[minimum]
 
@@ -254,6 +261,8 @@ class AuthStore:
                 ('totp_secret', 'TEXT'),
                 ('totp_enabled', 'INTEGER NOT NULL DEFAULT 0'),
                 ('totp_last_step', 'INTEGER NOT NULL DEFAULT 0'),
+                ('auth_source', "TEXT NOT NULL DEFAULT 'local'"),   # 'local' or 'oidc' (2.11, SSO)
+                ('external_id', 'TEXT'),                             # hash of the IdP issuer + subject
             ):
                 if column not in columns:
                     conn.execute(f'ALTER TABLE users ADD COLUMN {column} {ddl}')  # nosec B608 - fixed names
@@ -336,7 +345,8 @@ class AuthStore:
             'disabled': bool(user['disabled']),
             'must_change_password': bool(user['must_change_password']),
             'mfa_enabled': bool(user.get('totp_enabled')),
-            'mfa_setup_required': mfa_required_for(user['role']) and not user.get('totp_enabled'),
+            'mfa_setup_required': _local(user) and mfa_required_for(user['role']) and not user.get('totp_enabled'),
+            'auth_source': user.get('auth_source') or 'local',
             'locked': int(user.get('locked_until') or 0) > int(time.time()),
             'created': user['created'],
             'last_login': user.get('last_login'),
@@ -373,6 +383,35 @@ class AuthStore:
         )
         return self.get_user(username)
 
+    def sso_user(self, username, role, external_id):
+        """The account for an SSO sign-in: found by its IdP identity, else created.
+
+        Never signs in as a local account or another IdP identity that has the same
+        username. The role follows the IdP groups at every sign-in.
+        """
+        role = validate_role(role)
+        user = self._fetchone('SELECT * FROM users WHERE external_id = ?', (external_id,))
+        if user is None:
+            username = validate_username(username)
+            existing = self._get(username)
+            if existing is not None:
+                raise AuthError(f'the username {username} already belongs to another account', status=409,
+                                code='sso_conflict')
+            now = int(time.time())
+            self._execute(
+                'INSERT INTO users(username, password_hash, role, created, updated, auth_source, external_id) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                # an unusable password: SSO accounts cannot sign in with one (authenticate refuses them)
+                (username, _hasher.hash(secrets.token_urlsafe(32)), role, now, now, 'oidc', external_id),
+            )
+            user = self._get(username)
+        if user['disabled']:
+            raise AuthError('account disabled', status=403, code='disabled')
+        if user['role'] != role:
+            self._execute('UPDATE users SET role = ?, updated = ? WHERE id = ?', (role, int(time.time()), user['id']))
+        self._execute('UPDATE users SET last_login = ? WHERE id = ?', (int(time.time()), user['id']))
+        return self.get_user(user['username'])
+
     def update_user(self, username, role=None, disabled=None):
         user = self._get(username)
         if not user:
@@ -406,6 +445,8 @@ class AuthStore:
         user = self._get(username)
         if not user:
             raise KeyError(username)
+        if not _local(user):
+            raise ValueError('this account signs in through SSO and has no password here')
         validate_password(password, user['username'])
         self._execute(
             'UPDATE users SET password_hash = ?, must_change_password = ?, failed_logins = 0, '
@@ -457,6 +498,8 @@ class AuthStore:
             raise AuthError('bad password')
         if user['disabled']:
             raise AuthError('account disabled')
+        if not _local(user):
+            raise AuthError('this account signs in through SSO')
         if user['totp_enabled']:
             if not otp:
                 # correct password, second step still to come: not a failure
@@ -640,7 +683,7 @@ class AuthStore:
             return None
         row = self._fetchone(
             'SELECT s.id AS session_id, s.expires, s.revoked, u.username, u.role, u.disabled, '
-            'u.must_change_password, u.totp_enabled FROM sessions s JOIN users u ON u.id = s.user_id '
+            'u.must_change_password, u.totp_enabled, u.auth_source FROM sessions s JOIN users u ON u.id = s.user_id '
             'WHERE s.id = ?',
             (parts[1],),
         )
@@ -652,7 +695,8 @@ class AuthStore:
             'role': row['role'],
             'must_change_password': bool(row['must_change_password']),
             'mfa_enabled': bool(row['totp_enabled']),
-            'mfa_setup_required': mfa_required_for(row['role']) and not row['totp_enabled'],
+            # SSO accounts satisfy two-step sign-in at the identity provider (checked at sign-in)
+            'mfa_setup_required': _local(row) and mfa_required_for(row['role']) and not row['totp_enabled'],
             'session_id': row['session_id'],
         }
 

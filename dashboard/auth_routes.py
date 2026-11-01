@@ -18,6 +18,8 @@ import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
+import requests
 from pydantic import BaseModel
 
 from core import audit, auth, setup
@@ -212,6 +214,7 @@ def auth_status(request: Request):
         'local_dev_mode': users == 0 and not api_key() and _client_host(request) in LOCAL_HOSTS,
         'password_min_length': auth.MIN_PASSWORD_LENGTH,
         'mfa_roles': sorted(auth.mfa_roles(), key=auth.ROLE_RANK.get),
+        'sso': _sso_status(),
     }
 
 
@@ -446,3 +449,107 @@ def revoke_api_token(token_id: str, principal: dict = Depends(_token_manager)):
     logger.info('%s revoked API token %s', principal['username'], token_id)
     audit_event(principal, 'token_revoke', target=token_id)
     return {'status': 'revoked'}
+
+
+# ---------- single sign-on (OpenID Connect) ----------
+
+SSO_COOKIE = 'sentinel_sso'
+SSO_PATH = '/api/auth/oidc'
+SSO_ERRORS = {'state', 'invalid_token', 'idp_error', 'idp_unreachable', 'no_role', 'mfa_required', 'sso_conflict',
+              'disabled', 'denied', 'throttled'}
+
+
+def _sso_status():
+    from core import sso
+    cfg = sso.load_config()
+    return {'enabled': bool(cfg.get('enabled')), 'label': cfg.get('label') or 'Sign in with SSO'}
+
+
+def _redirect_uri(cfg, request: Request):
+    if cfg.get('redirect_uri'):
+        return cfg['redirect_uri']
+    scheme = 'https' if _cookie_secure(request) else request.url.scheme
+    return f"{scheme}://{request.url.netloc}{SSO_PATH}/callback"
+
+
+def _sso_fail(code, reason, client, request: Request):
+    logger.warning('SSO sign-in refused from %s: %s', client, reason)
+    audit_event(None, 'login', outcome='failure', client_ip=client, actor='sso',
+                details={'method': 'sso', 'error': code, 'reason': str(reason)[:300]})
+    response = RedirectResponse(f'/?sso_error={code if code in SSO_ERRORS else "denied"}', status_code=303)
+    response.delete_cookie(SSO_COOKIE, path=SSO_PATH)
+    return response
+
+
+@router.get('/api/auth/oidc/login')
+def sso_login(request: Request):
+    """Start an SSO sign-in: redirect to the identity provider."""
+    from core import sso
+    cfg = sso.load_config()
+    if not cfg.get('enabled'):
+        raise HTTPException(status_code=404, detail='single sign-on is not enabled')
+    try:
+        url, cookie = sso.start(cfg, _redirect_uri(cfg, request), auth.get_store()._signing_secret())
+    except (sso.SSOError, requests.RequestException, ValueError, KeyError) as exc:   # IdP down or misconfigured
+        return _sso_fail('idp_unreachable', exc, _client_host(request) or 'unknown', request)
+    response = RedirectResponse(url, status_code=303)
+    # Lax, not Strict: the IdP sends the browser back with a cross-site top-level navigation
+    response.set_cookie(SSO_COOKIE, cookie, max_age=sso.STATE_TTL, path=SSO_PATH, httponly=True, samesite='lax',
+                        secure=_cookie_secure(request))
+    return response
+
+
+@router.get('/api/auth/oidc/callback')
+def sso_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None,
+                 error: Optional[str] = None):
+    """The identity provider sends the browser back here; on success the console session starts."""
+    from core import sso
+    client = _client_host(request) or 'unknown'
+    cfg = sso.load_config()
+    if not cfg.get('enabled'):
+        raise HTTPException(status_code=404, detail='single sign-on is not enabled')
+    if not login_throttle.allow(client):
+        return _sso_fail('throttled', 'too many sign-in attempts', client, request)
+    if error or not code:
+        return _sso_fail('denied', f'IdP returned {error or "no code"}', client, request)
+    store = auth.get_store()
+    try:
+        username, role, claims = sso.complete(cfg, code, state, request.cookies.get(SSO_COOKIE),
+                                              store._signing_secret())
+        user = store.sso_user(username, role, sso.external_id(cfg, claims))
+    except sso.SSOError as exc:
+        return _sso_fail(exc.code, exc.reason, client, request)
+    except auth.AuthError as exc:
+        return _sso_fail(exc.code or 'denied', exc.reason, client, request)
+    except ValueError as exc:
+        return _sso_fail('denied', exc, client, request)
+    except requests.RequestException as exc:           # network errors talking to the IdP
+        return _sso_fail('idp_unreachable', exc, client, request)
+    tokens = store.create_session(user['username'], client, request.headers.get('user-agent'))
+    response = RedirectResponse('/', status_code=303)
+    _set_refresh_cookie(response, request, tokens)
+    response.delete_cookie(SSO_COOKIE, path=SSO_PATH)
+    login_throttle.reset(client)
+    logger.info('SSO login %s (%s) from %s', user['username'], user['role'], client)
+    audit_event({'kind': 'user', **user}, 'login', target=user['username'], client_ip=client,
+                details={'method': 'sso', 'issuer': cfg['issuer'], 'role': role})
+    return response
+
+
+@router.get('/api/sso')
+def sso_config_get(principal: dict = Depends(require_admin)):
+    from core import sso
+    return sso.redacted(sso.load_config())
+
+
+@router.put('/api/sso')
+def sso_config_put(payload: dict, principal: dict = Depends(require_admin)):
+    from core import sso
+    try:
+        cfg = sso.save_config(dict(payload or {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'sso_update', details={'enabled': cfg['enabled'], 'issuer': cfg.get('issuer'),
+                                                  'group_roles': cfg.get('group_roles'),
+                                                  'default_role': cfg.get('default_role')})
+    return sso.redacted(cfg)

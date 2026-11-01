@@ -55,6 +55,39 @@ The systemd units also give the engine a lower CPU weight and make it the first 
 * Operators and Admins must use two-step sign-in. Lost phone: an Admin uses **Reset MFA** in the Users panel.
 * Scripts use API tokens (Users panel → API tokens), each with the lowest role it needs and an expiry. The shared `DASHBOARD_API_KEY` in `/etc/sentinel/sentinel.env` is still accepted for health checks; replace it with a scoped token, then remove it (the compliance report flags it).
 
+## 4a. Single sign-on (OpenID Connect)
+
+You can let users sign in with their organisation account: Microsoft Entra ID, Google Workspace, Okta, Keycloak or any OpenID Connect provider. Set it up in the console under **Users → Single sign-on**, or through `PUT /api/sso` (Admin). The settings are kept in `data/sso.json`.
+
+1. **Register an application at the identity provider (IdP).**
+   - Type: web application, confidential client, authorization code flow.
+   - Redirect URI: `https://<console address>/api/auth/oidc/callback`.
+   - Include group membership in the ID token. In Entra: *Token configuration → Add groups claim*, which lists group object ids. In Okta: a `groups` claim with a filter. In Keycloak: a *Group Membership* mapper.
+2. **Enter the IdP details in the console.**
+   - The **issuer**. Entra: `https://login.microsoftonline.com/<tenant-id>/v2.0`. Google: `https://accounts.google.com`. Okta: `https://<org>.okta.com`.
+   - The **client id** and **client secret**.
+   - The **group → role mapping**, one line per group, for example `SecOps = operator`.
+3. **Save, then test.** Open the console in a private window and use the new **Sign in with …** button.
+
+How sign-in works:
+
+| Topic | Behaviour |
+|---|---|
+| **Roles** | Taken from the IdP groups at every sign-in; the highest mapped role wins. Changing a user's groups at the IdP changes their role at their next sign-in. A user in no mapped group is refused, unless you choose a default role. |
+| **Two-step sign-in** | Operator and Admin need MFA (`SENTINEL_MFA_ROLES`). For SSO users the IdP must report it in the ID token's `amr` claim. If your IdP always enforces MFA but does not report `amr` (often the case with Entra ID v2 tokens and conditional access), tick *The identity provider always enforces MFA*. |
+| **Accounts** | An SSO account is created at its first sign-in. It is tied to the IdP's issuer and subject, so it can never take over a local account, or another IdP identity, that has the same username: that sign-in is refused with "username already belongs to another account". SSO accounts have no local password and no local authenticator. Disabling or deleting one in **Users** blocks it here, whatever the IdP says. |
+| **Local accounts** | Keep working alongside SSO. Keep at least one local Admin as a break-glass account in case the IdP is unreachable. |
+| **Audit** | Every SSO sign-in and every refusal (with its reason) is recorded. The user sees a plain explanation, for example "your account is not in a group that may use this console". |
+
+What is checked on every SSO sign-in:
+- `state` and the PKCE verifier come from a signed cookie that lasts 10 minutes
+- the ID token signature is checked against the IdP's published keys (RS256 or ES256 only)
+- the issuer, audience and authorised party match the configuration
+- the token has not expired
+- the `nonce` matches the one this sign-in started with
+
+Not supported yet: SAML 2.0, and signing in with a password checked directly against LDAP / Active Directory. Use your IdP's OIDC endpoint instead; AD groups synced to Entra or Okta work through the groups claim.
+
 ## 5. Enforcement
 
 The appliance starts in dry run: actions are recorded but not applied. To enforce:

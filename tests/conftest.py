@@ -19,6 +19,7 @@ def isolated_audit_log(tmp_path, monkeypatch):
     monkeypatch.setenv('SENTINEL_LATERAL_DB', str(tmp_path / 'lateral.db'))
     monkeypatch.setenv('SENTINEL_INCIDENTS', str(tmp_path / 'incidents.json'))
     monkeypatch.setenv('SENTINEL_TICKETS', str(tmp_path / 'tickets.json'))
+    monkeypatch.setenv('SENTINEL_SSO', str(tmp_path / 'sso.json'))
     monkeypatch.setenv('SENTINEL_PEERS_DB', str(tmp_path / 'peers.db'))
     monkeypatch.setenv('SENTINEL_SAMPLES_DB', str(tmp_path / 'samples.db'))
     monkeypatch.setenv('SENTINEL_TUNING', str(tmp_path / 'tuning.json'))
