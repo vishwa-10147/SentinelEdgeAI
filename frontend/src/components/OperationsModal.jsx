@@ -15,9 +15,11 @@ function ResponseTab({ user, act, busy, reloadKey }){
   const [restrictions, setRestrictions] = useState([])
   const [pending, setPending] = useState([])
   const [tuning, setTuning] = useState(null)
+  const [vlan, setVlan] = useState(null)
   useEffect(()=>{
-    Promise.all([apiGet('/api/firewall/restrictions', []), apiGet('/api/playbook/pending', []), apiGet('/api/tuning', null)])
-      .then(([r, p, t])=>{ setRestrictions(r || []); setPending(p || []); setTuning(t) }).catch(()=>{})
+    Promise.all([apiGet('/api/firewall/restrictions', []), apiGet('/api/playbook/pending', []), apiGet('/api/tuning', null),
+                 apiGet('/api/vlan', null)])
+      .then(([r, p, t, v])=>{ setRestrictions(r || []); setPending(p || []); setTuning(t); setVlan(v) }).catch(()=>{})
   }, [reloadKey])
   const operator = hasRole(user, 'operator')
   const admin = hasRole(user, 'admin')
@@ -80,6 +82,23 @@ function ResponseTab({ user, act, busy, reloadKey }){
           {restrictions.length === 0 && <p className="auth-hint">No quarantine, rate limit or containment in force.</p>}
         </div>
       </div>
+      {vlan && (vlan.enabled || (vlan.moves || []).length > 0) && (
+        <div className="rules-section">
+          <h3>Quarantine VLAN (switch ports)</h3>
+          <p className="auth-hint">Quarantined devices are also moved to VLAN {vlan.config?.quarantine_vlan ?? 'the quarantine VLAN'} on their switch port; release, expiry and rollback put the port back. Configure switches with <code>PUT /api/vlan</code> (Admin guide, section 5).</p>
+          <div className="users-table">
+            <div className="users-row ops-restrict-row users-head"><span>Device</span><span>Switch port</span><span>VLAN</span><span>Expires</span><span></span></div>
+            {(vlan.moves || []).map(m=>(
+              <div className="users-row ops-restrict-row" key={m.mac}>
+                <span>{m.ip}</span><span>{m.switch} {m.port}{m.dry_run ? ' (dry run)' : ''}</span><span>{m.original_vlan} → {m.vlan}</span>
+                <span>{m.expires ? when(m.expires) : 'with the quarantine'}</span>
+                <span>{operator && <button className="ghost-button" disabled={busy} onClick={()=>act(()=>apiPost('/api/vlan/restore', { ip: m.ip }), `${m.ip}: port restored.`)}>Restore</button>}</span>
+              </div>
+            ))}
+            {(vlan.moves || []).length === 0 && <p className="auth-hint">No switch port moved.</p>}
+          </div>
+        </div>
+      )}
     </>
   )
 }

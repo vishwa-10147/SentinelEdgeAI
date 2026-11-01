@@ -778,6 +778,73 @@ def enforcement_protected(principal: dict = Depends(require_viewer)):
     return protected.summary()
 
 
+@app.get('/api/vlan')
+def vlan_status(principal: dict = Depends(require_viewer)):
+    """Quarantine VLAN: settings (secrets redacted; Admins only) and the ports moved now."""
+    from core import auth
+    from enforcement import vlan
+    out = {'moves': vlan.list_moves(), 'enabled': bool(vlan.load_config().get('enabled'))}
+    if auth.role_allows(principal.get('role'), 'admin'):
+        out['config'] = vlan.redacted(vlan.load_config())
+    return out
+
+
+@app.put('/api/vlan')
+def vlan_config(payload: dict, principal: dict = Depends(require_admin)):
+    from enforcement import vlan
+    try:
+        cfg = vlan.save_config(dict(payload or {}))
+    except vlan.VLANError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'vlan_config', details={'enabled': cfg['enabled'], 'quarantine_vlan': cfg['quarantine_vlan'],
+                                                   'switches': [s['name'] for s in cfg['switches']]})
+    return vlan.redacted(cfg)
+
+
+@app.post('/api/vlan/locate')
+def vlan_locate(payload: dict, principal: dict = Depends(require_admin)):
+    """Find a MAC (or a device's IP) on the configured switches without changing anything."""
+    from enforcement import identity, vlan
+    mac = (payload or {}).get('mac')
+    if not mac and (payload or {}).get('ip'):
+        device = identity.get_registry().by_ip(str(payload['ip']))
+        mac = device['mac'] if device else None
+    try:
+        sw, loc = vlan.locate(mac)
+    except vlan.VLANError as exc:
+        return {'found': False, 'error': str(exc)}
+    return {'found': True, 'switch': sw['name'], **loc}
+
+
+@app.post('/api/vlan/move')
+def vlan_move(payload: dict, principal: dict = Depends(require_operator)):
+    """Move a device's switch port to the quarantine VLAN (without a firewall quarantine)."""
+    import core.firewall as firewall
+    from enforcement import vlan
+    ip = str((payload or {}).get('ip') or '')
+    try:
+        firewall._validate_ip(ip)
+        record = vlan.move(ip, ttl=(payload or {}).get('ttl'), reason=f"operator:{principal.get('username')}")
+    except (vlan.VLANError, ValueError) as exc:
+        audit_event(principal, 'vlan_move', target=ip, outcome='rejected', details={'error': str(exc)[:200]})
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'vlan_move', target=ip, details={k: record[k] for k in ('switch', 'port', 'vlan', 'original_vlan')})
+    return record
+
+
+@app.post('/api/vlan/restore')
+def vlan_restore(payload: dict, principal: dict = Depends(require_operator)):
+    """Put a device's port back on its original VLAN."""
+    from enforcement import vlan
+    ip = str((payload or {}).get('ip') or '')
+    try:
+        n = vlan.restore(ip=ip, why=f"operator:{principal.get('username')}")
+    except vlan.VLANError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    audit_event(principal, 'vlan_restore', target=ip, details={'restored': n})
+    return {'restored': n}
+
+
 @app.get('/api/devices/identity')
 def devices_identity(principal: dict = Depends(require_viewer)):
     from enforcement import identity

@@ -34,7 +34,7 @@ MAC_C, MAC_S = '02:00:00:00:00:01', '02:00:00:00:00:02'
 class Capture:
     def __init__(self, seed):
         self.packets = []
-        self.rnd = random.Random(seed)
+        self.rnd = random.Random(seed)          # nosec B311: reproducible synthetic traffic, not security
 
     def add(self, t, pkt):
         frame = Ether(src=MAC_C, dst=MAC_S) / pkt

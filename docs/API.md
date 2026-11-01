@@ -206,6 +206,11 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/trust` | viewer | Trust score (0-100), level, reasons and recommended response for every known device, least trusted first. |
 | `GET` | `/api/tuning` | viewer | Response tuning: mode and bounds, and the evidence per kind of incident and action. |
 | `POST` | `/api/tuning` | admin | Set mode (off | recommend | apply), target, min_action or window_seconds. |
+| `GET` | `/api/vlan` | viewer | Quarantine VLAN: settings (secrets redacted; Admins only) and the ports moved now. |
+| `PUT` | `/api/vlan` | admin |  |
+| `POST` | `/api/vlan/locate` | admin | Find a MAC (or a device's IP) on the configured switches without changing anything. |
+| `POST` | `/api/vlan/move` | operator | Move a device's switch port to the quarantine VLAN (without a firewall quarantine). |
+| `POST` | `/api/vlan/restore` | operator | Put a device's port back on its original VLAN. |
 | `GET` | `/manifest.webmanifest` | public |  |
 | `GET` | `/metrics` | viewer |  |
 | `GET` | `/openapi.json` | viewer |  |

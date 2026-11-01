@@ -495,6 +495,7 @@ def rollback_blocks(reason: str = 'operator_rollback'):
         segmentation.on_rollback(reason)       # the tables are gone; segmentation stays off until re-enabled
     except Exception:
         pass
+    _vlan_hook('restore_all', reason)              # switch ports back on their own VLANs
     _log_action({'action': 'rollback', 'count': len(active), 'restrictions': len(restricted),
                  'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
     return {'removed': len(active), 'restrictions_removed': len(restricted), 'rules_left': 0}
@@ -710,9 +711,23 @@ def _expire_restrictions(now=None):
         if r not in keep:
             _remove_restriction_kernel(r)
             _log_action({'action': f"{r['kind']}_expire", 'ip': r['ip'], 'dry_run': FIREWALL_DRY_RUN})
+            if r['kind'] == 'quarantine':
+                _vlan_hook('on_release', r['ip'])
     if len(keep) != len(items):
         _write_restrictions(keep)
+    _vlan_hook('expire')
     return keep
+
+
+def _vlan_hook(name, *args):
+    """Optional quarantine VLAN on managed switches (enforcement.vlan); never fails the firewall action."""
+    try:
+        from enforcement import vlan
+        if name == 'expire' and not os.path.exists(vlan.moves_file()):
+            return None
+        return getattr(vlan, name)(*args)
+    except Exception:
+        return None
 
 
 def _remove_restriction_kernel(r):
@@ -769,6 +784,10 @@ def add_restriction(kind, ip, ttl=None, reason='', mac=None):
             item['applied'], item['apply_output'] = False, out
             _write_restrictions(items)
     _log_action({'action': kind, 'ip': ip, 'ttl': ttl, 'reason': reason, 'dry_run': FIREWALL_DRY_RUN})
+    if kind == 'quarantine':
+        moved = _vlan_hook('on_quarantine', ip, mac, ttl, reason)
+        if moved:
+            item['vlan'] = {k: moved[k] for k in ('switch', 'port', 'vlan', 'original_vlan')}
     return item
 
 
@@ -780,6 +799,8 @@ def remove_restriction(kind, ip):
         _remove_restriction_kernel(r)
     _write_restrictions([r for r in items if r not in removed])
     _log_action({'action': f'{kind}_release', 'ip': ip, 'count': len(removed), 'dry_run': FIREWALL_DRY_RUN})
+    if kind == 'quarantine':
+        _vlan_hook('on_release', ip)
     return {'removed': len(removed)}
 
 

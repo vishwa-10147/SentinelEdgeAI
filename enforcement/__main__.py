@@ -20,6 +20,10 @@ def main(argv=None):
     p.add_argument('--by', default='cli')
     sub.add_parser('protected', help='hosts that are never blocked, and why')
     sub.add_parser('devices', help='known devices by MAC (refreshes from the ARP table)')
+    p = sub.add_parser('vlan', help='quarantine VLAN on managed switches')
+    p.add_argument('action', choices=['status', 'locate', 'move', 'restore'])
+    p.add_argument('target', nargs='?', help='IP (or MAC for locate)')
+    p.add_argument('--ttl', type=int)
     p = sub.add_parser('osfp', help='passive OS and device-type fingerprints')
     p.add_argument('action', choices=['list', 'show'])
     p.add_argument('ip', nargs='?')
@@ -111,6 +115,21 @@ def main(argv=None):
             reg.refresh_from_arp()
             for d in reg.list():
                 print(f"{d['mac']}  {d['ip'] or '-':<16} {(d['vendor'] or '?')[:28]:<28} {d['hostname'] or ''}")
+        elif args.command == 'vlan':
+            from enforcement import vlan
+            if args.action == 'status':
+                _show({'enabled': vlan.load_config().get('enabled'), 'moves': vlan.list_moves()})
+            elif not args.target:
+                raise ValueError(f'vlan {args.action} needs an IP or MAC')
+            elif args.action == 'locate':
+                mac = args.target if ':' in args.target and args.target.count(':') == 5 else \
+                    (identity.get_registry().by_ip(args.target) or {}).get('mac')
+                sw, loc = vlan.locate(mac)
+                _show({'switch': sw['name'], **loc})
+            elif args.action == 'move':
+                _show(vlan.move(args.target, ttl=args.ttl, reason='cli'))
+            else:
+                _show({'restored': vlan.restore(ip=args.target, why='cli')})
         elif args.command == 'osfp':
             from enforcement import os_fingerprint
             if args.action == 'show':

@@ -117,6 +117,22 @@ sudo systemctl restart sentineledgeai-engine sentineledgeai-api
 
 Safety nets that stay on: protected hosts (gateway, DNS, DHCP, the appliance itself, management hosts) are never blocked; automatic actions need multi-stage confirmation and, during the approval period, an Operator's approval; `sentineledgeai-watchdog.timer` removes all rules if the engine or API stops; **Rollback** in the console (or `POST /api/firewall/rollback`) removes everything in about 100 ms.
 
+### Quarantine VLAN on managed switches (optional)
+
+Besides the firewall quarantine, a quarantined device can be moved to a quarantine VLAN on its switch port, so it is isolated even for traffic that never crosses the appliance (for example to other devices on the same switch). Configure it with `PUT /api/vlan` (Admin):
+
+```json
+{"enabled": true, "quarantine_vlan": 999, "with_quarantine": true,
+ "switches": [{"name": "core1", "driver": "arista_eapi", "url": "https://10.0.0.250",
+               "username": "sentinel", "password": "...", "ports_deny": "^(Port-Channel|Ethernet4[78])"}]}
+```
+
+- **Drivers:** `arista_eapi` (EOS eAPI), `cisco_restconf` (IOS-XE RESTCONF), or `webhook`: an HMAC-signed HTTPS POST (`X-Sentinel-Signature: sha256=<hmac>`) to your own automation, which answers `{"action": "locate", "mac"}` with `{"port", "vlan", "mode"}` and performs `{"action": "set_vlan", "port", "vlan"}`. Use the webhook for UniFi, Meraki, Aruba or anything else.
+- **Safety:** the port is found from the device's MAC in the switch MAC table and only changed when it is an **access** port carrying **that one MAC** (never an uplink, a trunk, or a port with an access point or hub behind it) and matches `ports_allow` / not `ports_deny`. Protected and whitelisted hosts are refused. With `FIREWALL_DRY_RUN=1` the move is recorded but the switch is not changed. A switch that cannot be reached never stops the firewall quarantine.
+- **Undo:** releasing or expiring the quarantine, an operator rollback and the watchdog's fail-open put the port back on the VLAN it had (kept in `data/vlan_moves.json`). Operations → Response lists moved ports with **Restore**.
+- **By hand:** `POST /api/vlan/locate` (Admin, no change), `POST /api/vlan/move` / `restore` (Operator), `python -m enforcement vlan status|locate|move|restore`.
+- Give the appliance a switch account that can only change access-port VLANs. The drivers follow the vendors' documented APIs and are tested against simulated switches; **they have not been tried on real switches yet**.
+
 ## 6. Response policy as code
 
 ```bash
