@@ -308,7 +308,7 @@ Exit criteria evidence: alerts reach a syslog collector (UDP RFC 5424 and TCP CE
 
 ## Where it goes next
 
-**Where we stand (v2.9.3).** Every phase from 0 to 7 is built: detection with explanations, bounded and reversible response, zero-trust segmentation, sensor/brain with high availability, a fleet console, federated learning, response tuning, OT protocols, compliance evidence and flood safety. What is missing now is not features. It is:
+**Where we stood at v2.9.3** (v2.10.0 adds most of Phase 9 and the start of Phase 10; see the status lists below). Every phase from 0 to 7 is built: detection with explanations, bounded and reversible response, zero-trust segmentation, sensor/brain with high availability, a fleet console, federated learning, response tuning, OT protocols, compliance evidence and flood safety. What is missing now is not features. It is:
 
 1. **Proof.** No external pen test, no beta, no long inline soak, no Jetson run. Nobody should rely on it in production until these exist.
 2. **Visibility depth.** Flow metadata cannot see lateral movement in SMB, RDP or Kerberos, most OT protocols, or what was actually sent. There is no packet capture for forensics.
@@ -348,7 +348,7 @@ The phases below address these, in that order.
 **Status (2026-11-01):**
 - [x] Forensic packet buffer and PCAP export (`capture/packet_buffer.py`, Forensics panel).
 - [x] Asset context: device criticality and offline CVE matching (`core/asset_context.py`). Passive OS fingerprinting beyond the existing DHCP/OUI identity is still open.
-- [x] IPv6 parity in the topology view; IPv6 blocking, containment and segmentation rules already existed.
+- [ ] IPv6 parity: the topology view handles IPv6, and blocking, quarantine and rate limits already cover IPv6, but **containment and OT segmentation are still IPv4 only** (`core/firewall.py`, `enforcement/segmentation.py`).
 - [x] More OT: IEC 60870-5-104, S7comm, EtherNet/IP (CIP), MQTT, fed into the per-controller command baselines (`detection/ot.py`).
 - [x] Lateral movement: SMB2 / DCE-RPC / Kerberos header metadata and seven detectors (`detection/lateral.py`), plus the console panel. LDAP query metadata is not parsed yet.
 - [x] Encrypted traffic: JA4S and certificate anomalies (self-signed, short-lived, expired, name mismatch). JA4H (plain HTTP) and session-rhythm analysis beyond the beaconing detector are still open.

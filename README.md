@@ -32,7 +32,7 @@ SentinelEdgeAI is a network appliance that learns how every device on a network 
 
 | | |
 |---|---|
-| **Current release** | [`v2.9.3`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.9.3): production candidate, all phases (0–7) built — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning, high availability, compliance packs (pen test and beta pending) |
+| **Current release** | [`v2.10.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.10.0): adds deeper visibility (lateral movement, more OT protocols, JA4S and certificate checks, Zeek engine, PCAP buffer), incidents with "what to do now", and Jira/ServiceNow/TheHive ticketing on top of v2.9: all phases (0–7) built — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning, high availability, compliance packs (pen test and beta pending) |
 | **Target hardware** | Raspberry Pi 5 (sensor) and NVIDIA Jetson Orin Nano (AI and management) |
 | **Supply chain** | Signed ML model, reproducible packages, Sigstore/cosign signatures, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
 | **Supply chain** | Signed ML model, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
@@ -89,7 +89,8 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 
 | Version | Highlights |
 |---|---|
-| **v2.9.3** | Fix: device state files update again (2.9.2 regression) |
+| **v2.10.0** | Phase 9: lateral movement (SMB/RPC/Kerberos), IEC 104 / S7comm / EtherNet/IP / MQTT, JA4S and certificate anomalies, Zeek as an engine, forensic PCAPs, asset criticality. Phase 10: incidents and ticketing/SOAR. Fleet remote actions, Ed25519 Isolation Forest, SentinelEdge Duo hardware design |
+| v2.9.3 | Fix: device state files update again (2.9.2 regression) |
 | v2.9.2 | Flood safety: bounded memory under spoofed floods (~460 MB at 322k packets/s, was 1.2 GB in 40 s), overload alert |
 | v2.9.1 | CIC-IDS2017 evaluation published; loader fixed for the dataset's 12-hour clock and minute timestamps |
 | v2.9.0 | Compliance packs: live evidence for ISO 27001, IEC 62443 and NIS2, as JSON and PDF |
@@ -274,16 +275,16 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 2. Optionally verify where the package was built:
 
    ```bash
-   gh attestation verify sentineledgeai-pi-2.9.3.tar.gz --repo vishwa-10147/SentinelEdgeAI
+   gh attestation verify sentineledgeai-pi-2.10.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
    ```
 
 3. Install:
 
    ```bash
-   sha256sum -c sentineledgeai-pi-2.9.3.tar.gz.sha256
-   tar -xzf sentineledgeai-pi-2.9.3.tar.gz
-   sudo bash sentineledgeai-pi-2.9.3/deploy/pi/provision_key.sh /path/to/model_signing.key
-   sudo bash sentineledgeai-pi-2.9.3/packaging/sentinelctl install sentineledgeai-pi-2.9.3.tar.gz
+   sha256sum -c sentineledgeai-pi-2.10.0.tar.gz.sha256
+   tar -xzf sentineledgeai-pi-2.10.0.tar.gz
+   sudo bash sentineledgeai-pi-2.10.0/deploy/pi/provision_key.sh /path/to/model_signing.key
+   sudo bash sentineledgeai-pi-2.10.0/packaging/sentinelctl install sentineledgeai-pi-2.10.0.tar.gz
    ```
 
 4. Open `https://<pi-address>:9000` (the installer prints the address). The certificate is self-signed, so the browser warns once: check that the SHA-256 fingerprint matches `sentinelctl tls show` before continuing, or install your own certificate with `sudo sentinelctl tls import cert.pem key.pem`. Sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. The setup wizard then asks for the network placement, the capture interface and the response mode (reopen it later from **Setup**). Add other users from the **Users** panel.
@@ -465,17 +466,18 @@ docs/         admin guide, runbooks, troubleshooting, API reference, performance
 
 ---
 
-## Known limitations (v2.9.3)
+## Known limitations (v2.10.0)
 
 1. **Self-signed certificate by default.** Browsers warn until you import a certificate from your own CA (`sentinelctl tls import`).
 2. **Jetson brain not yet run on hardware.** Two-node mode is verified in simulation and on the Pi; GPU models wait for the Jetson.
 3. **Passive placement cannot stop traffic.** Blocks, quarantine, containment and OT segmentation act on traffic to or through the device. On a mirror port SentinelEdgeAI alerts only.
 4. **Containment and OT segmentation are IPv4 only.** Use quarantine for IPv6 hosts.
 5. **Bridged traffic has no conntrack on this kernel.** In inline bridge mode, containment stops new TCP connections and off-profile UDP, but packets of existing connections pass.
-6. **Not yet externally tested.** The penetration test and the 30-day field beta are still to come ([PENTEST_SCOPE](docs/PENTEST_SCOPE.md), [BETA_PROGRAM](docs/BETA_PROGRAM.md)).
-7. **Floods degrade detection.** Under a flood of spoofed addresses memory stays bounded and you get a "capture overloaded" alert, but detection is partial until the flood stops; stopping it needs your router, switch or the inline rate limit.
-8. **Service memory limits are inactive on stock Raspberry Pi OS**, which boots with the memory cgroup off. The in-process limits still apply; add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` to enable the systemd ones.
-9. **Throughput.** A Pi 5 captures about 120,000 packets/s (~0.5–1 Gb/s of typical traffic). Busier links need the Jetson brain or, later, an x86 sensor.
+6. **New Phase 9 parsers and ticketing not yet tried on live systems.** The SMB/RPC/Kerberos, IEC 104, S7comm, EtherNet/IP and MQTT parsers are tested on generated packets, and the Jira, ServiceNow and TheHive targets against simulated APIs.
+7. **Not yet externally tested.** The penetration test and the 30-day field beta are still to come ([PENTEST_SCOPE](docs/PENTEST_SCOPE.md), [BETA_PROGRAM](docs/BETA_PROGRAM.md)).
+8. **Floods degrade detection.** Under a flood of spoofed addresses memory stays bounded and you get a "capture overloaded" alert, but detection is partial until the flood stops; stopping it needs your router, switch or the inline rate limit.
+9. **Service memory limits are inactive on stock Raspberry Pi OS**, which boots with the memory cgroup off. The in-process limits still apply; add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` to enable the systemd ones.
+10. **Throughput.** A Pi 5 captures about 120,000 packets/s (~0.5–1 Gb/s of typical traffic). Busier links need the Jetson brain or, later, an x86 sensor.
 
 ---
 

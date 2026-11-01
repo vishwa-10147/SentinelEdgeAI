@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-11-01
+
+Phase 8 work that does not need hardware or other people, most of Phase 9 (deeper visibility) and the first two items of Phase 10 (assisted operations). The pen test and field beta are still pending, so this is not v3.0.
+
 ### Documentation
 - **Roadmap beyond v2.9** (PLAN.md):
   - Phase 8, proven in the field: pen test, beta, soak, Jetson, OS images
@@ -20,6 +24,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 - Prometheus alert `SentinelCaptureOverloaded`.
+- **Fleet remote actions and fleet-wide alert search** (Phase 8): block, unblock, quarantine, rate-limit, contain or release on one site from the fleet console or CLI; actions ride with the site's next 5-minute report, run through the site's own whitelist, protected hosts and TTLs, and report their outcome. Sites can opt out (`SENTINEL_FLEET_REMOTE_ACTIONS=off`). Alert summaries are searchable across sites. Fleet panel controls.
+- **Evaluation loaders for UNSW-NB15 and CIC-IoT2023** (Phase 8), following the CIC-IDS2017 loader; categories the flow detectors do not cover count as benign for false-positive purposes.
+- **Signed update channels** (Phase 8): sensor upgrades staged from a `stable` or `beta` channel; `SENTINEL_REQUIRE_SIGNATURE=1` requires an Ed25519 signature over the package SHA-256.
+- **Forensic packet buffer** (Phase 9, `capture/packet_buffer.py`): recent packets per source kept in a bounded ring; a PCAP is written when an alert fires; `GET /api/pcaps`, download, delete (Admin); console Forensics panel.
+- **Asset context** (Phase 9, `core/asset_context.py`): device criticality (critical / important / standard) and offline CVE matching by device type and OS keywords (no network lookups); `/api/assets/*`; shown in device detail. The CVE matching is keyword-based and indicative only.
 - **More OT protocols** (Phase 9, `detection/ot.py`): IEC 60870-5-104 (control-direction ASDUs; reset process is a restart), S7comm (job functions; PLC stop, program download), EtherNet/IP CIP (services incl. write tag, reset, stop; Unconnected Send unwrapped once) and MQTT (connect/publish/subscribe; publish is the write). They feed the existing per-controller learning, so new masters, first-time writes and stop/restart commands are reported for them too. Capture routes the new ports to inspection; segmentation knows their ports; the OT console names them.
 - **Lateral movement** (Phase 9, `detection/lateral.py`): SMB2 headers (tree-connect share, NTLM authentication, DCE-RPC binds on named pipes), DCE-RPC on 135 and the Kerberos message type; no payload kept. Findings: admin share use (T1021.002), remote service control/PsExec (T1569.002), remote scheduled tasks (T1053.005), DCSync from a non-replicator (T1003.006), NTLM fan-out / pass-the-hash pattern (T1550.002), Kerberos ticket bursts (T1558.003 / T1110.003) and admin-service fan-out to new hosts over SMB/RDP/WinRM/RPC/SSH (T1021). Learning (7 days) persists in `data/lateral.db` (`SENTINEL_LATERAL_DB`). Only small SMB segments (≤ 1200 bytes, the control messages) take the slow path, so file transfers stay on the fast path.
 - **Server-side TLS** (Phase 9, `detection/tls.py`): JA4S fingerprints (matched against the blocklist and threat intel) and, for TLS ≤ 1.2 to external servers, certificate anomalies: self-signed, valid under 3 days, expired / not yet valid, or not issued for the SNI the client asked for. The server handshake is reassembled over up to 8 segments; the fast path follows a ServerHello for its next segments.
@@ -29,7 +38,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Ticketing and SOAR** (Phase 10, `integrations/ticketing.py`): incidents open one ticket per target in Jira, ServiceNow, TheHive 5 or a signed webhook (per-target minimum severity); new alerts become comments / work notes; resolving the incident resolves the ticket. Ticket systems report back through `POST /api/tickets/inbound/<target>` (Bearer inbound token or HMAC signature), which can only change an incident's status. Sync every minute in the API process, `POST /api/tickets/sync`, `GET /api/tickets`, `python -m integrations.ticketing sync|status`; incident detail lists its tickets.
 - **SentinelEdge Duo hardware** (`hardware/sentineledge-duo/`): parametric enclosure for a Pi 5 sensor + Jetson brain in one box, STL files, diagrams, interactive viewer and a build and product guide.
 
+### Changed
+- **The release Isolation Forest moved to the Ed25519 model registry** (Phase 8): it is verified by signature and pinned SHA-256 before loading, and unsigned models are refused (`SENTINEL_ALLOW_UNSIGNED_MODELS=1` for development). A device without a model starts untrained, trains on its own traffic and signs the result with its own registry key; the old HMAC-signed `model/isolation_forest.pkl` is no longer loaded.
+- Topology view renders IPv6 addresses; lateral-movement indicators panel in the console.
+
 ### Fixed
+- The release model-signature check failed on every clean checkout after the registry move (the registry is device data, not in git). On a checkout without a registry it now runs a signing self-test (register, verify, load, refuse a tampered model); with a registry it verifies the active model as before.
 - `docs/API.md` regenerated: the forensics and asset-context endpoints were missing, which failed the API reference test.
 
 ## [2.9.3] - 2026-10-31
