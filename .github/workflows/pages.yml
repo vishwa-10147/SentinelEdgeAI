@@ -1,0 +1,47 @@
+name: Documentation site
+
+# Builds https://vishwa-10147.github.io/SentinelEdgeAI/ from the repository's Markdown
+# (scripts/build_docs_site.py) with Jekyll and the Just the Docs theme.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.md'
+      - 'scripts/build_docs_site.py'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site source
+        run: python3 scripts/build_docs_site.py _site_src
+      - uses: actions/configure-pages@v5
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./_site_src
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

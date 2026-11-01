@@ -1,6 +1,6 @@
 # Raspberry Pi
 
-Install with the release package and `sentinelctl` (see the [README](../../README.md#installation)). This folder holds the tools you use around that:
+Install with the release package and `sentinelctl` (see the [README](../../README.md#quick-start)). This folder holds the tools you use around that:
 
 | File | Purpose |
 |---|---|

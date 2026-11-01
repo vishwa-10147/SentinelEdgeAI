@@ -69,7 +69,7 @@ The current and previous minor release receive security fixes.
 | | Memory caps per service (`MemoryMax=`) where the memory cgroup is enabled | 🟡 off on stock Raspberry Pi OS |
 | Poisoning what the appliance learns | Flows with findings never train models; federated updates are validated and clipped; OT segmentation uses a frozen snapshot; learning periods are visible | 🟡 an attacker present before installation can hide in the baseline |
 | Evasion (slow scans, low-and-slow exfiltration) | Long windows, seasonal baselines, beaconing and exfiltration detectors | 🟡 inherent to network detection |
-| Prompt injection / "talking the AI into" an action | Not applicable: no language model; explanations are templates; every action goes through the playbook, policy bounds and approval gate | ✅ |
+| Prompt injection / "talking the AI into" an action | Detection uses no language model and alert explanations are templates. The optional local assistant (off by default) is read-only: it has no tools and cannot act; network text is cleaned and fenced, text that addresses the assistant is removed before the model sees it (found and fixed with a real model, v2.18), and advice to undo protection carries a fixed caution. Every action still goes through the playbook, policy bounds and approval gate | ✅ |
 | Supply chain | Reproducible packages, Sigstore/cosign signatures, CycloneDX SBOM, build provenance; OTA updates verify checksum and signature and roll back on a failed health check | ✅ |
 | Vulnerable dependencies | `pip-audit` and Bandit on every push and before every release; pinned versions; runtime-only requirements on devices | ✅ |
 | Evidence tampering | Hash-chained audit log of every user, engine and fleet action, with a copy in the system journal | ✅ |

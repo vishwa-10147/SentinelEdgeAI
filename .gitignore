@@ -66,3 +66,7 @@ SentinelEdgeAI_Abstract.docx
 # scan output (scripts/zap_baseline.sh)
 reports/zap/
 reports/eval/
+
+# documentation site build output
+_site_src/
+_site/

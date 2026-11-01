@@ -23,4 +23,5 @@ states that are out of date. The current documentation is:
 | `PROJECT_HISTORY_2026-05.md`, `PROJECT_SNAPSHOT_2026-05.md` | Early project history and snapshot; CHANGELOG.md is the history now (the workflow that appended to it never managed to push and was removed) |
 | `PR_draft_db_default_2026-05.md` | Draft pull-request text for the DB-first change |
 | `render_secrets_example.md` | Render hosting secrets; the Render deploy was removed (the appliance is on-premises only) |
+| `hmac_model_key/` | Provisioning the shared HMAC model key (incl. Vault delivery); retired in v2.17 when the release model moved to Ed25519 |
 | `SELF_HOSTED_RUNNER_2026-05.md` | First self-hosted runner guide; replaced by docs/SELF_HOSTED_RUNNER_SETUP.md and deploy/pi/SELF_HOSTED_RUNNER.md |

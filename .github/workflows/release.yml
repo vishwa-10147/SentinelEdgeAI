@@ -123,7 +123,7 @@ jobs:
 
           ---
           **Install / upgrade on a Raspberry Pi:** download the `.tar.gz` and `.sha256`, then see
-          [README → Raspberry Pi installation](https://github.com/vishwa-10147/SentinelEdgeAI#raspberry-pi-installation).
+          [README → Quick start](https://github.com/vishwa-10147/SentinelEdgeAI#quick-start).
           Verify provenance with `gh attestation verify <file>.tar.gz --repo vishwa-10147/SentinelEdgeAI`
           and the signature with `cosign verify-blob --bundle <file>.tar.gz.cosign.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/vishwa-10147/SentinelEdgeAI/' <file>.tar.gz`.
           EOF

@@ -178,7 +178,7 @@ Alerts, flows, device profiles and firewall actions are saved to a database — 
 
 The "AI" is a set of small, classical machine-learning models (an Isolation Forest, a little autoencoder neural network), learned statistics (baselines per device and hour), rules for known attack patterns, and arithmetic that combines them. Each decision takes well under a millisecond on a Raspberry Pi.
 
-There is **no large language model** and nothing that writes text: alert explanations are fixed sentences filled in with the evidence. So it cannot be "talked into" anything, and prompt injection does not apply. The models cannot act on their own, either: every action goes through the playbook, your policy, the protected-host list and the approval gate.
+Detection uses **no large language model**: alert explanations are fixed sentences filled in with the evidence, so detection cannot be "talked into" anything. An optional local assistant (off by default, on the appliance or your own network) can explain incidents in plain language, but it only reads: it has no tools and cannot change anything, and text from the network that tries to instruct it is removed before it sees it. The models cannot act on their own, either: every action goes through the playbook, your policy, the protected-host list and the approval gate.
 
 A hacker can try to *evade* it (scanning very slowly), to *poison* what it learns (being present before it is installed), or to *overload* it (a flood of fake addresses). Against the last, every table it keeps has a size limit: under a flood it forgets the oldest entries, tells you it is overloaded, and keeps running instead of running out of memory.
 
@@ -225,7 +225,7 @@ A hacker can try to *evade* it (scanning very slowly), to *poison* what it learn
 
 **How many devices can it watch?** It is designed for small and medium networks: tens to a few hundred devices per sensor (it tracks up to 100,000 conversations and 20,000 devices at once). Larger networks use several sensors with one brain, and many sites can share one fleet console.
 
-**Does it use ChatGPT or another chatbot?** No. There is no language model at all; see *What the AI is, and is not* above.
+**Does it use ChatGPT or another chatbot?** No cloud chatbot, ever. Detection uses no language model. If you turn on the optional assistant, it runs a small model on the appliance or on your own network (for example with Ollama), only explains incidents and can never act; see *What the AI is, and is not* above.
 
 **Can a hacker crash it by flooding it?** Not by running it out of memory any more. Under a flood of fake addresses it stays within its limits, raises one "capture overloaded" alert, and detection is degraded until the flood stops. Stopping the flood itself needs your router or switch, or the inline rate limit.
 
