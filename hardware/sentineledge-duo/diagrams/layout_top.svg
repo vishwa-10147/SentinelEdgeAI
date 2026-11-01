@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 470" font-family="Helvetica,Arial,sans-serif" font-size="12">
+  <rect width="640" height="470" fill="#ffffff"/>
+  <text x="20" y="24" font-size="16" font-weight="bold">Top view, lid removed (scale 2 px = 1 mm)</text>
+  <!-- box 240 x 170 at origin (60,50); y flipped: front at bottom -->
+  <g transform="translate(60,400) scale(2,-2)">
+    <rect x="0" y="0" width="240" height="170" rx="6" fill="#eef1f4" stroke="#55606b" stroke-width="1.5"/>
+    <rect x="3" y="3" width="234" height="164" rx="3" fill="#f8f9fa" stroke="#9aa5b1" stroke-width="0.6"/>
+    <!-- Jetson 103x90.5 at 13,67 -->
+    <rect x="13" y="67" width="103" height="90.5" fill="#76b900" fill-opacity="0.35" stroke="#4d7a00" stroke-width="0.8"/>
+    <!-- Pi 85x56 at 143,101 -->
+    <rect x="143" y="101" width="85" height="56" fill="#2e9e5b" fill-opacity="0.35" stroke="#1f6e3f" stroke-width="0.8"/>
+    <!-- switch 70x50 at 153,41 -->
+    <rect x="153" y="41" width="70" height="50" fill="#3b6fd6" fill-opacity="0.3" stroke="#2a4f99" stroke-width="0.8"/>
+    <!-- buck 60x32 at 17,19 -->
+    <rect x="17" y="19" width="60" height="32" fill="#d67b3b" fill-opacity="0.35" stroke="#9a5525" stroke-width="0.8"/>
+    <!-- USB NICs (velcro) -->
+    <rect x="95" y="20" width="22" height="40" fill="#999" fill-opacity="0.4" stroke="#555" stroke-width="0.6"/>
+    <rect x="121" y="20" width="22" height="40" fill="#999" fill-opacity="0.4" stroke="#555" stroke-width="0.6"/>
+    <!-- keystones -->
+    <rect x="154.5" y="0" width="15" height="30" fill="#ccc" stroke="#333" stroke-width="0.5"/>
+    <rect x="178.5" y="0" width="15" height="30" fill="#ccc" stroke="#333" stroke-width="0.5"/>
+    <rect x="202.5" y="0" width="15" height="30" fill="#ccc" stroke="#333" stroke-width="0.5"/>
+    <!-- fan on right wall -->
+    <rect x="225" y="85" width="12" height="60" fill="#666" fill-opacity="0.5"/>
+    <!-- intake slots left wall -->
+    <rect x="0" y="75" width="3" height="84" fill="#333"/>
+    <!-- DC jack and rocker on left wall -->
+    <circle cx="6" cy="30" r="5" fill="#333"/>
+    <rect x="0" y="45" width="10" height="19" fill="#333"/>
+  </g>
+  <g font-size="11">
+    <text x="112" y="140">Jetson Orin Nano</text><text x="112" y="154">(brain, 103 × 90.5)</text>
+    <text x="358" y="96">Raspberry Pi 5</text><text x="358" y="110">(sensor, 85 × 56)</text>
+    <text x="372" y="238">5-port gigabit</text><text x="372" y="252">switch board</text>
+    <text x="106" y="340">19 V → 5 V 5 A</text><text x="106" y="354">buck converter</text>
+    <text x="250" y="300">USB 3</text><text x="250" y="314">NIC ×2</text>
+    <text x="365" y="446">NET IN · NET OUT · MGMT (keystone RJ45)</text>
+    <text x="532" y="180" transform="rotate(90 532 180)">60 mm fan</text>
+    <text x="40" y="150" transform="rotate(-90 40 150)">intake vents</text>
+    <text x="70" y="452">DC 19 V in + rocker switch (left wall)</text>
+    <text x="300" y="44" text-anchor="middle">REAR: Jetson service window · Pi service window</text>
+    <text x="300" y="430" text-anchor="middle" font-weight="bold">FRONT</text>
+  </g>
+  <g stroke="#333" stroke-width="1" fill="none">
+    <line x1="60" y1="412" x2="540" y2="412"/><text x="300" y="408" text-anchor="middle" stroke="none" fill="#333" font-size="10">240 mm</text>
+    <line x1="552" y1="60" x2="552" y2="400"/><text x="560" y="235" stroke="none" fill="#333" font-size="10">170 mm</text>
+  </g>
+  <text x="20" y="466" font-size="10" fill="#555">Height 76 mm with lid. Standoffs 6 mm with M2.5 heat-set inserts; lid on 4 × M3 inserts.</text>
+</svg>

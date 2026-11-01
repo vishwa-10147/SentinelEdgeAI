@@ -48,6 +48,10 @@ SentinelEdgeAI fills that gap: **behavioural detection and automated response on
 
 ---
 
+## Hardware: SentinelEdge Duo
+
+A single desktop box holding a Raspberry Pi 5 (sensor) and a Jetson Orin Nano (brain): parametric 3D model, printable STL files, wiring diagrams and a step-by-step build and product guide in [`hardware/sentineledge-duo/BUILD_GUIDE.md`](hardware/sentineledge-duo/BUILD_GUIDE.md). Open `hardware/sentineledge-duo/viewer.html` in a browser for an interactive 3D view.
+
 ## Roadmap and progress
 
 ```text

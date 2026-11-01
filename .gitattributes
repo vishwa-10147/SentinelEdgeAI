@@ -3,3 +3,7 @@
 packaging/sentinelctl text eol=lf
 *.service text eol=lf
 *.timer text eol=lf
+
+# Hardware design files are not part of the device package (scripts/build_pi_package.sh uses git archive).
+hardware/ export-ignore
+*.stl binary

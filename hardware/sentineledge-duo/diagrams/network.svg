@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" font-family="Helvetica,Arial,sans-serif" font-size="12">
+  <rect width="760" height="420" fill="#ffffff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs>
+  <text x="20" y="26" font-size="16" font-weight="bold">Network wiring inside the box</text>
+  <rect x="200" y="50" width="520" height="340" rx="10" fill="#f6f8fa" stroke="#55606b" stroke-dasharray="6 4"/>
+  <text x="210" y="70" fill="#55606b">SentinelEdge Duo enclosure</text>
+  <!-- outside -->
+  <rect x="20" y="100" width="140" height="44" rx="6" fill="#fff" stroke="#333"/><text x="90" y="127" text-anchor="middle">Router / firewall</text>
+  <rect x="20" y="200" width="140" height="44" rx="6" fill="#fff" stroke="#333"/><text x="90" y="227" text-anchor="middle">LAN switch</text>
+  <rect x="20" y="310" width="140" height="44" rx="6" fill="#fff" stroke="#333"/><text x="90" y="331" text-anchor="middle">Admin laptop /</text><text x="90" y="345" text-anchor="middle">management VLAN</text>
+  <!-- front ports -->
+  <rect x="200" y="106" width="70" height="30" fill="#ddd" stroke="#333"/><text x="235" y="126" text-anchor="middle" font-size="11">NET IN</text>
+  <rect x="200" y="206" width="70" height="30" fill="#ddd" stroke="#333"/><text x="235" y="226" text-anchor="middle" font-size="11">NET OUT</text>
+  <rect x="200" y="316" width="70" height="30" fill="#ddd" stroke="#333"/><text x="235" y="336" text-anchor="middle" font-size="11">MGMT</text>
+  <line x1="160" y1="122" x2="200" y2="122" stroke="#333" stroke-width="2"/>
+  <line x1="160" y1="222" x2="200" y2="222" stroke="#333" stroke-width="2"/>
+  <line x1="160" y1="332" x2="200" y2="332" stroke="#333" stroke-width="2"/>
+  <!-- Pi -->
+  <rect x="330" y="90" width="170" height="170" rx="8" fill="#2e9e5b" fill-opacity="0.15" stroke="#1f6e3f"/>
+  <text x="415" y="110" text-anchor="middle" font-weight="bold">Raspberry Pi 5 (sensor)</text>
+  <rect x="345" y="118" width="140" height="22" fill="#fff" stroke="#1f6e3f"/><text x="415" y="133" text-anchor="middle" font-size="11">eth0 (on-board)</text>
+  <rect x="345" y="210" width="140" height="22" fill="#fff" stroke="#1f6e3f"/><text x="415" y="225" text-anchor="middle" font-size="11">eth1 (USB 3 NIC A)</text>
+  <rect x="345" y="236" width="140" height="22" fill="#fff" stroke="#1f6e3f"/><text x="415" y="251" text-anchor="middle" font-size="11">eth2 (USB 3 NIC B)</text>
+  <text x="415" y="168" text-anchor="middle" font-size="11">br0 = eth0 + eth1</text>
+  <text x="415" y="183" text-anchor="middle" font-size="11">(inline bridge, no IP)</text>
+  <line x1="270" y1="122" x2="345" y2="129" stroke="#333" stroke-width="2"/>
+  <line x1="270" y1="222" x2="345" y2="221" stroke="#333" stroke-width="2"/>
+  <!-- switch -->
+  <rect x="330" y="300" width="170" height="70" rx="8" fill="#3b6fd6" fill-opacity="0.15" stroke="#2a4f99"/>
+  <text x="415" y="322" text-anchor="middle" font-weight="bold">Internal 5-port switch</text>
+  <text x="415" y="340" text-anchor="middle" font-size="11">management + sensor↔brain link</text>
+  <text x="415" y="356" text-anchor="middle" font-size="11">(e.g. 192.168.77.0/24, isolated)</text>
+  <line x1="270" y1="332" x2="330" y2="334" stroke="#333" stroke-width="2"/>
+  <line x1="485" y1="247" x2="470" y2="300" stroke="#333" stroke-width="2"/>
+  <!-- Jetson -->
+  <rect x="560" y="200" width="140" height="120" rx="8" fill="#76b900" fill-opacity="0.18" stroke="#4d7a00"/>
+  <text x="630" y="222" text-anchor="middle" font-weight="bold">Jetson Orin Nano</text>
+  <text x="630" y="238" text-anchor="middle" font-weight="bold">(brain)</text>
+  <text x="630" y="262" text-anchor="middle" font-size="11">console :443</text>
+  <text x="630" y="278" text-anchor="middle" font-size="11">sensor link :9443 (mTLS)</text>
+  <text x="630" y="294" text-anchor="middle" font-size="11">eth0 → internal switch</text>
+  <line x1="500" y1="335" x2="560" y2="300" stroke="#333" stroke-width="2"/>
+  <text x="20" y="404" font-size="11" fill="#444">Passive mode: connect only NET IN to a SPAN/mirror port; NET OUT stays unused. Inline mode: NET IN to the router, NET OUT to the LAN switch.</text>
+</svg>
