@@ -99,11 +99,24 @@ if __name__ == '__main__':
 
 
 def available():
-    """True when this host can build the sandbox (unprivileged user, mount and network namespaces)."""
+    """True when this host can build the whole sandbox. Builds it for real around a trivial extension: some hosts
+    allow unshare(2) but then deny the namespace setup (e.g. Ubuntu with AppArmor's userns restriction)."""
+    import shutil
     import subprocess
-    probe = ('import ctypes,sys; l=ctypes.CDLL(None, use_errno=True); '
-             f'sys.exit(0 if l.unshare(ctypes.c_int({CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWNET})) == 0 else 1)')
+    import tempfile
+    d = tempfile.mkdtemp(prefix='sandbox-probe-')
     try:
-        return subprocess.run([sys.executable, '-I', '-c', probe], timeout=10).returncode == 0
+        os.mkdir(os.path.join(d, 'ext'))
+        with open(os.path.join(d, 'ext', 'main.py'), 'w') as f:
+            f.write('pass\n')
+        spec = os.path.join(d, 'spec.json')
+        with open(spec, 'w') as f:
+            json.dump({'name': 'probe', 'dir': os.path.join(d, 'ext'), 'entry': 'main.py', 'python': sys.executable,
+                       'sdk': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sdk'), 'hide': []}, f)
+        r = subprocess.run([sys.executable, '-I', '-B', os.path.abspath(__file__), spec], timeout=20,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

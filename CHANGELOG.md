@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- **Extension sandbox availability check** builds the whole sandbox around a trivial extension instead of only trying `unshare(2)`: on hosts that allow `unshare` but deny the namespace setup afterwards (GitHub's Ubuntu runners, AppArmor userns restriction), the old check said yes, extensions were then correctly refused (fail closed), and the sandbox tests failed instead of being skipped.
+
 ## [2.18.1] - 2026-11-01
 
 The first published 2.18 release: the `v2.18.0` tag exists, but its release build failed on the fix below and nothing was published from it. Includes everything listed under 2.18.0.
