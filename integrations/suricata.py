@@ -32,12 +32,16 @@ def finding_from_eve(event):
 
 
 class EveTailer:
-    def __init__(self, path=None, on_finding=None, poll=0.5):
+    """Follows a JSON-lines log across rotation. parse(event) -> item or None; on_finding(item)."""
+
+    def __init__(self, path=None, on_finding=None, poll=0.5, parse=finding_from_eve, from_start=False):
         self.path = path or os.environ.get('SENTINEL_SURICATA_EVE', DEFAULT_EVE)
         self.on_finding = on_finding
         self.poll = poll
+        self.parse = parse
         self._stop = threading.Event()
         self.count = 0
+        self._handle, self._inode, self._from_start = None, None, from_start
 
     def read_new(self, handle):
         out = []
@@ -49,32 +53,36 @@ class EveTailer:
                 handle.seek(handle.tell() - len(line))   # partial line: wait for the rest
                 break
             try:
-                f = finding_from_eve(json.loads(line))
+                f = self.parse(json.loads(line))
             except (ValueError, TypeError):
                 continue
             if f:
                 out.append(f)
         return out
 
+    def step(self):
+        """Read whatever is new once; reopens the file after rotation or truncation."""
+        try:
+            st = os.stat(self.path)
+            if self._handle is None or st.st_ino != self._inode or st.st_size < self._handle.tell():
+                if self._handle:
+                    self._handle.close()
+                self._handle = open(self.path, 'r', encoding='utf-8', errors='replace')
+                self._inode = st.st_ino
+                if not self._from_start and self.count == 0:
+                    self._handle.seek(0, os.SEEK_END)    # only new events after start-up
+                self._from_start = True
+            for f in self.read_new(self._handle):
+                self.count += 1
+                if self.on_finding:
+                    self.on_finding(f)
+        except OSError:
+            pass
+
     def run(self, from_start=False):
-        handle, inode = None, None
+        self._from_start = self._from_start or from_start
         while not self._stop.is_set():
-            try:
-                st = os.stat(self.path)
-                if handle is None or st.st_ino != inode or st.st_size < handle.tell():
-                    if handle:
-                        handle.close()
-                    handle = open(self.path, 'r', encoding='utf-8', errors='replace')
-                    inode = st.st_ino
-                    if not from_start and self.count == 0:
-                        handle.seek(0, os.SEEK_END)      # only new alerts after start-up
-                    from_start = True
-                for f in self.read_new(handle):
-                    self.count += 1
-                    if self.on_finding:
-                        self.on_finding(f)
-            except OSError:
-                pass
+            self.step()
             self._stop.wait(self.poll)
 
     def stop(self):

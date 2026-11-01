@@ -213,6 +213,20 @@ This is documentation support for an audit, not a certification or an audit opin
 * SIEM and notifications: `PUT /api/integrations` with sinks of type `syslog` (RFC 5424 or CEF, UDP/TCP/TLS), `webhook` (HMAC-signed), `jsonl`, `slack`, `teams` or `email`; `POST /api/integrations/test` sends a test alert.
 * Threat intelligence: `python -m intel add-feed <name> <https url> --format plain|stix|taxii`, updated daily; or import a file with `python -m intel import`.
 * Suricata on the sensor: SentinelEdgeAI follows `/var/log/suricata/eve.json` automatically.
+* **Zeek on the sensor** (busy links, Phase 9). Zeek captures and parses in C++. SentinelEdgeAI follows its JSON logs and feeds them to its own detectors, which work as usual:
+  - `conn.log` feeds the flow detectors.
+  - `dns.log` feeds the DNS detector.
+  - `ssl.log` feeds the TLS detector and the certificate checks.
+  - `smb_mapping`, `ntlm`, `dce_rpc` and `kerberos` feed the lateral-movement detector.
+  - `modbus` and `dnp3` feed the OT detector.
+  - `notice.log` entries become findings.
+
+  To set it up:
+  1. Make Zeek write JSON: put `@load policy/tuning/json-logs` in `local.zeek`. Optional: the `zeek/foxio/ja4` package adds JA4/JA4S to `ssl.log`.
+  2. Make the log directory readable by the `sentinel` user.
+  3. Set `SENTINEL_ZEEK_LOGS` if the directory is not `/opt/zeek/logs/current`.
+
+  When that directory exists, its logs are followed alongside the Python capture. Set `SENTINEL_CAPTURE=zeek` to make Zeek the only engine. In that mode the Python capture does not start, so model scores and the forensic packet buffer are not available. Use it when the link is faster than the Pi's ~120k packets/s.
 * Monitoring: scrape the engine on `:9101` and the API's `/metrics` (HTTPS, Viewer token); import `deploy/grafana/dashboards/sentinel_operations.json` and `deploy/monitoring/sentinel_alerts.yml`.
 
 ## 9. Backups and updates

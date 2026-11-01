@@ -24,6 +24,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Lateral movement** (Phase 9, `detection/lateral.py`): SMB2 headers (tree-connect share, NTLM authentication, DCE-RPC binds on named pipes), DCE-RPC on 135 and the Kerberos message type; no payload kept. Findings: admin share use (T1021.002), remote service control/PsExec (T1569.002), remote scheduled tasks (T1053.005), DCSync from a non-replicator (T1003.006), NTLM fan-out / pass-the-hash pattern (T1550.002), Kerberos ticket bursts (T1558.003 / T1110.003) and admin-service fan-out to new hosts over SMB/RDP/WinRM/RPC/SSH (T1021). Learning (7 days) persists in `data/lateral.db` (`SENTINEL_LATERAL_DB`). Only small SMB segments (≤ 1200 bytes, the control messages) take the slow path, so file transfers stay on the fast path.
 - **Server-side TLS** (Phase 9, `detection/tls.py`): JA4S fingerprints (matched against the blocklist and threat intel) and, for TLS ≤ 1.2 to external servers, certificate anomalies: self-signed, valid under 3 days, expired / not yet valid, or not issued for the SNI the client asked for. The server handshake is reassembled over up to 8 segments; the fast path follows a ServerHello for its next segments.
 
+- **Zeek as a sensor engine** (Phase 9, `integrations/zeek.py`): the engine follows Zeek's JSON logs (`SENTINEL_ZEEK_LOGS`, rotation-safe) and feeds conn/dns/ssl/notice/smb_mapping/ntlm/dce_rpc/kerberos/modbus/dnp3 to the existing detectors; `SENTINEL_CAPTURE=zeek` makes Zeek the only engine. The Suricata tailer is now reusable (`EveTailer(parse=…)`, `step()`).
+- **SentinelEdge Duo hardware** (`hardware/sentineledge-duo/`): parametric enclosure for a Pi 5 sensor + Jetson brain in one box, STL files, diagrams, interactive viewer and a build and product guide.
+
 ### Fixed
 - `docs/API.md` regenerated: the forensics and asset-context endpoints were missing, which failed the API reference test.
 

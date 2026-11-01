@@ -353,8 +353,9 @@ The phases below address these, in that order.
 - [x] Lateral movement: SMB2 / DCE-RPC / Kerberos header metadata and seven detectors (`detection/lateral.py`), plus the console panel. LDAP query metadata is not parsed yet.
 - [x] Encrypted traffic: JA4S and certificate anomalies (self-signed, short-lived, expired, name mismatch). JA4H (plain HTTP) and session-rhythm analysis beyond the beaconing detector are still open.
 - [x] Fleet: remote actions and fleet-wide alert search (Phase 8 commits).
-- [ ] Zeek as a first-class sensor engine (Suricata `eve.json` input already exists).
+- [x] Zeek as a sensor engine (`integrations/zeek.py`): its JSON logs feed the flow, DNS, TLS, lateral-movement and OT detectors and its notices become findings; `SENTINEL_CAPTURE=zeek` for busy links.
 - [ ] Captured lab traffic from real Windows domains and PLCs to validate the new parsers.
+- [x] Hardware: SentinelEdge Duo enclosure (Pi 5 sensor + Jetson brain in one box), `hardware/sentineledge-duo/`. Not yet printed and test-fitted.
 
 ## Phase 10 — Assisted operations (v4.0)
 

@@ -112,6 +112,18 @@ if __name__ == "__main__":
     except Exception:
         logger.exception("Suricata integration failed to start")
 
+    zeek_only = os.environ.get("SENTINEL_CAPTURE", "auto").lower() == "zeek"
+    try:
+        from capture.sniffer import alert_logger
+        from integrations.zeek import start_in_engine as start_zeek
+        start_zeek(alert_logger, required=zeek_only)
+    except Exception:
+        logger.exception("Zeek integration failed to start")
+    if zeek_only:
+        # Zeek captures and parses; this process only runs the detectors on its logs
+        logger.warning("capture: Zeek is the engine (SENTINEL_CAPTURE=zeek); Python capture not started")
+        threading.Event().wait()                     # blocks for the life of the service
+
     interface = device_setup.capture_interface()
     logger.info("Starting SentinelEdge AI Flow Engine on %s", interface or "the default interface")
     threading.Thread(target=_watch_capture_interface, args=(interface, logger), daemon=True).start()
