@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.14.1] - 2026-11-01
+
+### Security
+- `core/assistant.py` and its test held literal invisible bidirectional characters (U+200B-U+200F, U+202A-U+202E, U+2066-U+2069) inside the assistant's text-cleaning pattern and an injection sample, the "Trojan Source" pattern Bandit flags as high severity (B613). Behaviour was correct, but source must never contain characters that display differently from how they run; both now use ASCII escape sequences only. No other file added since v2.9.3 contains such characters (checked).
+
 ## [2.14.0] - 2026-11-01
 
 Phase 10: the optional local assistant. With it, every main Phase 10 item is built.
