@@ -106,6 +106,8 @@ Roles, two-step sign-in, accounts and audit work as for OpenID Connect above, wi
 
 Tested against OpenLDAP 2.6 over LDAPS and StartTLS (including refusal of an untrusted or wrongly named certificate); not yet against a live Active Directory.
 
+OpenID Connect and SAML were both tested end to end against Keycloak 26 (`bash tests/live/run_keycloak_sso.sh`): a mapped analyst signs in over each, an operator is refused without IdP MFA, a user in no mapped group is refused.
+
 ## 5. Enforcement
 
 The appliance starts in dry run: actions are recorded but not applied. To enforce:
@@ -279,7 +281,7 @@ This is documentation support for an audit, not a certification or an audit opin
 
 ## 8. Integrations and threat intelligence
 
-* SIEM and notifications: `PUT /api/integrations` with sinks of type `syslog` (RFC 5424 or CEF, UDP/TCP/TLS), `webhook` (HMAC-signed), `jsonl`, `slack`, `teams` or `email`; `POST /api/integrations/test` sends a test alert.
+* SIEM and notifications: `PUT /api/integrations` with sinks of type `syslog` (RFC 5424 or CEF, UDP/TCP/TLS), `webhook` (HMAC-signed), `jsonl`, `slack`, `teams` or `email`; `POST /api/integrations/test` sends a test alert. For Elastic, `deploy/elastic/filebeat.yml` reads the `jsonl` file and listens for `syslog` over TCP (RFC 5424 structured data and CEF parsed into fields); verified with Elasticsearch and Filebeat 8.15 (`bash tests/live/run_elastic.sh`).
 * Threat intelligence: `python -m intel add-feed <name> <https url> --format plain|stix|taxii`, updated daily; or import a file with `python -m intel import`.
 * Suricata on the sensor: SentinelEdgeAI follows `/var/log/suricata/eve.json` automatically.
 * **Zeek on the sensor** (busy links, Phase 9). Zeek captures and parses in C++. SentinelEdgeAI follows its JSON logs and feeds them to its own detectors, which work as usual:

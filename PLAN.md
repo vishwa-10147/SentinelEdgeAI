@@ -328,7 +328,7 @@ The phases below address these, in that order.
 * Pre-built OS images for Pi and Jetson (first boot opens the setup wizard).
 * UNSW-NB15 and CIC-IoT2023 evaluation (loaders ready; datasets to fetch), and a Suricata comparison on the same traffic (done on a lab capture, v2.17; real captures pending).
 * ~~The release Isolation Forest moves to Ed25519 (devices hold only a public key).~~ Done (v2.17): signed offline with Ed25519, public key pinned on each device at first install, CI verifies with the public key only.
-* A real Splunk/Elastic run; ~~signed update channels (`stable`, `beta`)~~ (done in v2.17: Ed25519-signed manifests naming a release and its package SHA-256, expiry and rollback protection, `ops/channels.py`).
+* ~~A real Elastic run~~ (done: Elasticsearch/Filebeat 8.15, all three paths, `tests/live/run_elastic.sh`); a real Splunk run (Splunk has no arm64 image; needs an x86 host); ~~signed update channels (`stable`, `beta`)~~ (done in v2.17: Ed25519-signed manifests naming a release and its package SHA-256, expiry and rollback protection, `ops/channels.py`).
 
 **Exit:** pen-test report clean; beta report published; zero appliance-caused outages.
 
@@ -378,8 +378,8 @@ The phases below address these, in that order.
 - [x] Optional local assistant (`core/assistant.py`): read-only, network text fenced as untrusted data, local-only model server with systemd limits, one question at a time, off by default; template / Ollama / OpenAI-compatible backends. Run with a real model (qwen2.5:1.5b, Ollama, Pi 5 CPU: 12–80 s per answer); that run found the model following injected instructions, now removed before the model and flagged in the answer. Not yet run on the Jetson.
 - [x] Notifications (`integrations/notify.py`): immediate approval requests over e-mail / Slack / Teams / webhook with a phone approval page, daily/weekly digests.
 - [x] Native mobile push: Web Push (`integrations/webpush.py`, service worker and web app manifest): approval requests as phone/browser notifications per Operator, RFC 8291 encryption (checked against the RFC's test vector) and VAPID with `cryptography`, push-service allowlist, only current Operators/Admins. Not yet tried on a real phone (needs a trusted certificate on the console).
-- [x] SSO with OpenID Connect (`core/sso.py`): Entra ID / Google / Okta / Keycloak, IdP groups (incl. AD groups synced to the IdP) mapped to roles, MFA from `amr`. Not yet tried against a live IdP.
-- [x] SAML 2.0 (`core/saml.py`, signatures by `signxml`, values only from the signed element, wrapping/comment/replay/unsolicited protections) and direct LDAP/AD password sign-in (`core/ldap_auth.py`, LDAPS/StartTLS only, groups incl. nested AD groups, local TOTP for Operator/Admin). LDAP tested against OpenLDAP 2.6 over TLS; not yet against a live AD or SAML IdP.
+- [x] SSO with OpenID Connect (`core/sso.py`): Entra ID / Google / Okta / Keycloak, IdP groups (incl. AD groups synced to the IdP) mapped to roles, MFA from `amr`. Tested live against Keycloak 26 (OIDC and SAML, `tests/live/run_keycloak_sso.sh`); not yet against Entra ID or Okta.
+- [x] SAML 2.0 (`core/saml.py`, signatures by `signxml`, values only from the signed element, wrapping/comment/replay/unsolicited protections) and direct LDAP/AD password sign-in (`core/ldap_auth.py`, LDAPS/StartTLS only, groups incl. nested AD groups, local TOTP for Operator/Admin). LDAP tested against OpenLDAP 2.6 over TLS, SAML live against Keycloak 26; not yet against a live AD.
 - [x] Ticketing and SOAR (`integrations/ticketing.py`): Jira, ServiceNow, TheHive 5 and signed webhooks, one ticket per incident, comments, resolve both ways through an authenticated inbound endpoint. Not yet run against live Jira/ServiceNow/TheHive instances.
 - [x] Guided tuning (`detection/guided_tuning.py`): scoped, expiring downgrade/suppress rules suggested from analyst false-positive labels, console **Tuning** panel.
 

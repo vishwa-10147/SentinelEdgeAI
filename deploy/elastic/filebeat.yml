@@ -1,0 +1,31 @@
+# Filebeat 8 for SentinelEdgeAI alerts into Elasticsearch / Elastic Cloud / OpenSearch-compatible ingest.
+# Two inputs, use either or both:
+#   1. the JSON-lines sink (Integrations: type "jsonl", path logs/alerts.jsonl) read from disk;
+#   2. the syslog sink over TCP (type "syslog", transport "tcp", format "rfc5424" or "cef"), port 5514.
+# Tested with Elasticsearch / Filebeat 8.15.3 (tests/live/run_elastic.sh).
+filebeat.inputs:
+  - type: filestream
+    id: sentineledgeai-jsonl
+    paths: ["/var/lib/sentinel/logs/alerts.jsonl"]
+    parsers:
+      - ndjson:
+          target: "sentinel"
+          add_error_key: true
+    fields: {pipeline: jsonl}
+  - type: tcp
+    id: sentineledgeai-syslog
+    host: "0.0.0.0:5514"
+    framing: rfc6587
+    fields: {pipeline: syslog}
+    processors:
+      - syslog: {field: message, format: rfc5424}
+      - if:
+          contains: {message: "CEF:0|"}
+        then:
+          - decode_cef: {field: message}
+output.elasticsearch:
+  hosts: ["${ES_HOST:http://localhost:9200}"]
+  index: "sentineledgeai"                    # a data stream; Elasticsearch rolls it over
+setup.template.name: "sentineledgeai"
+setup.template.pattern: "sentineledgeai*"
+setup.ilm.enabled: false
