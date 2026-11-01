@@ -26,14 +26,37 @@ def default_path():
     return os.environ.get('SENTINEL_PEERS_DB') or os.path.join(ROOT, 'data', 'peers.db')
 
 
-def _private4(ip):
+def internal6_networks():
+    """Global IPv6 prefixes the site uses internally (SENTINEL_INTERNAL_PREFIXES6, comma-separated).
+
+    Unique-local (fc00::/7) and link-local addresses are always internal; many networks
+    also give hosts global addresses, which only this setting can mark as internal.
+    """
+    out = []
+    for item in os.environ.get('SENTINEL_INTERNAL_PREFIXES6', '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            net = ipaddress.ip_network(item, strict=False)
+        except ValueError:
+            continue
+        if net.version == 6:
+            out.append(net)
+    return out
+
+
+def _internal(ip):
+    """True for an internal address, False for an internet one, None when it is not an address."""
     try:
         a = ipaddress.ip_address(ip)
     except ValueError:
         return None
-    if a.version != 4:
+    if a.version == 4:
+        return a.is_private or a.is_link_local or a in ipaddress.ip_network('100.64.0.0/10')
+    if a.is_multicast or a.is_unspecified or a.is_loopback:
         return None
-    return a.is_private or a.is_link_local or a in ipaddress.ip_network('100.64.0.0/10')
+    return a.is_private or a.is_link_local or any(a in net for net in internal6_networks())
 
 
 class PeerStore:
@@ -76,9 +99,9 @@ class PeerStore:
         src, dst = record.get('src'), record.get('dst')
         proto = str(record.get('proto') or '').lower()
         dport = int(record.get('dport') or 0)
-        if proto not in ('tcp', 'udp') or not dport or not _private4(src):
+        if proto not in ('tcp', 'udp') or not dport or not _internal(src):
             return
-        internal = _private4(dst)
+        internal = _internal(dst)
         if internal is None:
             return
         dst = dst if internal else EXTERNAL

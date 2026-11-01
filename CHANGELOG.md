@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **IPv6 containment and OT segmentation** (Phase 9 IPv6 parity): per-family nftables sets (`contain6`, `contain_peers6`, `contain_ext6`, `ot_guarded6`, `ot_allowed6`) in the inet and bridge tables; peer profiles for IPv6 devices; IPv6 controllers guarded with same-family masters only. Internal IPv6 = unique-local, link-local and `SENTINEL_INTERNAL_PREFIXES6`, one definition shared by the profiles and the firewall. New real-kernel test `tests/firewall_netns/run_ipv6_netns.sh` (20/20).
+
+### Fixed
+- **IPv6 quarantine cut the host off completely.** The quarantine rules allowed DNS and DHCPv4 but dropped ICMPv6 neighbour discovery, without which an IPv6 host cannot reach anything on the link, including the quarantine notice page. Restricted IPv6 hosts now keep neighbour/router discovery and DHCPv6 (udp/547). Shown on the real kernel: with the rule removed, 3 of the new test's checks fail.
+
 ## [2.14.1] - 2026-11-01
 
 ### Security

@@ -476,20 +476,19 @@ docs/         admin guide, runbooks, troubleshooting, API reference, performance
 1. **Self-signed certificate by default.** Browsers warn until you import a certificate from your own CA (`sentinelctl tls import`).
 2. **Jetson brain not yet run on hardware.** Two-node mode is verified in simulation and on the Pi; GPU models wait for the Jetson.
 3. **Passive placement cannot stop traffic.** Blocks, quarantine, containment and OT segmentation act on traffic to or through the device. On a mirror port SentinelEdgeAI alerts only.
-4. **Containment and OT segmentation are IPv4 only.** Use quarantine for IPv6 hosts.
-5. **Bridged traffic has no conntrack on this kernel.** In inline bridge mode, containment stops new TCP connections and off-profile UDP, but packets of existing connections pass.
-6. **New Phase 9 parsers, ticketing and SSO not yet tried on live systems.** The SMB/RPC/Kerberos, IEC 104, S7comm, EtherNet/IP and MQTT parsers are tested on generated packets; the Jira, ServiceNow and TheHive targets and OpenID Connect sign-in against simulated services.
-7. **Not yet externally tested.** The penetration test and the 30-day field beta are still to come ([PENTEST_SCOPE](docs/PENTEST_SCOPE.md), [BETA_PROGRAM](docs/BETA_PROGRAM.md)).
-8. **Floods degrade detection.** Under a flood of spoofed addresses memory stays bounded and you get a "capture overloaded" alert, but detection is partial until the flood stops; stopping it needs your router, switch or the inline rate limit.
-9. **Service memory limits are inactive on stock Raspberry Pi OS**, which boots with the memory cgroup off. The in-process limits still apply; add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` to enable the systemd ones.
-10. **Throughput.** A Pi 5 captures about 120,000 packets/s (~0.5–1 Gb/s of typical traffic). Busier links need the Jetson brain or, later, an x86 sensor.
+4. **Bridged traffic has no conntrack on this kernel.** In inline bridge mode, containment stops new TCP connections and off-profile UDP, but packets of existing connections pass.
+5. **New Phase 9 parsers, ticketing and SSO not yet tried on live systems.** The SMB/RPC/Kerberos, IEC 104, S7comm, EtherNet/IP and MQTT parsers are tested on generated packets; the Jira, ServiceNow and TheHive targets and OpenID Connect sign-in against simulated services.
+6. **Not yet externally tested.** The penetration test and the 30-day field beta are still to come ([PENTEST_SCOPE](docs/PENTEST_SCOPE.md), [BETA_PROGRAM](docs/BETA_PROGRAM.md)).
+7. **Floods degrade detection.** Under a flood of spoofed addresses memory stays bounded and you get a "capture overloaded" alert, but detection is partial until the flood stops; stopping it needs your router, switch or the inline rate limit.
+8. **Service memory limits are inactive on stock Raspberry Pi OS**, which boots with the memory cgroup off. The in-process limits still apply; add `cgroup_enable=memory` to `/boot/firmware/cmdline.txt` to enable the systemd ones.
+9. **Throughput.** A Pi 5 captures about 120,000 packets/s (~0.5–1 Gb/s of typical traffic). Busier links need the Jetson brain or, later, an x86 sensor.
 
 ---
 
 ## Contributing
 
 1. Open an issue describing the change.
-2. Add tests for new behaviour. `pytest -q`, Bandit and pip-audit must pass. For capture or enforcement changes, also run the real-kernel tests: `sudo bash tests/firewall_netns/run_enforcement_netns.sh`, `run_segmentation_netns.sh`, `run_containment_netns.sh` and `run_flood_netns.sh`.
+2. Add tests for new behaviour. `pytest -q`, Bandit and pip-audit must pass. For capture or enforcement changes, also run the real-kernel tests: `sudo bash tests/firewall_netns/run_enforcement_netns.sh`, `run_segmentation_netns.sh`, `run_containment_netns.sh`, `run_ipv6_netns.sh` and `run_flood_netns.sh`.
 3. Update [CHANGELOG.md](CHANGELOG.md) and the documentation the change affects.
 4. Changes to the firewall, authentication, signing or the update path need a second reviewer.
 

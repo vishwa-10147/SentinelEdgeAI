@@ -151,11 +151,11 @@ def test_scores_lists_every_known_device(monkeypatch):
 
 # ---------- containment ----------
 
-def test_contain_needs_a_learned_ipv4_profile():
+def test_contain_needs_a_learned_profile():
     with pytest.raises(ValueError, match='no learned peer profile'):
         fw.add_restriction('contain', DEV, ttl=60)
-    with pytest.raises(ValueError, match='IPv4 only'):
-        fw.add_restriction('contain', 'fd00::5', ttl=60)
+    with pytest.raises(ValueError, match='no learned peer profile'):
+        fw.add_restriction('contain', 'fd00::5', ttl=60)        # IPv6 is accepted once it has a profile
     with pytest.raises(ValueError, match='protected host'):
         fw.add_restriction('contain', '192.168.1.1', ttl=60)
     s = PeerStore()
@@ -183,3 +183,35 @@ def test_enforcement_script_wires_containment_in_both_tables():
     assert 'add rule inet sentinel contain_check ct state established,related return' in script
     assert 'add rule bridge sentinel contain_check tcp flags & (syn | ack) != syn return' in script
     assert 'add rule bridge sentinel forward ip saddr @contain jump contain_check' in script
+
+
+DEV6, PEER6 = 'fd00:1::50', 'fd00:1::10'
+
+
+def test_ipv6_containment_uses_ipv6_sets():
+    s = PeerStore()
+    s.observe(flow(PEER6, 445, src=DEV6, ts=time.time() - 8 * DAY))
+    s.observe(flow(PEER, 22, src=DEV6, ts=time.time() - 8 * DAY))       # an IPv4 peer cannot go in an IPv6 set
+    s.observe(flow('2606:4700::1111', 443, src=DEV6))
+    s.close()
+    item = fw.add_restriction('contain', DEV6, ttl=60, reason='untrusted')
+    assert item['kind'] == 'contain'
+    script = fw._contain_elements_script(bridge=True)
+    assert f'add element inet sentinel contain_peers6 {{ {DEV6} . {PEER6} . tcp . 445 }}' in script
+    assert f'add element bridge sentinel contain_ext6 {{ {DEV6} . tcp . 443 }}' in script
+    assert f'{DEV6} . {PEER} .' not in script and 'contain_peers {' not in script
+
+
+def test_enforcement_script_has_ipv6_containment_and_link_essentials(monkeypatch):
+    monkeypatch.setenv('SENTINEL_INTERNAL_PREFIXES6', '2001:db8:10::/48')
+    script = fw._enforcement_script(bridge=True)
+    assert 'add rule inet sentinel enf_forward ip6 saddr @contain6 jump contain_check' in script
+    assert 'add rule bridge sentinel forward ip6 saddr @contain6 jump contain_check' in script
+    assert 'add set bridge sentinel contain6 { type ipv6_addr ; }' in script
+    assert 'add rule inet sentinel contain_check ip6 daddr { fc00::/7, fe80::/10, 2001:db8:10::/48 } drop' in script
+    # without neighbour discovery an IPv6 host cannot reach anything, not even DNS or the quarantine page
+    nd = 'icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit }'
+    assert f'add rule inet sentinel contain_check {nd} return' in script
+    assert f'add rule inet sentinel quarantine_check {nd} return' in script
+    assert f'add rule bridge sentinel forward ip6 saddr @quarantine6 {nd} accept' in script
+    assert 'udp dport { 53, 67, 68, 547 } return' in script

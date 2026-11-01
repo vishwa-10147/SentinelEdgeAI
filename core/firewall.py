@@ -521,6 +521,21 @@ RESTRICTION_SETS = {
     'contain': {4: 'contain', 6: 'contain6'},
 }
 PRIVATE4 = '{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 }'
+# IPv6 counts as internal when unique-local or link-local, plus any global prefixes the site
+# uses internally (SENTINEL_INTERNAL_PREFIXES6, comma-separated, e.g. "2001:db8:10::/48")
+# without them a contained host could still reach globally addressed internal hosts on its learned
+# internet ports
+PRIVATE6_BASE = ('fc00::/7', 'fe80::/10')
+# what an IPv6 host needs to exist on the link at all: neighbour and router discovery
+ICMP6_LINK = '{ nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit }'
+
+
+def private6():
+    """The nft set of internal IPv6 networks; the same definition as the peer profiles (detection.peers)."""
+    from detection.peers import internal6_networks
+    return '{ ' + ', '.join(list(PRIVATE6_BASE) + [str(n) for n in internal6_networks()]) + ' }'
+
+
 BRIDGE_TABLE = ('bridge', 'sentinel')
 
 
@@ -569,7 +584,8 @@ def _enforcement_script(bridge=None):
         f'add set {t} rlmeter6 {{ type ipv6_addr ; flags dynamic ; timeout 1m ; }}',
         f'add chain {t} quarantine_check',
         f'flush chain {t} quarantine_check',
-        f'add rule {t} quarantine_check udp dport {{ 53, 67, 68 }} return',
+        f'add rule {t} quarantine_check udp dport {{ 53, 67, 68, 547 }} return',
+        f'add rule {t} quarantine_check icmpv6 type {ICMP6_LINK} return',
         f'add rule {t} quarantine_check tcp dport {{ 53, {captive} }} return',
         f'add rule {t} quarantine_check ct state established,related return',
         f'add rule {t} quarantine_check drop',
@@ -584,6 +600,7 @@ def _enforcement_script(bridge=None):
             f'add rule {t} {chain} ip saddr @quarantine jump quarantine_check',
             f'add rule {t} {chain} ip6 saddr @quarantine6 jump quarantine_check',
             f'add rule {t} {chain} ip saddr @contain jump contain_check',
+            f'add rule {t} {chain} ip6 saddr @contain6 jump contain_check',
             f'add rule {t} {chain} ip saddr @ratelimit {limit4}',
             f'add rule {t} {chain} ip6 saddr @ratelimit6 {limit6}',
         ]
@@ -597,7 +614,7 @@ def _enforcement_script(bridge=None):
                   f'add set {b} blacklist {{ type ipv4_addr ; }}', f'add set {b} blacklist6 {{ type ipv6_addr ; }}',
                   f'add set {b} quarantine {{ type ipv4_addr ; }}', f'add set {b} quarantine6 {{ type ipv6_addr ; }}',
                   f'add set {b} qmac {{ type ether_addr ; }}',
-                  f'add set {b} contain {{ type ipv4_addr ; }}']
+                  f'add set {b} contain {{ type ipv4_addr ; }}', f'add set {b} contain6 {{ type ipv6_addr ; }}']
         lines += _contain_chain(b, conntrack=False)
         lines += [f'add chain {b} forward {{ type filter hook forward priority -10 ; policy accept ; }}',
                   f'flush chain {b} forward']
@@ -607,8 +624,12 @@ def _enforcement_script(bridge=None):
             'ether saddr @qmac udp dport { 53, 67, 68 } accept',
             'ether saddr @qmac drop',
             'ip saddr @quarantine udp dport { 53, 67, 68 } accept',
-            'ip saddr @quarantine drop', 'ip6 saddr @quarantine6 drop',
+            'ip saddr @quarantine drop',
+            'ip6 saddr @quarantine6 udp dport { 53, 547 } accept',
+            f'ip6 saddr @quarantine6 icmpv6 type {ICMP6_LINK} accept',
+            'ip6 saddr @quarantine6 drop',
             'ip saddr @contain jump contain_check',
+            'ip6 saddr @contain6 jump contain_check',
         )]
     return '\n'.join(lines) + '\n'
 
@@ -621,13 +642,19 @@ def _contain_chain(t, conntrack):
     """
     lines = [f'add set {t} contain_peers {{ type ipv4_addr . ipv4_addr . inet_proto . inet_service ; }}',
              f'add set {t} contain_ext {{ type ipv4_addr . inet_proto . inet_service ; }}',
+             f'add set {t} contain_peers6 {{ type ipv6_addr . ipv6_addr . inet_proto . inet_service ; }}',
+             f'add set {t} contain_ext6 {{ type ipv6_addr . inet_proto . inet_service ; }}',
              f'add chain {t} contain_check', f'flush chain {t} contain_check']
     first = 'ct state established,related return' if conntrack else 'tcp flags & (syn | ack) != syn return'
     lines += [f'add rule {t} contain_check {r}' for r in (
-        first, 'udp dport { 53, 67, 68 } return',
+        first, 'udp dport { 53, 67, 68, 547 } return',
+        f'icmpv6 type {ICMP6_LINK} return',
         'ip saddr . ip daddr . meta l4proto . th dport @contain_peers return',
+        'ip6 saddr . ip6 daddr . meta l4proto . th dport @contain_peers6 return',
         f'ip daddr {PRIVATE4} drop',
+        f'ip6 daddr {private6()} drop',
         'ip saddr . meta l4proto . th dport @contain_ext return',
+        'ip6 saddr . meta l4proto . th dport @contain_ext6 return',
         'drop')]
     return lines
 
@@ -636,24 +663,28 @@ def _contain_elements_script(bridge=None):
     """Refill the peer sets from the learned profiles of every contained host."""
     from detection.peers import PeerStore
     contained = sorted({r['ip'] for r in _read_restrictions() if r['kind'] == 'contain'})
-    peers, ext = [], []
+    peers, ext = {4: [], 6: []}, {4: [], 6: []}
     store = PeerStore()
     try:
         for ip in contained:
+            v = _ip_version(ip)
             profile = store.profile(ip) or {'internal': [], 'external': []}
-            peers += [f'{ip} . {dst} . {proto} . {port}' for dst, proto, port in profile['internal']]
-            ext += [f'{ip} . {proto} . {port}' for proto, port in profile['external']]
+            # a peer of the other address family cannot be expressed in this host's set
+            peers[v] += [f'{ip} . {dst} . {proto} . {port}' for dst, proto, port in profile['internal']
+                         if _ip_version(dst) == v]
+            ext[v] += [f'{ip} . {proto} . {port}' for proto, port in profile['external']]
     finally:
         store.close()
     tables = [NFT_TABLE] + ([BRIDGE_TABLE] if (bridge if bridge is not None else bridge_enabled()) else [])
     lines = []
     for fam, tbl in tables:
         t = f'{fam} {tbl}'
-        lines += [f'flush set {t} contain_peers', f'flush set {t} contain_ext']
-        if peers:
-            lines.append(f'add element {t} contain_peers {{ {", ".join(peers)} }}')
-        if ext:
-            lines.append(f'add element {t} contain_ext {{ {", ".join(ext)} }}')
+        for v, suffix in ((4, ''), (6, '6')):
+            lines += [f'flush set {t} contain_peers{suffix}', f'flush set {t} contain_ext{suffix}']
+            if peers[v]:
+                lines.append(f'add element {t} contain_peers{suffix} {{ {", ".join(peers[v])} }}')
+            if ext[v]:
+                lines.append(f'add element {t} contain_ext{suffix} {{ {", ".join(ext[v])} }}')
     return '\n'.join(lines) + '\n'
 
 
@@ -709,8 +740,6 @@ def add_restriction(kind, ip, ttl=None, reason='', mac=None):
         raise ValueError(f'refusing to {kind} protected host {ip} ({reason_protected})')
     if kind == 'contain':
         from detection.peers import PeerStore, learned
-        if _ip_version(ip) != 4:
-            raise ValueError('containment is IPv4 only; quarantine an IPv6 host instead')
         store = PeerStore()
         try:
             profile = store.profile(ip)

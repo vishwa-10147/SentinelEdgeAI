@@ -158,7 +158,9 @@ cd /opt/sentineledgeai/current
 sudo -u sentinel .venv/bin/python -m enforcement segment status
 ```
 
-Every change is in the audit log. The real-kernel test is `sudo bash tests/firewall_netns/run_segmentation_netns.sh`.
+Every change is in the audit log. The real-kernel test is `sudo bash tests/firewall_netns/run_segmentation_netns.sh` (IPv6: `run_ipv6_netns.sh`).
+
+**IPv6.** Containment, quarantine and OT segmentation cover IPv6 as well as IPv4. An IPv6 address counts as internal when it is unique-local (`fd00::/8`), link-local, or inside a prefix listed in `SENTINEL_INTERNAL_PREFIXES6`, for example `SENTINEL_INTERNAL_PREFIXES6=2001:db8:10::/48`. **If your LAN gives devices global IPv6 addresses, set this variable.** Without it those devices get no learned IPv6 profile, so they cannot be contained, and a contained device could reach them on ports it uses for the internet. Restricted IPv6 hosts keep neighbour discovery (without it they could not reach anything on the link, not even DNS or the quarantine page) and DHCPv6.
 
 ## 7. Two-node mode (Pi sensor + brain)
 

@@ -60,11 +60,12 @@ def _save(state):
     os.replace(tmp, path)
 
 
-def _ipv4(ip):
+def _version(ip):
+    """4 or 6 for a valid address, else None."""
     try:
-        return ipaddress.ip_address(ip).version == 4
+        return ipaddress.ip_address(ip).version
     except ValueError:
-        return False
+        return None
 
 
 def _always_allowed():
@@ -74,7 +75,7 @@ def _always_allowed():
         hosts |= management_hosts()
     except Exception:
         pass
-    return sorted(h for h in hosts if _ipv4(h) and not ipaddress.ip_address(h).is_loopback)   # loopback is never forwarded
+    return sorted(h for h in hosts if _version(h) and not ipaddress.ip_address(h).is_loopback)   # loopback is never forwarded
 
 
 def build_plan(store=None, extra=(), now=None, learning=LEARNING, always=None):
@@ -96,7 +97,7 @@ def build_plan(store=None, extra=(), now=None, learning=LEARNING, always=None):
     always = _always_allowed() if always is None else always
     controllers, learning_now, skipped = [], [], []
     for (ip, protocol), first in sorted(servers.items()):
-        if protocol not in PORTS or not _ipv4(ip):
+        if protocol not in PORTS or not _version(ip):
             continue
         reason = why_protected(ip)
         if reason:
@@ -105,18 +106,24 @@ def build_plan(store=None, extra=(), now=None, learning=LEARNING, always=None):
         if now - first < learning:
             learning_now.append({'ip': ip, 'protocol': protocol, 'learned_at': first + learning})
             continue
-        allowed = sorted({m for m in masters.get((ip, protocol), ()) if _ipv4(m)} | set(always))
+        # a rule can only pair addresses of the same family
+        v = _version(ip)
+        allowed = sorted({m for m in masters.get((ip, protocol), ()) | set(always) if _version(m) == v})
         controllers.append({'ip': ip, 'protocol': protocol, 'allowed': allowed})
     return {'created': now, 'controllers': controllers, 'learning': learning_now, 'skipped': skipped}
 
 
 def _elements(plan):
-    guarded, allowed = set(), set()
+    """({4: guarded, 6: guarded}, {4: allowed, 6: allowed}) set elements per address family."""
+    guarded, allowed = {4: set(), 6: set()}, {4: set(), 6: set()}
     for c in plan['controllers']:
+        v = _version(c['ip'])
+        if v is None:
+            continue
         for l4, port in PORTS[c['protocol']]:
-            guarded.add(f"{c['ip']} . {l4} . {port}")
-            allowed.update(f"{src} . {c['ip']} . {l4} . {port}" for src in c['allowed'])
-    return sorted(guarded), sorted(allowed)
+            guarded[v].add(f"{c['ip']} . {l4} . {port}")
+            allowed[v].update(f"{src} . {c['ip']} . {l4} . {port}" for src in c['allowed'] if _version(src) == v)
+    return {v: sorted(x) for v, x in guarded.items()}, {v: sorted(x) for v, x in allowed.items()}
 
 
 def nft_script(plan, bridge=False):
@@ -126,20 +133,23 @@ def nft_script(plan, bridge=False):
     tables = [(firewall.NFT_TABLE, True)] + ([(firewall.BRIDGE_TABLE, False)] if bridge else [])
     for (family, name), conntrack in tables:
         t = f'{family} {name}'
-        lines += [f'add table {t}',
-                  f'add set {t} ot_guarded {{ type ipv4_addr . inet_proto . inet_service ; }}',
-                  f'add set {t} ot_allowed {{ type ipv4_addr . ipv4_addr . inet_proto . inet_service ; }}',
-                  f'flush set {t} ot_guarded', f'flush set {t} ot_allowed']
-        if guarded:
-            lines.append(f'add element {t} ot_guarded {{ {", ".join(guarded)} }}')
-        if allowed:
-            lines.append(f'add element {t} ot_allowed {{ {", ".join(allowed)} }}')
+        lines.append(f'add table {t}')
+        for v, suffix, addr in ((4, '', 'ipv4_addr'), (6, '6', 'ipv6_addr')):
+            lines += [f'add set {t} ot_guarded{suffix} {{ type {addr} . inet_proto . inet_service ; }}',
+                      f'add set {t} ot_allowed{suffix} {{ type {addr} . {addr} . inet_proto . inet_service ; }}',
+                      f'flush set {t} ot_guarded{suffix}', f'flush set {t} ot_allowed{suffix}']
+            if guarded[v]:
+                lines.append(f'add element {t} ot_guarded{suffix} {{ {", ".join(guarded[v])} }}')
+            if allowed[v]:
+                lines.append(f'add element {t} ot_allowed{suffix} {{ {", ".join(allowed[v])} }}')
         lines += [f'add chain {t} {CHAIN} {{ type filter hook forward priority -15 ; policy accept ; }}',
                   f'flush chain {t} {CHAIN}']
         if conntrack:                                     # replies are never cut (bridged traffic has no conntrack)
             lines.append(f'add rule {t} {CHAIN} ct state established,related return')
         lines += [f'add rule {t} {CHAIN} ip saddr . ip daddr . meta l4proto . th dport @ot_allowed return',
-                  f'add rule {t} {CHAIN} ip daddr . meta l4proto . th dport @ot_guarded counter drop']
+                  f'add rule {t} {CHAIN} ip6 saddr . ip6 daddr . meta l4proto . th dport @ot_allowed6 return',
+                  f'add rule {t} {CHAIN} ip daddr . meta l4proto . th dport @ot_guarded counter drop',
+                  f'add rule {t} {CHAIN} ip6 daddr . meta l4proto . th dport @ot_guarded6 counter drop']
     return '\n'.join(lines) + '\n'
 
 
@@ -148,8 +158,8 @@ def _remove_kernel():
         ok, _ = firewall._run_cmd(['nft', 'list', 'chain', *table, CHAIN])
         if ok:
             firewall._run_cmd(['nft', 'delete', 'chain', *table, CHAIN])
-            firewall._run_cmd(['nft', 'delete', 'set', *table, 'ot_allowed'])
-            firewall._run_cmd(['nft', 'delete', 'set', *table, 'ot_guarded'])
+            for name in ('ot_allowed', 'ot_guarded', 'ot_allowed6', 'ot_guarded6'):
+                firewall._run_cmd(['nft', 'delete', 'set', *table, name])
 
 
 def _install(plan):
@@ -190,9 +200,10 @@ def set_mode(mode, by='cli'):
 
 def allow(src, dst, protocol, by='cli'):
     """Add an exception: `src` may command controller `dst` over `protocol`."""
-    for ip in (src, dst):
-        if not _ipv4(ip):
-            raise ValueError(f'not an IPv4 address: {ip}')
+    if _version(src) is None or _version(dst) is None:
+        raise ValueError(f'not an IP address: {src if _version(src) is None else dst}')
+    if _version(src) != _version(dst):
+        raise ValueError('host and controller must both be IPv4 or both IPv6')
     if protocol not in PORTS:
         raise ValueError(f'protocol must be one of {", ".join(PORTS)}')
     state = load()

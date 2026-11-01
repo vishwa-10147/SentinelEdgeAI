@@ -52,7 +52,7 @@ def test_nft_script_lists_every_port_of_the_protocol():
     script = seg.nft_script({'controllers': [{'ip': PLC, 'protocol': 'dnp3', 'allowed': [HMI]}]}, bridge=True)
     assert f'{PLC} . tcp . 20000, {PLC} . udp . 20000' in script
     assert f'{HMI} . {PLC} . tcp . 20000, {HMI} . {PLC} . udp . 20000' in script
-    assert script.count('counter drop') == 2                          # inet and bridge
+    assert script.count('counter drop') == 4                          # IPv4 and IPv6, in inet and bridge
     assert script.count('ct state established,related return') == 1  # bridged traffic has no conntrack
 
 
@@ -88,8 +88,10 @@ def test_refresh_takes_a_new_snapshot():
 
 
 def test_allow_validates_its_input():
-    with pytest.raises(ValueError, match='IPv4'):
+    with pytest.raises(ValueError, match='not an IP address'):
         seg.allow('not-an-ip', PLC, 'modbus')
+    with pytest.raises(ValueError, match='both be IPv4 or both IPv6'):
+        seg.allow('fd00::5', PLC, 'modbus')
     with pytest.raises(ValueError, match='protocol'):
         seg.allow(HMI, PLC, 'profinet')
 
@@ -119,3 +121,28 @@ def test_mode_changes_are_audited():
     seg.set_mode('off', by='adam')
     entries = [e for e in audit.get_log().entries(action='ot_segmentation')]
     assert sorted(e['details']['mode'] for e in entries) == ['enforce', 'off']
+
+
+def test_ipv6_controllers_are_guarded_in_their_own_family():
+    plan = {'controllers': [{'ip': 'fd00:10::9', 'protocol': 'modbus', 'allowed': ['fd00:10::5', HMI]},
+                            {'ip': PLC, 'protocol': 'modbus', 'allowed': [HMI]}]}
+    script = seg.nft_script(plan, bridge=False)
+    assert 'add set inet sentinel ot_guarded6 { type ipv6_addr . inet_proto . inet_service ; }' in script
+    assert 'add element inet sentinel ot_guarded6 { fd00:10::9 . tcp . 502 }' in script
+    assert 'add element inet sentinel ot_allowed6 { fd00:10::5 . fd00:10::9 . tcp . 502 }' in script
+    assert f'{HMI} . fd00:10::9' not in script                        # an IPv4 host cannot pair with an IPv6 PLC
+    assert f'add element inet sentinel ot_guarded {{ {PLC} . tcp . 502 }}' in script
+    assert 'ip6 daddr . meta l4proto . th dport @ot_guarded6 counter drop' in script
+
+
+def test_plan_keeps_ipv6_controllers_and_same_family_masters():
+    from detection.ot import OTStore
+    store = OTStore()
+    t = time.time() - 8 * 86400
+    store.add_server('fd00:10::9', 'modbus', t)
+    store.touch('fd00:10::5', 'fd00:10::9', 'modbus', 'read holding registers', t)
+    store.touch(HMI, 'fd00:10::9', 'modbus', 'read holding registers', t)
+    plan = seg.build_plan(store=store, always=[])
+    store.close()
+    [c] = plan['controllers']
+    assert c['ip'] == 'fd00:10::9' and c['allowed'] == ['fd00:10::5']
