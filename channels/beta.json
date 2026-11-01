@@ -2,12 +2,12 @@
   "kid": "03c02c785199bcdb",
   "payload": {
     "channel": "beta",
-    "expires_at": 1803907508,
-    "issued_at": 1793539508,
-    "serial": 1793539508,
-    "sha256": "b72788c2aba5e384946ae4bcd7f077f4e1b6a0670366764a031d2b255dcc5286",
-    "tarball": "https://github.com/vishwa-10147/SentinelEdgeAI/releases/download/v2.16.0/sentineledgeai-pi-2.16.0.tar.gz",
-    "version": "2.16.0"
+    "expires_at": 1803911535,
+    "issued_at": 1793543535,
+    "serial": 1793543535,
+    "sha256": "a3ea8d46f8794e80171649c1b6ce16249baf1a75f5d856d2e8f21ec68492dc24",
+    "tarball": "https://github.com/vishwa-10147/SentinelEdgeAI/releases/download/v2.17.0/sentineledgeai-pi-2.17.0.tar.gz",
+    "version": "2.17.0"
   },
-  "sig": "es+6G48ZF59fjx5J1+b7zLGtGhF8Q31NdMVxmZ/TmlG4+KKxaXOqiDmrU9lfwncGMfvOEebtQTfW54dRjv3uDA=="
+  "sig": "WchekyZxq+ZsFwTMiVa0+bu3Ay79/TURK6lkT8FasAlUVAE1AcKRrYVyUwwAH4g34aXQiy4hvhriVubJjH1EBw=="
 }
