@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-11-01
+
+Phase 10: single sign-on.
+
 ### Added
 - **Single sign-on with OpenID Connect** (Phase 10, `core/sso.py`): Entra ID, Google, Okta, Keycloak or any OIDC provider; authorization-code flow with PKCE, state/nonce/verifier in a signed 10-minute cookie, ID tokens verified against the IdP's JWKS (RS256/ES256 only; `none` and HMAC refused), issuer/audience/azp/expiry checks. Roles come from IdP groups (highest wins, optional default role, otherwise refused) and follow the groups at every sign-in. Operator/Admin need MFA asserted in `amr` unless the IdP is trusted to enforce it. SSO accounts are pinned to the IdP's issuer + subject: they never take over a local account with the same name, have no local password, and skip local TOTP. `GET /api/auth/oidc/login`, `GET /api/auth/oidc/callback`, `GET/PUT /api/sso` (Admin); "Sign in with …" button and plain-language refusal messages on the sign-in screen; SSO settings and SSO tags in the Users panel. No new dependency (verification uses `cryptography`).
 
