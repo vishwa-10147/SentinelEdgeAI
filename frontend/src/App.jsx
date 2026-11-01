@@ -389,7 +389,10 @@ function LateralMovementPanel({ alerts }){
     const isLmPort = a.dst_port && LM_PORTS[a.dst_port]
     const isAdminShare = /\$\b/.test(a.attack_type || '') || /\$\b/.test(a.dst || '')
     const isPth = /pass.?the.?hash|ntlm|ntlmv2/.test(text)
-    return isLmPort || isAdminShare || isPth || /lateral/.test(a.attack_type || '')
+    // the lateral-movement detector's own findings (detection/lateral.py), whatever the port
+    const isLmFinding = /lateral|admin_share|remote_service|remote_task|dcsync|kerberos_burst|ldap_/.test(a.attack_type || '')
+      || /^(smb|dcerpc|kerberos|ldap)$/.test(String(a.protocol || '').toLowerCase())
+    return isLmPort || isAdminShare || isPth || isLmFinding
   }).slice(-20).reverse()
 
   return (

@@ -11,7 +11,8 @@ so findings are fused and explained exactly like the engine's own:
     dns.log                   queries               -> DNS tunnelling / DGA / intel
     ssl.log                   SNI, JA3/JA4/JA4S (when the JA4 package is loaded), certificate
                               validation status    -> TLS detector, certificate anomalies
-    smb_mapping.log, ntlm.log, dce_rpc.log, kerberos.log  -> lateral movement detector
+    smb_mapping.log, ntlm.log, dce_rpc.log, kerberos.log,
+    ldap.log, ldap_search.log (Zeek 6.1+)               -> lateral movement detector
     modbus.log, dnp3.log      OT requests           -> OT detector (per-controller baselines)
     notice.log                Zeek's own notices    -> findings (like Suricata alerts)
 
@@ -25,12 +26,14 @@ import threading
 import time
 
 from detection.detectors import Cooldown, Finding, is_external
+from detection.lateral import ldap_markers, parse_filter_text
 from detection.ot import DNP3_FUNCTIONS, DNP3_STOPS, DNP3_WRITES, MODBUS_FUNCTIONS, MODBUS_WRITES, _msg
 from integrations.suricata import EveTailer
 
 logger = logging.getLogger('sentinel.zeek')
 DEFAULT_DIR = '/opt/zeek/logs/current'
-LOGS = ('conn', 'dns', 'ssl', 'notice', 'smb_mapping', 'ntlm', 'dce_rpc', 'kerberos', 'modbus', 'dnp3')
+LOGS = ('conn', 'dns', 'ssl', 'notice', 'smb_mapping', 'ntlm', 'dce_rpc', 'kerberos', 'ldap', 'ldap_search',
+        'modbus', 'dnp3')
 
 MODBUS_NAMES = {'READ_COILS': 1, 'READ_DISCRETE_INPUTS': 2, 'READ_HOLDING_REGISTERS': 3, 'READ_INPUT_REGISTERS': 4,
                 'WRITE_SINGLE_COIL': 5, 'WRITE_SINGLE_REGISTER': 6, 'READ_EXCEPTION_STATUS': 7, 'DIAGNOSTICS': 8,
@@ -177,6 +180,26 @@ class ZeekFeeder:
         src, dst, _, _ = _ids(rec)
         kind = {'AS': 'as-req', 'TGS': 'tgs-req'}.get(rec.get('request_type'))
         return self._lateral('observe_kerberos', src, dst, kind, rec.get('ts')) if kind else []
+
+    def _ldap(self, rec):
+        """ldap.log: one line per operation; a simple bind with an argument carried a password."""
+        src, dst, _, _ = _ids(rec)
+        op = str(rec.get('opcode') or '').lower()
+        if not op.startswith('bind'):
+            return []
+        simple = 'simple' in op
+        msg = {'op': 'bind', 'method': 'simple' if simple else 'sasl', 'mechanism': None,
+               'anonymous': not rec.get('object'), 'password': simple and bool(rec.get('argument'))}
+        return self._lateral('observe_ldap', src, dst, [msg], rec.get('ts'))
+
+    def _ldap_search(self, rec):
+        src, dst, _, _ = _ids(rec)
+        terms = parse_filter_text(rec.get('filter'))
+        attrs = [str(a)[:64] for a in (rec.get('attributes') or [])][:64]
+        msg = {'op': 'search', 'base': str(rec.get('base_object') or ''), 'scope': str(rec.get('scope') or ''),
+               'filter_attributes': sorted({t[0] for t in terms})[:32], 'attributes': attrs,
+               'markers': ldap_markers(terms, attrs)}
+        return self._lateral('observe_ldap', src, dst, [msg], rec.get('ts'))
 
     def _ot(self, rec, protocol, msg):
         src, dst, _, _ = _ids(rec)

@@ -17,9 +17,10 @@ from common.bounded import BoundedDict
 
 ETH_P_ALL = 0x0003
 SO_RCVBUF_BYTES = 8 * 1024 * 1024
-SLOW_UDP_PORTS = frozenset({53, 67, 68, 5353, 20000, 47808, 88})
+SLOW_UDP_PORTS = frozenset({53, 67, 68, 5353, 20000, 47808, 88, 389})
 LATERAL_TCP_PORTS = frozenset({88, 135})                    # Kerberos, RPC endpoint mapper (detection.lateral)
-SMB_TCP_PORTS = frozenset({139, 445})
+# SMB and LDAP: small requests only; bulk SMB data and sealed LDAP traffic stay on the fast path
+SMB_TCP_PORTS = frozenset({139, 445, 389, 3268})
 SMB_INSPECT_MAX = 1200                                      # detection.lateral.SMB_INSPECT_MAX
 # after a TLS ServerHello the next segments (certificates) also go to the slow path
 TLS_FOLLOW_SEGMENTS = 7                                     # detection.tls.TLS_HANDSHAKE_SEGMENTS - 1
@@ -35,7 +36,7 @@ def parse(frame):
     """(src, dst, sport, dport, proto, size, slow) from an Ethernet frame, or None for non-IP.
 
     slow=True means the packet also needs scapy (DNS, DHCP, TLS handshake, ARP, OT requests,
-    SMB control messages, DCE-RPC and Kerberos).
+    SMB control messages, DCE-RPC, Kerberos and LDAP).
     """
     if len(frame) < 14:
         return None

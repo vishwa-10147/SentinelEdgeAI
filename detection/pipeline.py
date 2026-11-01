@@ -186,7 +186,7 @@ class DetectionPipeline:
         return protocol, messages, findings
 
     def observe_lateral(self, src, dst, proto, dport, payload, ts=None):
-        """Feed a payload sent to SMB, DCE-RPC or Kerberos. Returns (service, parsed, findings)."""
+        """Feed a payload sent to SMB, DCE-RPC, Kerberos or LDAP. Returns (service, parsed, findings)."""
         service, parsed = parse_lateral(proto, dport, payload)
         if not service:
             return None, None, []
@@ -196,6 +196,8 @@ class DetectionPipeline:
                 findings = self.lateral.observe_smb(src, dst, parsed, ts)
             elif service == 'rpc':
                 findings = self.lateral.observe_rpc(src, dst, parsed, ts)
+            elif service == 'ldap':
+                findings = self.lateral.observe_ldap(src, dst, parsed, ts)
             else:
                 findings = self.lateral.observe_kerberos(src, dst, parsed, ts)
             findings = self._accept(findings)

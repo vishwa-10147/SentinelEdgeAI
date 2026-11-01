@@ -508,15 +508,15 @@ def _observe_dns_tls(packet):
                 _, findings = pipe.observe_tls_server(*key, payload)     # ServerHello, certificates
             elif payload[:1] == b'\x16':
                 _, findings = pipe.observe_tls(packet[IP].src, packet[IP].dst, payload)
-            elif packet[TCP].dport in (88, 135, 139, 445):
-                if packet[TCP].dport not in (139, 445) or len(payload) <= 1200:
+            elif packet[TCP].dport in (88, 135, 139, 445, 389, 3268):
+                if packet[TCP].dport not in (139, 445, 389, 3268) or len(payload) <= 1200:
                     _, _, findings = get_pipeline().observe_lateral(packet[IP].src, packet[IP].dst, 'TCP',
                                                                     packet[TCP].dport, payload)
             else:
                 _, _, findings = get_pipeline().observe_ot(packet[IP].src, packet[IP].dst, 'TCP',
                                                            packet[TCP].dport, payload)
-        elif UDP in packet and Raw in packet and packet[UDP].dport == 88:
-            _, _, findings = get_pipeline().observe_lateral(packet[IP].src, packet[IP].dst, 'UDP', 88,
+        elif UDP in packet and Raw in packet and packet[UDP].dport in (88, 389):
+            _, _, findings = get_pipeline().observe_lateral(packet[IP].src, packet[IP].dst, 'UDP', packet[UDP].dport,
                                                             bytes(packet[Raw].load))
         elif UDP in packet and Raw in packet:
             _, _, findings = get_pipeline().observe_ot(packet[IP].src, packet[IP].dst, 'UDP',

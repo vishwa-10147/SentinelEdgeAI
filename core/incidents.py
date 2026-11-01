@@ -160,6 +160,14 @@ CHECKLISTS = [
         'used from {src}.',
         'For a DCSync alert, assume all domain passwords are exposed: reset the krbtgt password twice and the '
         'admin accounts.']),
+    (('ldap_recon', 'ldap_enumeration'), [
+        '{src} is mapping Active Directory the way attackers do before Kerberoasting or taking over admin '
+        'accounts. Ask your IT admin whether they ran an audit tool (BloodHound, PingCastle) from {src}.',
+        'If not: contain {src}, and give the service accounts it could have targeted (those with SPNs, or '
+        'without pre-authentication) long new passwords.']),
+    (('ldap_cleartext_bind',), [
+        'An application on {src} logs in to the directory with a password in clear text. Switch it to LDAPS '
+        '(port 636) or StartTLS, then change that account\'s password.']),
     (('ot_',), [
         'Call the person responsible for the controllers listed above before changing anything on the network.',
         'Check on the HMI / engineering station that the controller is in the expected state (running, '
