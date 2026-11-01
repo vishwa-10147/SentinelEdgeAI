@@ -20,6 +20,8 @@ def isolated_audit_log(tmp_path, monkeypatch):
     monkeypatch.setenv('SENTINEL_INCIDENTS', str(tmp_path / 'incidents.json'))
     monkeypatch.setenv('SENTINEL_TICKETS', str(tmp_path / 'tickets.json'))
     monkeypatch.setenv('SENTINEL_SSO', str(tmp_path / 'sso.json'))
+    monkeypatch.setenv('SENTINEL_SAML', str(tmp_path / 'saml.json'))
+    monkeypatch.setenv('SENTINEL_LDAP', str(tmp_path / 'ldap.json'))
     monkeypatch.setenv('SENTINEL_GUIDED_TUNING', str(tmp_path / 'guided_tuning.json'))
     monkeypatch.setenv('SENTINEL_NOTIFICATIONS', str(tmp_path / 'notifications.json'))
     monkeypatch.setenv('SENTINEL_WEBPUSH', str(tmp_path / 'webpush.json'))

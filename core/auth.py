@@ -134,6 +134,15 @@ def _local(user):
         return True
 
 
+def _local_mfa(user):
+    """Accounts whose second factor is this appliance's TOTP: local and LDAP (a directory password is one
+    factor). OIDC/SAML accounts get two-step sign-in from the identity provider, checked at sign-in."""
+    try:
+        return (user['auth_source'] or 'local') in ('local', 'ldap')
+    except (KeyError, IndexError):
+        return True
+
+
 def role_allows(role, minimum):
     return ROLE_RANK.get(role, -1) >= ROLE_RANK[minimum]
 
@@ -261,7 +270,7 @@ class AuthStore:
                 ('totp_secret', 'TEXT'),
                 ('totp_enabled', 'INTEGER NOT NULL DEFAULT 0'),
                 ('totp_last_step', 'INTEGER NOT NULL DEFAULT 0'),
-                ('auth_source', "TEXT NOT NULL DEFAULT 'local'"),   # 'local' or 'oidc' (2.11, SSO)
+                ('auth_source', "TEXT NOT NULL DEFAULT 'local'"),   # 'local', 'oidc' (2.11), 'ldap' or 'saml' (2.17)
                 ('external_id', 'TEXT'),                             # hash of the IdP issuer + subject
             ):
                 if column not in columns:
@@ -345,7 +354,7 @@ class AuthStore:
             'disabled': bool(user['disabled']),
             'must_change_password': bool(user['must_change_password']),
             'mfa_enabled': bool(user.get('totp_enabled')),
-            'mfa_setup_required': _local(user) and mfa_required_for(user['role']) and not user.get('totp_enabled'),
+            'mfa_setup_required': _local_mfa(user) and mfa_required_for(user['role']) and not user.get('totp_enabled'),
             'auth_source': user.get('auth_source') or 'local',
             'locked': int(user.get('locked_until') or 0) > int(time.time()),
             'created': user['created'],
@@ -383,13 +392,16 @@ class AuthStore:
         )
         return self.get_user(username)
 
-    def sso_user(self, username, role, external_id):
-        """The account for an SSO sign-in: found by its IdP identity, else created.
+    def sso_user(self, username, role, external_id, source='oidc'):
+        """The account for an SSO (OIDC/SAML) or directory (LDAP) sign-in: found by its external identity, else
+        created.
 
-        Never signs in as a local account or another IdP identity that has the same
-        username. The role follows the IdP groups at every sign-in.
+        Never signs in as a local account or another external identity that has the same
+        username. The role follows the IdP / directory groups at every sign-in.
         """
         role = validate_role(role)
+        if source not in ('oidc', 'saml', 'ldap'):
+            raise ValueError('unknown account source')
         user = self._fetchone('SELECT * FROM users WHERE external_id = ?', (external_id,))
         if user is None:
             username = validate_username(username)
@@ -402,7 +414,7 @@ class AuthStore:
                 'INSERT INTO users(username, password_hash, role, created, updated, auth_source, external_id) '
                 'VALUES (?, ?, ?, ?, ?, ?, ?)',
                 # an unusable password: SSO accounts cannot sign in with one (authenticate refuses them)
-                (username, _hasher.hash(secrets.token_urlsafe(32)), role, now, now, 'oidc', external_id),
+                (username, _hasher.hash(secrets.token_urlsafe(32)), role, now, now, source, external_id),
             )
             user = self._get(username)
         if user['disabled']:
@@ -483,6 +495,10 @@ class AuthStore:
         """
         now = int(time.time())
         user = self._get(str(username or ''))
+        if user is None or (user['auth_source'] or 'local') == 'ldap':
+            from core import ldap_auth
+            if ldap_auth.enabled():
+                return self._authenticate_directory(str(username or ''), password, otp, user, now)
         if not user:
             try:
                 _hasher.verify(_DUMMY_HASH, str(password or ''))
@@ -516,6 +532,29 @@ class AuthStore:
             'UPDATE users SET failed_logins = 0, locked_until = 0, last_login = ? WHERE id = ?',
             (now, user['id']),
         )
+        return self.get_user(user['username'])
+
+    def _authenticate_directory(self, username, password, otp, user, now):
+        """Password checked by LDAP / Active Directory; lockout and two-step sign-in as for local accounts."""
+        from core import ldap_auth
+        if user is not None and int(user['locked_until'] or 0) > now:
+            raise AuthError('account locked', status=423)
+        try:
+            name, role, external_id, _dn = ldap_auth.authenticate(username, password)
+        except ldap_auth.LDAPError as exc:
+            if user is not None and exc.code == 'bad_password':
+                self._record_failure(user, now)
+            raise AuthError(f'directory: {exc.reason}', code='directory_' + exc.code)
+        account = self.sso_user(name, role, external_id, source='ldap')
+        user = self._get(account['username'])
+        if user['totp_enabled']:
+            if not otp:
+                raise AuthError('second factor required', code='mfa_required')
+            if not self._check_second_factor(user, otp, now):
+                self._record_failure(user, now)
+                raise AuthError('bad second factor', code='mfa_invalid')
+        self._execute('UPDATE users SET failed_logins = 0, locked_until = 0, last_login = ? WHERE id = ?',
+                      (now, user['id']))
         return self.get_user(user['username'])
 
     # ---------- two-step sign-in ----------
@@ -696,7 +735,7 @@ class AuthStore:
             'must_change_password': bool(row['must_change_password']),
             'mfa_enabled': bool(row['totp_enabled']),
             # SSO accounts satisfy two-step sign-in at the identity provider (checked at sign-in)
-            'mfa_setup_required': _local(row) and mfa_required_for(row['role']) and not row['totp_enabled'],
+            'mfa_setup_required': _local_mfa(row) and mfa_required_for(row['role']) and not row['totp_enabled'],
             'session_id': row['session_id'],
         }
 

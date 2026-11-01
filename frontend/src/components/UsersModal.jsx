@@ -117,9 +117,9 @@ export default function UsersModal({ open, onClose, currentUser }){
               const self = u.username.toLowerCase() === currentUser?.username?.toLowerCase()
               return (
                 <div className="users-row" key={u.username}>
-                  <span>{u.username}{self && <em> (you)</em>}{u.auth_source === 'oidc' && <em className="sso-tag" title="Signs in through single sign-on; the role follows the identity provider groups"> SSO</em>}</span>
+                  <span>{u.username}{self && <em> (you)</em>}{u.auth_source && u.auth_source !== 'local' && <em className="sso-tag" title={u.auth_source === 'ldap' ? 'Signs in with the directory (LDAP/AD) password; the role follows the directory groups' : 'Signs in through single sign-on; the role follows the identity provider groups'}> {u.auth_source === 'ldap' ? 'LDAP' : u.auth_source === 'saml' ? 'SAML' : 'SSO'}</em>}</span>
                   <span>
-                    <select value={u.role} disabled={busy || self || u.auth_source === 'oidc'} onChange={e=>run(()=>apiPatch(`/api/users/${encodeURIComponent(u.username)}`, { role: e.target.value }))}>
+                    <select value={u.role} disabled={busy || self || (u.auth_source && u.auth_source !== 'local')} onChange={e=>run(()=>apiPatch(`/api/users/${encodeURIComponent(u.username)}`, { role: e.target.value }))}>
                       {ROLES.map(r=><option key={r} value={r}>{r}</option>)}
                     </select>
                   </span>
@@ -129,7 +129,7 @@ export default function UsersModal({ open, onClose, currentUser }){
                   </span>
                   <span>{formatDate(u.last_login)}</span>
                   <span className="users-actions">
-                    {u.auth_source !== 'oidc' && <button className="ghost-button" disabled={busy} onClick={()=>resetPassword(u.username)}>Reset password</button>}
+                    {(!u.auth_source || u.auth_source === 'local') && <button className="ghost-button" disabled={busy} onClick={()=>resetPassword(u.username)}>Reset password</button>}
                     {u.mfa_enabled && <button className="ghost-button" disabled={busy} onClick={()=>resetMfa(u.username)}>Reset MFA</button>}
                     <button className="ghost-button" disabled={busy || self} onClick={()=>run(()=>apiPatch(`/api/users/${encodeURIComponent(u.username)}`, { disabled: !u.disabled }))}>
                       {u.disabled ? 'Enable' : 'Disable'}
@@ -185,6 +185,8 @@ export default function UsersModal({ open, onClose, currentUser }){
           )}
         </div>
         <SsoSettings />
+        <SamlSettings />
+        <LdapSettings />
         <form className="rules-section users-create" onSubmit={createToken}>
           <h3>New API token</h3>
           <input placeholder="Name, e.g. grafana or backup job" autoComplete="off" value={tokenForm.name} onChange={e=>setTokenForm({ ...tokenForm, name: e.target.value })} />
@@ -258,6 +260,108 @@ function SsoSettings(){
       <label><input type="checkbox" checked={!!cfg.trust_idp_mfa} onChange={e=>set('trust_idp_mfa', e.target.checked)} /> The identity provider always enforces MFA (otherwise Operator and Admin need MFA in the token's amr claim)</label>
       <button className="primary-button" type="submit" disabled={busy}>Save SSO settings</button>
       {message && <p className="auth-hint" role="status">{message}</p>}
+    </form>
+  )
+}
+
+
+function useConfig(path){
+  const [cfg, setCfg] = useState(null)
+  const [groups, setGroups] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(()=>{
+    apiGet(path, null).then(c=>{
+      setCfg(c)
+      setGroups(Object.entries(c?.group_roles || {}).map(([g, r])=>`${g} = ${r}`).join('\n'))
+    }).catch(()=>{})
+  }, [path])
+  const save = async (e, extra = {})=>{
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try{
+      const saved = await apiPut(path, { ...cfg, ...extra, group_roles: parseGroupRoles(groups), default_role: cfg.default_role || null })
+      setCfg(saved)
+      setMessage('Saved.')
+    }catch(err){
+      setMessage(errorMessage(err))
+    }finally{
+      setBusy(false)
+    }
+  }
+  return { cfg, setCfg, groups, setGroups, message, setMessage, busy, setBusy, save }
+}
+
+function RoleMapping({ groups, setGroups, cfg, set }){
+  return (
+    <>
+      <textarea rows={4} placeholder={'One per line: group = role\nSecOps = operator\nIT-Admins = admin'} value={groups} onChange={e=>setGroups(e.target.value)} aria-label="Group to role mapping" />
+      <select value={cfg.default_role || ''} onChange={e=>set('default_role', e.target.value)} aria-label="Default role">
+        <option value="">Users in no mapped group: refused</option>
+        {ROLES.map(r=><option key={r} value={r}>Users in no mapped group: {r}</option>)}
+      </select>
+    </>
+  )
+}
+
+function SamlSettings(){
+  const c = useConfig('/api/saml')
+  const [certs, setCerts] = useState(null)
+  if(!c.cfg) return null
+  const set = (k, v)=>c.setCfg({ ...c.cfg, [k]: v })
+  const certText = certs ?? (c.cfg.idp_certs || []).join('\n')
+  return (
+    <form className="rules-section users-create sso-settings" onSubmit={e=>c.save(e, { idp_certs: certText })}>
+      <h3>Single sign-on (SAML 2.0)</h3>
+      <p className="auth-hint">Give the identity provider this console's metadata: <a href="/api/auth/saml/metadata" target="_blank" rel="noreferrer">/api/auth/saml/metadata</a>. Assertions must be signed (SHA-256); encrypted assertions are not supported.</p>
+      <label><input type="checkbox" checked={!!c.cfg.enabled} onChange={e=>set('enabled', e.target.checked)} /> Enabled</label>
+      <input placeholder="Button label, e.g. Sign in with ADFS" value={c.cfg.label || ''} onChange={e=>set('label', e.target.value)} aria-label="SAML button label" />
+      <input placeholder="IdP entity id (Issuer)" value={c.cfg.idp_entity_id || ''} onChange={e=>set('idp_entity_id', e.target.value)} aria-label="IdP entity id" />
+      <input placeholder="IdP single sign-on URL (HTTP-Redirect), https://..." value={c.cfg.idp_sso_url || ''} onChange={e=>set('idp_sso_url', e.target.value)} aria-label="IdP SSO URL" />
+      <textarea rows={4} placeholder="IdP signing certificate(s), PEM (-----BEGIN CERTIFICATE-----)" value={certText} onChange={e=>setCerts(e.target.value)} aria-label="IdP certificates" />
+      <input placeholder="Groups attribute (default: groups; Entra: http://schemas.microsoft.com/ws/2008/06/identity/claims/groups)" value={c.cfg.groups_attribute || ''} onChange={e=>set('groups_attribute', e.target.value)} aria-label="Groups attribute" />
+      <input placeholder="Username attribute (default: the NameID)" value={c.cfg.username_attribute || ''} onChange={e=>set('username_attribute', e.target.value)} aria-label="Username attribute" />
+      <RoleMapping groups={c.groups} setGroups={c.setGroups} cfg={c.cfg} set={set} />
+      <label><input type="checkbox" checked={!!c.cfg.trust_idp_mfa} onChange={e=>set('trust_idp_mfa', e.target.checked)} /> The identity provider always enforces MFA (otherwise Operator and Admin need an MFA authentication context)</label>
+      <button className="primary-button" type="submit" disabled={c.busy}>Save SAML settings</button>
+      {c.message && <p className="auth-hint" role="status">{c.message}</p>}
+    </form>
+  )
+}
+
+function LdapSettings(){
+  const c = useConfig('/api/ldap')
+  const [probe, setProbe] = useState('')
+  const [result, setResult] = useState(null)
+  if(!c.cfg) return null
+  const set = (k, v)=>c.setCfg({ ...c.cfg, [k]: v })
+  const test = async ()=>{
+    setResult(null)
+    try{ setResult(await apiPost('/api/ldap/test', { username: probe })) }catch(err){ setResult({ ok: false, error: errorMessage(err) }) }
+  }
+  return (
+    <form className="rules-section users-create sso-settings" onSubmit={c.save}>
+      <h3>Directory sign-in (LDAP / Active Directory)</h3>
+      <p className="auth-hint">Usernames that are not local accounts are checked against the directory on the normal sign-in form. Operators and Admins still enrol an authenticator app on this console. Only ldaps:// or StartTLS; the server certificate is verified.</p>
+      <label><input type="checkbox" checked={!!c.cfg.enabled} onChange={e=>set('enabled', e.target.checked)} /> Enabled</label>
+      <input placeholder="URL, e.g. ldaps://dc1.corp.example" value={c.cfg.url || ''} onChange={e=>set('url', e.target.value)} aria-label="Directory URL" />
+      <label><input type="checkbox" checked={!!c.cfg.start_tls} onChange={e=>set('start_tls', e.target.checked)} /> Use StartTLS (for ldap:// URLs)</label>
+      <input placeholder="CA certificate file on the appliance (optional; default: system CAs)" value={c.cfg.ca_file || ''} onChange={e=>set('ca_file', e.target.value)} aria-label="CA file" />
+      <input placeholder="Base DN, e.g. DC=corp,DC=example" value={c.cfg.base_dn || ''} onChange={e=>set('base_dn', e.target.value)} aria-label="Base DN" />
+      <input placeholder="Service account DN (to find users and groups)" value={c.cfg.bind_dn || ''} onChange={e=>set('bind_dn', e.target.value)} aria-label="Service account DN" />
+      <input placeholder="Service account password" type="password" autoComplete="off" value={c.cfg.bind_password || ''} onChange={e=>set('bind_password', e.target.value)} aria-label="Service account password" />
+      <input placeholder="Or, without a service account: user DN template, e.g. {username}@corp.example" value={c.cfg.user_dn_template || ''} onChange={e=>set('user_dn_template', e.target.value)} aria-label="User DN template" />
+      <input placeholder="User filter" value={c.cfg.user_filter || ''} onChange={e=>set('user_filter', e.target.value)} aria-label="User filter" />
+      <RoleMapping groups={c.groups} setGroups={c.setGroups} cfg={c.cfg} set={set} />
+      <label><input type="checkbox" checked={!!c.cfg.nested_groups} onChange={e=>set('nested_groups', e.target.checked)} /> Follow nested groups (Active Directory)</label>
+      <button className="primary-button" type="submit" disabled={c.busy}>Save directory settings</button>
+      <div className="audit-toolbar">
+        <input placeholder="Test: look up a username" value={probe} onChange={e=>setProbe(e.target.value)} aria-label="Username to look up" />
+        <button className="ghost-button" type="button" disabled={!probe} onClick={test}>Look up</button>
+      </div>
+      {result && <p className="auth-hint" role="status">{result.ok ? `${result.dn}: role ${result.role || 'none (refused)'}; groups ${(result.groups || []).join('; ') || 'none'}` : result.error}</p>}
+      {c.message && <p className="auth-hint" role="status">{c.message}</p>}
     </form>
   )
 }

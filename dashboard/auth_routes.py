@@ -215,6 +215,8 @@ def auth_status(request: Request):
         'password_min_length': auth.MIN_PASSWORD_LENGTH,
         'mfa_roles': sorted(auth.mfa_roles(), key=auth.ROLE_RANK.get),
         'sso': _sso_status(),
+        'saml': _saml_status(),
+        'directory': _ldap_enabled(),
     }
 
 
@@ -534,6 +536,151 @@ def sso_callback(request: Request, code: Optional[str] = None, state: Optional[s
     audit_event({'kind': 'user', **user}, 'login', target=user['username'], client_ip=client,
                 details={'method': 'sso', 'issuer': cfg['issuer'], 'role': role})
     return response
+
+
+# ---------- single sign-on (SAML 2.0) ----------
+
+SAML_COOKIE = 'sentinel_saml'
+SAML_PATH = '/api/auth/saml'
+
+
+def _saml_status():
+    from core import saml
+    cfg = saml.load_config()
+    return {'enabled': bool(cfg.get('enabled')), 'label': cfg.get('label') or 'Sign in with SAML'}
+
+
+def _ldap_enabled():
+    from core import ldap_auth
+    return ldap_auth.enabled()
+
+
+def _base_url(request: Request):
+    scheme = 'https' if _cookie_secure(request) else request.url.scheme
+    return f'{scheme}://{request.url.netloc}'
+
+
+def _saml_fail(code, reason, client):
+    logger.warning('SAML sign-in refused from %s: %s', client, reason)
+    audit_event(None, 'login', outcome='failure', client_ip=client, actor='saml',
+                details={'method': 'saml', 'error': code, 'reason': str(reason)[:300]})
+    response = RedirectResponse(f'/?sso_error={code if code in SSO_ERRORS else "denied"}', status_code=303)
+    response.delete_cookie(SAML_COOKIE, path=SAML_PATH)
+    return response
+
+
+@router.get('/api/auth/saml/login')
+def saml_login(request: Request):
+    """Start a SAML sign-in: redirect to the identity provider with an AuthnRequest."""
+    from core import saml
+    cfg = saml.load_config()
+    if not cfg.get('enabled'):
+        raise HTTPException(status_code=404, detail='SAML sign-in is not enabled')
+    url, cookie = saml.start(cfg, _base_url(request), auth.get_store()._signing_secret())
+    response = RedirectResponse(url, status_code=303)
+    secure = _cookie_secure(request)
+    # the IdP answers with a cross-site POST: only SameSite=None cookies come along (which needs HTTPS)
+    response.set_cookie(SAML_COOKIE, cookie, max_age=saml.STATE_TTL, path=SAML_PATH, httponly=True,
+                        samesite='none' if secure else 'lax', secure=secure)
+    return response
+
+
+@router.post('/api/auth/saml/acs')
+async def saml_acs(request: Request):
+    """Assertion consumer service: the IdP posts the signed SAMLResponse here."""
+    from urllib.parse import parse_qs
+    from core import saml
+    client = _client_host(request) or 'unknown'
+    cfg = saml.load_config()
+    if not cfg.get('enabled'):
+        raise HTTPException(status_code=404, detail='SAML sign-in is not enabled')
+    if not login_throttle.allow(client):
+        return _saml_fail('throttled', 'too many sign-in attempts', client)
+    body = await request.body()
+    if len(body) > saml.MAX_RESPONSE * 2:
+        return _saml_fail('invalid_token', 'SAML post too large', client)
+    form = parse_qs(body.decode('ascii', 'replace'), max_num_fields=10)
+    store = auth.get_store()
+    try:
+        username, role, claims = saml.complete(cfg, (form.get('SAMLResponse') or [''])[0],
+                                               (form.get('RelayState') or [''])[0], request.cookies.get(SAML_COOKIE),
+                                               store._signing_secret(), _base_url(request))
+        user = store.sso_user(username, role, saml.external_id(cfg, claims), source='saml')
+    except saml.SAMLError as exc:
+        return _saml_fail(exc.code, exc.reason, client)
+    except auth.AuthError as exc:
+        return _saml_fail(exc.code or 'denied', exc.reason, client)
+    except ValueError as exc:
+        return _saml_fail('denied', exc, client)
+    tokens = store.create_session(user['username'], client, request.headers.get('user-agent'))
+    response = RedirectResponse('/', status_code=303)
+    _set_refresh_cookie(response, request, tokens)
+    response.delete_cookie(SAML_COOKIE, path=SAML_PATH)
+    login_throttle.reset(client)
+    logger.info('SAML login %s (%s) from %s', user['username'], user['role'], client)
+    audit_event({'kind': 'user', **user}, 'login', target=user['username'], client_ip=client,
+                details={'method': 'saml', 'issuer': cfg['idp_entity_id'], 'role': role})
+    return response
+
+
+@router.get('/api/auth/saml/metadata')
+def saml_metadata(request: Request):
+    """SP metadata to give to the identity provider."""
+    from core import saml
+    return Response(saml.metadata(saml.load_config(), _base_url(request)), media_type='application/samlmetadata+xml')
+
+
+@router.get('/api/saml')
+def saml_config_get(principal: dict = Depends(require_admin)):
+    from core import saml
+    return saml.load_config()
+
+
+@router.put('/api/saml')
+def saml_config_put(payload: dict, principal: dict = Depends(require_admin)):
+    from core import saml
+    try:
+        cfg = saml.save_config(dict(payload or {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'saml_update', details={'enabled': cfg['enabled'], 'idp': cfg.get('idp_entity_id'),
+                                                   'group_roles': cfg.get('group_roles'),
+                                                   'default_role': cfg.get('default_role')})
+    return cfg
+
+
+# ---------- directory sign-in (LDAP / Active Directory) ----------
+
+@router.get('/api/ldap')
+def ldap_config_get(principal: dict = Depends(require_admin)):
+    from core import ldap_auth
+    return ldap_auth.redacted(ldap_auth.load_config())
+
+
+@router.put('/api/ldap')
+def ldap_config_put(payload: dict, principal: dict = Depends(require_admin)):
+    from core import ldap_auth
+    try:
+        cfg = ldap_auth.save_config(dict(payload or {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'ldap_update', details={'enabled': cfg['enabled'], 'url': cfg.get('url'),
+                                                   'group_roles': cfg.get('group_roles'),
+                                                   'default_role': cfg.get('default_role')})
+    return ldap_auth.redacted(cfg)
+
+
+@router.post('/api/ldap/test')
+def ldap_test(payload: dict, principal: dict = Depends(require_admin)):
+    """Look a user up with the service account (no password): their entry, groups and the role they would get."""
+    from core import ldap_auth
+    try:
+        result = ldap_auth.lookup(str((payload or {}).get('username') or ''))
+    except ldap_auth.LDAPError as exc:
+        result = {'ok': False, 'error': exc.reason}
+    audit_event(principal, 'ldap_test', target=str((payload or {}).get('username') or '')[:64],
+                outcome='success' if result.get('ok') else 'failure')
+    return result
 
 
 @router.get('/api/sso')

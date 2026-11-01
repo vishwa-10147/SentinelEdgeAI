@@ -975,7 +975,7 @@ export default function App(){
     try{
       const status = await authStatus()
       setMinLength(status.password_min_length || 12)
-      setSso(status.sso || null)
+      setSso(status.sso ? { ...status.sso, saml: status.saml || null } : null)
       if(status.local_dev_mode){
         setUser({ username: 'local', role: 'admin', must_change_password: false })
         setState('signed-in')

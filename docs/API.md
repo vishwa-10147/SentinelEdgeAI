@@ -18,6 +18,9 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/auth/oidc/login` | public | Start an SSO sign-in: redirect to the identity provider. |
 | `POST` | `/api/auth/password` | viewer |  |
 | `POST` | `/api/auth/refresh` | public |  |
+| `POST` | `/api/auth/saml/acs` | public | Assertion consumer service: the IdP posts the signed SAMLResponse here. |
+| `GET` | `/api/auth/saml/login` | public | Start a SAML sign-in: redirect to the identity provider with an AuthnRequest. |
+| `GET` | `/api/auth/saml/metadata` | public | SP metadata to give to the identity provider. |
 | `GET` | `/api/auth/status` | public |  |
 
 ## Users and API tokens
@@ -173,6 +176,9 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/guided-tuning/suggestions` | viewer | Where analysts' false-positive labels concentrate, with a proposed scoped rule for each. |
 | `POST` | `/api/guided-tuning/suggestions/{suggestion_id}/accept` | analyst | Turn a suggestion into a rule: downgrade (Analyst) or suppress (Operator), for 1-180 days. |
 | `POST` | `/api/guided-tuning/suggestions/{suggestion_id}/dismiss` | analyst | Hide a suggestion for 30 days. |
+| `GET` | `/api/ldap` | admin |  |
+| `PUT` | `/api/ldap` | admin |  |
+| `POST` | `/api/ldap/test` | admin | Look a user up with the service account (no password): their entry, groups and the role they would get. |
 | `GET` | `/api/notifications` | admin |  |
 | `PUT` | `/api/notifications` | admin |  |
 | `GET` | `/api/notifications/digest/preview` | viewer |  |
@@ -190,6 +196,8 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `POST` | `/api/push/subscriptions` | operator | Store this browser's push subscription (Operator+: push carries approval requests). |
 | `DELETE` | `/api/push/subscriptions/{sub_id}` | operator | Remove a subscription (your own; Admins can remove anyone's). |
 | `POST` | `/api/push/test` | operator | Send a test notification to your own subscriptions. |
+| `GET` | `/api/saml` | admin |  |
+| `PUT` | `/api/saml` | admin |  |
 | `GET` | `/api/sso` | admin |  |
 | `PUT` | `/api/sso` | admin |  |
 | `GET` | `/api/tickets` | viewer | Incidents and the tickets opened for them on each ticketing target. |

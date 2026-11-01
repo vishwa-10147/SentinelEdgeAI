@@ -47,6 +47,10 @@ function ssoErrorFromUrl(){
   }
 }
 
+function rememberReturn(){
+  try{ if(window.location.hash) sessionStorage.setItem('sentinel_return', window.location.hash) }catch(e){ /* ignore */ }
+}
+
 export function LoginScreen({ onSignedIn, sso }){
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -110,11 +114,12 @@ export function LoginScreen({ onSignedIn, sso }){
         <input id="login-password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} />
         {error && <div className="auth-error" role="alert">{error}</div>}
         <button className="primary-button" type="submit" disabled={busy || !username || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        {(sso?.enabled || sso?.saml?.enabled) && <p className="auth-hint auth-divider">or</p>}
         {sso?.enabled && (
-          <>
-            <p className="auth-hint auth-divider">or</p>
-            <a className="ghost-button sso-button" href="/api/auth/oidc/login" onClick={()=>{ try{ if(window.location.hash) sessionStorage.setItem('sentinel_return', window.location.hash) }catch(e){ /* ignore */ } }}>{sso.label || 'Sign in with SSO'}</a>
-          </>
+          <a className="ghost-button sso-button" href="/api/auth/oidc/login" onClick={rememberReturn}>{sso.label || 'Sign in with SSO'}</a>
+        )}
+        {sso?.saml?.enabled && (
+          <a className="ghost-button sso-button" href="/api/auth/saml/login" onClick={rememberReturn}>{sso.saml.label || 'Sign in with SAML'}</a>
         )}
       </form>
     </AuthCard>

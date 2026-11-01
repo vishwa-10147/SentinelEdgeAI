@@ -379,7 +379,7 @@ The phases below address these, in that order.
 - [x] Notifications (`integrations/notify.py`): immediate approval requests over e-mail / Slack / Teams / webhook with a phone approval page, daily/weekly digests.
 - [x] Native mobile push: Web Push (`integrations/webpush.py`, service worker and web app manifest): approval requests as phone/browser notifications per Operator, RFC 8291 encryption (checked against the RFC's test vector) and VAPID with `cryptography`, push-service allowlist, only current Operators/Admins. Not yet tried on a real phone (needs a trusted certificate on the console).
 - [x] SSO with OpenID Connect (`core/sso.py`): Entra ID / Google / Okta / Keycloak, IdP groups (incl. AD groups synced to the IdP) mapped to roles, MFA from `amr`. Not yet tried against a live IdP.
-- [ ] SAML 2.0 and direct LDAP/AD password sign-in.
+- [x] SAML 2.0 (`core/saml.py`, signatures by `signxml`, values only from the signed element, wrapping/comment/replay/unsolicited protections) and direct LDAP/AD password sign-in (`core/ldap_auth.py`, LDAPS/StartTLS only, groups incl. nested AD groups, local TOTP for Operator/Admin). LDAP tested against OpenLDAP 2.6 over TLS; not yet against a live AD or SAML IdP.
 - [x] Ticketing and SOAR (`integrations/ticketing.py`): Jira, ServiceNow, TheHive 5 and signed webhooks, one ticket per incident, comments, resolve both ways through an authenticated inbound endpoint. Not yet run against live Jira/ServiceNow/TheHive instances.
 - [x] Guided tuning (`detection/guided_tuning.py`): scoped, expiring downgrade/suppress rules suggested from analyst false-positive labels, console **Tuning** panel.
 

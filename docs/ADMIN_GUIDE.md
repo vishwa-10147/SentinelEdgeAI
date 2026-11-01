@@ -86,7 +86,25 @@ What is checked on every SSO sign-in:
 - the token has not expired
 - the `nonce` matches the one this sign-in started with
 
-Not supported yet: SAML 2.0, and signing in with a password checked directly against LDAP / Active Directory. Use your IdP's OIDC endpoint instead; AD groups synced to Entra or Okta work through the groups claim.
+### SAML 2.0
+
+For identity providers that speak SAML (ADFS, Shibboleth, Entra ID or Okta SAML apps): **Users → Single sign-on (SAML 2.0)**, or `PUT /api/saml`.
+1. Give the IdP this console's metadata, `https://<console>/api/auth/saml/metadata` (entity id and the assertion consumer service `https://<console>/api/auth/saml/acs`, HTTP-POST).
+2. Enter the IdP's entity id, its single sign-on URL (HTTP-Redirect binding) and its signing certificate (PEM; add the next one before a rollover). Map groups to roles; the groups come from the attribute you name (Entra: `http://schemas.microsoft.com/ws/2008/06/identity/claims/groups`).
+3. A **Sign in with SAML** button appears on the sign-in page.
+
+Roles, two-step sign-in, accounts and audit work as for OpenID Connect above, with two differences: MFA is read from the assertion's authentication context (for example `http://schemas.microsoft.com/claims/multipleauthn`), and the account is tied to (IdP entity id, NameID). What is checked: the assertion (or the Response around it) is signed by the configured certificate with SHA-256 or stronger, and everything is read from the signed part only; exactly one assertion, not encrypted; issuer, audience, recipient, validity window (2 minutes clock skew); `InResponseTo` must be the sign-in this browser started, so IdP-initiated (unsolicited) sign-in is refused; each assertion works once; XML with a DTD is refused. The console must be on HTTPS (the IdP posts back cross-site, which needs a `SameSite=None; Secure` cookie). Signatures are checked with the `signxml` library.
+
+### Directory sign-in (LDAP / Active Directory)
+
+**Users → Directory sign-in**, or `PUT /api/ldap`. With it on, a username that is not a local account is checked against the directory on the normal sign-in form; local accounts keep their own passwords.
+- **Connection:** `ldaps://dc1.corp.example` (636), or `ldap://` with StartTLS. Plain LDAP is refused, and the server certificate must be valid for the host name (system CAs, or `ca_file`).
+- **Finding users:** a service account (`bind_dn`, read-only) with the default filter `(&(objectClass=user)(sAMAccountName={username}))`; for OpenLDAP use for example `(&(objectClass=inetOrgPerson)(uid={username}))`. Without a service account, set a user DN template such as `{username}@corp.example`. The password is checked by binding as the user.
+- **Roles:** group DNs or names (CN) mapped to roles, from `memberOf`, from groups listing the user (`member` / `uniqueMember`) and, on AD, nested groups. **Look up** shows the entry, groups and resulting role for a username without a password.
+- **Two-step sign-in stays on the console:** a directory password is one factor, so directory Operators and Admins enrol an authenticator app at their first sign-in, like local accounts. Directory accounts have no local password; lockout after repeated failures applies.
+- **Accounts** are tied to the directory's id for the entry (`objectGUID` / `entryUUID`), so they cannot take over a local account with the same name, and survive renames.
+
+Tested against OpenLDAP 2.6 over LDAPS and StartTLS (including refusal of an untrusted or wrongly named certificate); not yet against a live Active Directory.
 
 ## 5. Enforcement
 

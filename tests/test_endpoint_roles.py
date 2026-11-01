@@ -24,6 +24,14 @@ ROUTES = {
     ('POST', '/api/auth/logout'): 'public',    # needs the CSRF header
     ('GET', '/api/auth/oidc/login'): 'public',     # SSO: redirect to the identity provider
     ('GET', '/api/auth/oidc/callback'): 'public',  # SSO: signed state cookie + verified ID token
+    ('GET', '/api/auth/saml/login'): 'public',     # SAML: redirect with an AuthnRequest
+    ('POST', '/api/auth/saml/acs'): 'public',      # SAML: signed state cookie + verified signed assertion
+    ('GET', '/api/auth/saml/metadata'): 'public',  # SAML: SP metadata for the IdP
+    ('GET', '/api/saml'): 'admin',
+    ('PUT', '/api/saml'): 'admin',
+    ('GET', '/api/ldap'): 'admin',
+    ('PUT', '/api/ldap'): 'admin',
+    ('POST', '/api/ldap/test'): 'admin',
     ('GET', '/api/sso'): 'admin',
     ('PUT', '/api/sso'): 'admin',
     ('GET', '/api/auth/me'): 'viewer',
