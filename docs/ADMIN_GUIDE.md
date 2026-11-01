@@ -229,6 +229,50 @@ This is documentation support for an audit, not a certification or an audit opin
   When that directory exists, its logs are followed alongside the Python capture. Set `SENTINEL_CAPTURE=zeek` to make Zeek the only engine. In that mode the Python capture does not start, so model scores and the forensic packet buffer are not available. Use it when the link is faster than the Pi's ~120k packets/s.
 * Monitoring: scrape the engine on `:9101` and the API's `/metrics` (HTTPS, Viewer token); import `deploy/grafana/dashboards/sentinel_operations.json` and `deploy/monitoring/sentinel_alerts.yml`.
 
+## 8a. Incidents, ticketing and SOAR
+
+**Incidents** (console → **Incidents**, `GET /api/incidents`) group related alerts into one story:
+- what happened, as a timeline that includes the appliance's own blocks, quarantines and rate limits
+- which devices are involved
+- a "what to do now" checklist
+
+Alerts belong to the same incident when they share an internal device within 2 hours. Analysts can acknowledge, resolve or reopen an incident with a note, and every change is audited. New activity reopens a resolved incident.
+
+**Ticketing.** Add targets to the `ticketing` list of the integrations configuration (`PUT /api/integrations`, Admin). Each incident at or above a target's `min_severity` (default `high`) opens **one** ticket on that target. New alerts are added as a comment, and resolving the incident resolves the ticket. The sync runs every minute. To run it now, use `POST /api/tickets/sync` (Operator) or `python -m integrations.ticketing sync`.
+
+```json
+{"ticketing": [
+  {"type": "jira", "name": "jira", "url": "https://acme.atlassian.net", "project": "SEC",
+   "user": "bot@acme.com", "api_token": "...", "issue_type": "Task", "min_severity": "high",
+   "priorities": {"critical": "Highest", "high": "High"}, "resolve_transition": 31,
+   "inbound_token": "<long random string>"},
+  {"type": "servicenow", "name": "snow", "url": "https://acme.service-now.com", "user": "svc_sentinel",
+   "password": "...", "assignment_group": "<sys_id>", "close_code": "Resolved by caller"},
+  {"type": "thehive", "name": "hive", "url": "https://thehive.local", "api_token": "...", "organisation": "acme"},
+  {"type": "webhook", "name": "soar", "url": "https://soar.local/hooks/sentinel", "secret": "...",
+   "inbound_secret": "..."}
+]}
+```
+
+What each target type does:
+
+| Type | What SentinelEdgeAI does there |
+|---|---|
+| `jira` | Creates an issue (labels `sentineledgeai` and `severity-*`) and adds comments. On resolve, applies the optional `resolve_transition` id; find it with `GET /rest/api/2/issue/<key>/transitions`. |
+| `servicenow` | Creates an `incident` record (with `correlation_id` = incident id) and adds work notes. On resolve, sets state 6 (Resolved). |
+| `thehive` | Creates a TheHive 5 alert (with `sourceRef` = incident id) with the devices as IP observables, and updates its description. |
+| `webhook` | Sends signed `incident.opened`, `incident.updated` and `incident.resolved` events for any SOAR. Verify the `X-Sentinel-Signature` header as you would for alert webhooks. |
+
+Secrets are shown as `********` in the console and are kept when the configuration is saved back unchanged. The ticket text is plain text built from incident data. Hostnames and DNS names seen on the network are quoted as data, never as markup.
+
+**Status back from the ticket system.** `POST /api/tickets/inbound/<target name>` with a JSON body. Identify the incident with `ticket` (the ticket key) or `incident_id`, and set `status` to `resolved`/`done`/`closed`, `acknowledged`/`in progress`, or `open`/`reopened`. The optional `note` is recorded with the change. The request is authenticated either with `Authorization: Bearer <inbound_token>` or with an `X-Sentinel-Signature` HMAC made with `inbound_secret`; it does not need a console sign-in.
+
+Examples:
+- **Jira:** add an Automation rule "When issue transitioned to Done → Send web request" that sends `POST https://<appliance>/api/tickets/inbound/jira` with the header `Authorization: Bearer <inbound_token>` and the body `{"ticket": "{{issue.key}}", "status": "done", "note": "{{comment.body}}"}`.
+- **ServiceNow:** use a business rule or a Flow Designer REST step with the same body, using `{"ticket": "<number>"}`.
+
+The inbound endpoint can only change an incident's status. A SOAR that should **act** (block, contain) uses a scoped Operator API token (section 4) on `/api/firewall/block` or `/api/firewall/contain`. Those requests go through the same policy, protected-host list and approval gate as a person would.
+
 ## 9. Backups and updates
 
 ```bash

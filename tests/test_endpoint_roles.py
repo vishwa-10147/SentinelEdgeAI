@@ -73,6 +73,9 @@ ROUTES = {
     ('GET', '/api/devices/identity'): 'viewer',
     ('GET', '/api/ot/assets'): 'viewer',
     ('GET', '/api/incidents'): 'viewer',
+    ('GET', '/api/tickets'): 'viewer',
+    ('POST', '/api/tickets/sync'): 'operator',
+    ('POST', '/api/tickets/inbound/{target}'): 'public',   # authenticated by the target's inbound token or HMAC
     ('GET', '/api/incidents/{incident_id}'): 'viewer',
     ('POST', '/api/incidents/{incident_id}/status'): 'analyst',
     ('GET', '/api/trust'): 'viewer',

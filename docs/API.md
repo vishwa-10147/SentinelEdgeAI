@@ -166,6 +166,9 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/pcaps` | viewer | List stored forensic PCAP captures, newest first. |
 | `DELETE` | `/api/pcaps/{name}` | admin | Delete a stored forensic PCAP capture. |
 | `GET` | `/api/pcaps/{name}` | viewer | Download a forensic PCAP capture by filename. |
+| `GET` | `/api/tickets` | viewer | Incidents and the tickets opened for them on each ticketing target. |
+| `POST` | `/api/tickets/inbound/{target}` | public | A ticket system reports a status change. Authenticated by the target's inbound token or HMAC |
+| `POST` | `/api/tickets/sync` | operator | Create, update and resolve tickets now instead of waiting for the next minute. |
 | `GET` | `/api/trust` | viewer | Trust score (0-100), level, reasons and recommended response for every known device, least trusted first. |
 | `GET` | `/api/tuning` | viewer | Response tuning: mode and bounds, and the evidence per kind of incident and action. |
 | `POST` | `/api/tuning` | admin | Set mode (off | recommend | apply), target, min_action or window_seconds. |

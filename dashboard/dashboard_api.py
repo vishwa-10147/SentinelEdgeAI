@@ -50,6 +50,13 @@ async def lifespan(app: FastAPI):
         app.state.db_maintenance = start_background()
     except Exception:
         app.state.db_maintenance = None
+    # incidents -> Jira / ServiceNow / TheHive / webhook tickets, once a minute when configured
+    if os.environ.get('SENTINEL_TICKETING_SYNC', '1') == '1':
+        try:
+            from integrations import ticketing
+            app.state.ticketing = ticketing.start_background()
+        except Exception:
+            logger.exception('ticketing sync failed to start')
     # if CAPTURE_IN_PROCESS=1, attempt to import and run sniffer in a background thread
     if os.environ.get('CAPTURE_IN_PROCESS', '0') == '1':
         try:
@@ -544,19 +551,22 @@ def integrations_get(principal: dict = Depends(require_admin)):
 @app.put('/api/integrations')
 def integrations_put(payload: dict, principal: dict = Depends(require_admin)):
     from integrations import dispatcher
-    cfg = {'sinks': (payload or {}).get('sinks', [])}
     current = dispatcher.load_config()
+    cfg = {'sinks': (payload or {}).get('sinks', []),
+           'ticketing': (payload or {}).get('ticketing', current.get('ticketing', []))}
     # a redacted secret sent back unchanged keeps the stored value
-    by_name = {s.get('name'): s for s in current.get('sinks', [])}
-    for s in cfg['sinks']:
-        for k in dispatcher.SECRET_KEYS:
-            if s.get(k) == '********' and s.get('name') in by_name:
-                s[k] = by_name[s['name']].get(k)
+    for section in ('sinks', 'ticketing'):
+        by_name = {s.get('name'): s for s in current.get(section, [])}
+        for s in cfg[section]:
+            for k in dispatcher.SECRET_KEYS:
+                if s.get(k) == '********' and s.get('name') in by_name:
+                    s[k] = by_name[s['name']].get(k)
     try:
         dispatcher.save_config(cfg)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    audit_event(principal, 'integrations_update', details={'sinks': [s.get('type') for s in cfg['sinks']]})
+    audit_event(principal, 'integrations_update', details={'sinks': [s.get('type') for s in cfg['sinks']],
+                                                           'ticketing': [t.get('type') for t in cfg['ticketing']]})
     return dispatcher.redacted(cfg)
 
 
@@ -570,6 +580,49 @@ def integrations_test(payload: dict, principal: dict = Depends(require_admin)):
     audit_event(principal, 'integrations_test', outcome='success' if ok else 'failure',
                 details={'type': ((payload or {}).get('sink') or {}).get('type'), 'message': message})
     return {'ok': ok, 'message': message, 'latency_ms': latency}
+
+
+@app.get('/api/tickets')
+def tickets_list(principal: dict = Depends(require_viewer)):
+    """Incidents and the tickets opened for them on each ticketing target."""
+    from integrations import ticketing
+    return maybe_sanitize({'tickets': ticketing.load_map(),
+                           'targets': [{'name': t.get('name'), 'type': t.get('type'),
+                                        'min_severity': t.get('min_severity', 'high'),
+                                        'enabled': t.get('enabled', True)} for t in ticketing.configured()]})
+
+
+@app.post('/api/tickets/sync')
+def tickets_sync(principal: dict = Depends(require_operator)):
+    """Create, update and resolve tickets now instead of waiting for the next minute."""
+    from integrations import ticketing
+    stats = ticketing.sync()
+    audit_event(principal, 'tickets_sync', details=stats)
+    return stats
+
+
+@app.post('/api/tickets/inbound/{target}')
+async def tickets_inbound(target: str, request: Request):
+    """A ticket system reports a status change. Authenticated by the target's inbound token or HMAC
+    signature, not by a console session; it can only change an incident's status."""
+    from integrations import ticketing
+    config = next((t for t in ticketing.configured() if t.get('name') == target), None)
+    body = await request.body()
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    if config is None or not ticketing.authenticate_inbound(config, body, headers):
+        raise HTTPException(status_code=401, detail='unknown target or bad credentials')
+    try:
+        payload = json.loads(body or b'{}')
+        if not isinstance(payload, dict):
+            raise ValueError('body must be a JSON object')
+        incident_id, status = ticketing.inbound(target, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    audit_core.record('incident_status', actor=f'ticket:{target}', actor_kind='integration', target=incident_id,
+                      details={'status': status, 'via': target})
+    return {'incident_id': incident_id, 'status': status}
 
 
 @app.get('/api/intel')
@@ -891,8 +944,12 @@ def incidents_list(status: Optional[str] = None, since: Optional[float] = None,
 def incident_detail(incident_id: str, principal: dict = Depends(require_viewer)):
     """One incident with its timeline, responses and the "what to do now" checklist."""
     from core import incidents
+    from integrations import ticketing
     for i in incidents.current():
         if i['id'] == incident_id:
+            links = ticketing.load_map().get(incident_id, {})
+            i['tickets'] = [{'target': name, 'type': t.get('type'), 'key': t.get('key'), 'url': t.get('url'),
+                             'resolved': t.get('resolved', False)} for name, t in links.items()]
             return maybe_sanitize(i)
     raise HTTPException(status_code=404, detail='incident not found')
 

@@ -378,7 +378,7 @@ The phases below address these, in that order.
 - [ ] Optional local assistant (read-only, off by default, separate resource-limited service).
 - [ ] Notifications: mobile push with approve/deny, digest e-mails.
 - [ ] SSO (OIDC/SAML), LDAP/AD group mapping.
-- [ ] Ticketing and SOAR (Jira, ServiceNow, TheHive, generic webhooks both ways).
+- [x] Ticketing and SOAR (`integrations/ticketing.py`): Jira, ServiceNow, TheHive 5 and signed webhooks, one ticket per incident, comments, resolve both ways through an authenticated inbound endpoint. Not yet run against live Jira/ServiceNow/TheHive instances.
 - [ ] Guided tuning suggestions from analyst feedback.
 
 ## Phase 11 — Platform and ecosystem (v4.x and later)

@@ -133,6 +133,13 @@ export default function IncidentsModal({ open, onClose, user }){
               {selected.techniques.length ? ` · ${selected.techniques.join(', ')}` : ''} · status <strong>{selected.status}</strong>
               {selected.note ? ` (“${selected.note}” — ${selected.updated_by || 'unknown'})` : ''}
             </p>
+            {selected.tickets?.length > 0 && (
+              <p className="auth-hint">Tickets: {selected.tickets.map((t, n)=>(
+                <span key={t.target}>{n ? ' · ' : ''}{t.url && /^https:\/\//.test(t.url)
+                  ? <a href={t.url} target="_blank" rel="noopener noreferrer">{t.key || t.target}</a>
+                  : (t.key || t.target)} ({t.target}{t.resolved ? ', resolved' : ''})</span>
+              ))}</p>
+            )}
             <h3>What to do now</h3>
             <ol className="incident-checklist">
               {selected.checklist.map((s, n)=><li key={n}>{s}</li>)}

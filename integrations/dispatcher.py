@@ -17,7 +17,7 @@ from integrations import sinks
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 logger = logging.getLogger('sentinel.integrations')
 SEVERITY_RANK = {'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4}
-SECRET_KEYS = ('secret', 'password', 'webhook_url')
+SECRET_KEYS = ('secret', 'password', 'webhook_url', 'api_token', 'inbound_token', 'inbound_secret')
 
 
 def config_file():
@@ -31,12 +31,15 @@ def load_config():
     except (OSError, ValueError):
         cfg = {}
     cfg.setdefault('sinks', [])
+    cfg.setdefault('ticketing', [])
     return cfg
 
 
 def save_config(cfg):
     for s in cfg.get('sinks', []):
         sinks.build(s)                         # validates; raises ValueError
+    from integrations import ticketing
+    ticketing.validate(cfg.get('ticketing', []))
     path = config_file()
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     fd = os.open(path + '.tmp', os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -48,7 +51,7 @@ def save_config(cfg):
 
 def redacted(cfg):
     out = json.loads(json.dumps(cfg))
-    for s in out.get('sinks', []):
+    for s in out.get('sinks', []) + out.get('ticketing', []):
         for k in SECRET_KEYS:
             if s.get(k):
                 s[k] = '********'
