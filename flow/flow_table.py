@@ -31,8 +31,8 @@ class FlowTable:
         else:
             return (dst_ip, dst_port, src_ip, src_port, protocol)
 
-    def process_packet(self, src_ip, src_port, dst_ip, dst_port, protocol, size):
-        now = datetime.now(timezone.utc)
+    def process_packet(self, src_ip, src_port, dst_ip, dst_port, protocol, size, now=None):
+        now = now or datetime.now(timezone.utc)       # `now`: packet time when replaying a capture
         key = self._generate_key(src_ip, src_port, dst_ip, dst_port, protocol)
 
         if key not in self.flows:
@@ -88,9 +88,9 @@ class FlowTable:
             flow_state=state,
         )
 
-    def check_timeouts(self):
+    def check_timeouts(self, now=None):
         """Finished flows: idle ones (oldest first; the scan stops at the first active flow) and evicted ones."""
-        now = datetime.now(timezone.utc)
+        now = now or datetime.now(timezone.utc)
         expired_flows, self._evicted_pending = self._evicted_pending, []
         while self.flows:
             key, flow = next(iter(self.flows.items()))

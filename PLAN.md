@@ -224,7 +224,7 @@ Exit criteria evidence so far (`sudo bash tests/firewall_netns/run_enforcement_n
 - [x] Evaluation harness (`python -m evaluation.harness`, `--cicids file.csv`), reports in `reports/eval/`.
 - [ ] GPU models on the Jetson (TensorRT autoencoder, sequence and graph models) — pending hardware.
 - [x] Evaluation on CIC-IDS2017 (docs/EVALUATION.md): brute force, port scan and infiltration detected on their days (114 s; under a minute after the scan starts; 846 s), 4 of 8 bots (minute-resolution timestamps limit beaconing); 0.02–0.05% false positives per benign flow. The loader now handles the files' 12-hour clock and minute resolution, and refuses the MachineLearningCVE variant.
-- [ ] UNSW-NB15 / CIC-IoT2023 loaders, captured lab attacks and a Suricata comparison.
+- [x] UNSW-NB15 loader for the published per-flow files (real timestamps), CIC-IoT2023 refused with guidance (its CSVs have no addresses), a pcap evaluator through the live packet path (`evaluation/pcap.py`), a reproducible lab capture and a Suricata 7 + ET Open comparison on it (docs/EVALUATION.md: 9/11 vs 3/11, complementary, 0 benign hosts alerted by either). The UNSW-NB15 / CIC-IoT2023 runs themselves need the datasets fetched by hand.
 - [x] Console views for analyst feedback, the model registry (promote, roll back) and the latest evaluation (**Operations → Models & evaluation**).
 
 Evidence on the labelled synthetic set (7 attack classes × 6 instances, 25 hosts, realistic false-positive bait such as NTP, backups, CDN browsing, management polling; 5 seeds and a 24-hour run): **100% detection, 0.0% false positives, p99 0.15 ms per event**. The harness was checked by an over-sensitive configuration, which it correctly scores at 1.4% false positives. These are upper-bound numbers on synthetic data; **the targets count as met only after the public datasets and lab captures.**
@@ -326,7 +326,7 @@ The phases below address these, in that order.
 * 72-hour inline soak with a hardware bypass; inline throughput and latency published.
 * Jetson Orin Nano as the brain: install, GPU autoencoder (TensorRT), measured speed-up.
 * Pre-built OS images for Pi and Jetson (first boot opens the setup wizard).
-* UNSW-NB15 and CIC-IoT2023 evaluation, and a Suricata comparison on the same traffic.
+* UNSW-NB15 and CIC-IoT2023 evaluation (loaders ready; datasets to fetch), and a Suricata comparison on the same traffic (done on a lab capture, v2.17; real captures pending).
 * ~~The release Isolation Forest moves to Ed25519 (devices hold only a public key).~~ Done (v2.17): signed offline with Ed25519, public key pinned on each device at first install, CI verifies with the public key only.
 * A real Splunk/Elastic run; ~~signed update channels (`stable`, `beta`)~~ (done in v2.17: Ed25519-signed manifests naming a release and its package SHA-256, expiry and rollback protection, `ops/channels.py`).
 

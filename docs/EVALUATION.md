@@ -38,8 +38,40 @@ Reports are written to `reports/eval/`. The latest one is shown in **Operations 
 
 `python -m evaluation.harness` without arguments replays a labelled synthetic network: 42 attacks across 8 classes and 73,000 events. Every attack is detected, with no false positives. It is a regression test for the detectors rather than evidence of real-world accuracy, which is what the CIC numbers above are for.
 
+## Same traffic as Suricata (lab capture)
+
+`python -m evaluation.lab_pcap lab.pcap` builds a reproducible two-hour capture (117,370 packets, seed 11): five office machines browsing over TLS 1.3, resolving names and using a file server, plus eleven attacks. It is built packet by packet with real TCP handshakes, acknowledgements, sequence numbers and checksums, a real ClientHello, DNS, HTTP and Kerberos. Both systems read the same file:
+
+* this engine: `python -m evaluation.pcap lab.pcap --truth lab.truth.json --suricata eve.json`. It replays the capture in packet time through the same flow table and per-packet dispatch (`detection/packets.py`) as the live engine; the ML models are left out, as in the dataset harness;
+* Suricata 7.0.17 with the Emerging Threats Open ruleset (53,307 rules enabled, default configuration, 2026-11-01): `suricata -r lab.pcap -k none`.
+
+| Attack | This engine | Suricata + ET Open |
+|---|---|---|
+| Port scan (400 ports) | detected, 1 s | – |
+| Host sweep (port 445 on 100 hosts) | detected, 3 s | – |
+| SSH password guessing (60 sessions, internal) | detected, 20 s | – |
+| HTTPS beaconing every 60 s (1% jitter) | detected, 7 min | – |
+| Jittered check-ins of constant size (±50% timing) | detected, 10 min (session rhythm) | – |
+| DNS tunnelling (150 TXT queries) | detected, 15 s | – |
+| Kerberoasting (40 service-ticket requests in 30 s) | detected, 22 s | – |
+| 8 MB upload to a new internet host | detected, 4 s | – |
+| PowerShell download over plain HTTP | detected, at once | detected, at once (3 ET INFO rules) |
+| Log4Shell attempt from the internet | – | detected, at once (4 ET EXPLOIT/HUNTING rules) |
+| SQL injection (sqlmap) from the internet | – | detected, at once (2 rules) |
+| **Total** | **9 / 11** | **3 / 11** |
+| Benign machines alerted on | 0 | 0 |
+
+Suricata also raised 450 protocol-anomaly events (`SURICATA ...`: malformed SMB and TLS records in the synthetic traffic); they are not counted as detections either way.
+
+**How to read this.** The capture is synthetic and was written by the same project as the detectors, so it is a fair test of *what each system is built to see*, not of accuracy on a real network. The two are complementary: this engine finds behaviour (scans, guessing, beaconing, tunnelling, bursts, exfiltration) without signatures, and Suricata finds known-bad payloads (exploits, attack tools) that behaviour alone does not reveal. That is why Suricata's `eve.json` can be fed into this engine as one more detector (Integrations), and Zeek or Suricata can front busy links. Run both.
+
+## UNSW-NB15 and CIC-IoT2023
+
+* **UNSW-NB15:** `python -m evaluation.harness --unswnb15 UNSW-NB15_1.csv` reads the published per-flow files (no header, 49 columns, real `stime`/`ltime`), parts 1 to 4. Covered categories: Reconnaissance and Analysis (scans) and Backdoor (beaconing); DoS, Exploits, Fuzzers, Generic, Shellcode and Worms need payload signatures and are neither scored as detections nor counted as benign. The training/testing set files have no addresses or times and are refused. **Not run yet:** the dataset is distributed through a web form, not a scriptable download.
+* **CIC-IoT2023:** the published CSVs hold per-window features without addresses, which flow detectors cannot use; the loader says so. Evaluate on the dataset's PCAP files with `python -m evaluation.pcap` instead. **Not run yet**, for the same reason.
+
 ## Not done yet
 
-- UNSW-NB15 and CIC-IoT2023 (same harness; loaders not written yet).
-- A side-by-side Suricata comparison on the same days.
+- UNSW-NB15 and CIC-IoT2023 runs (loaders ready, data to be fetched by hand).
+- A Suricata comparison on real captures (CIC-IDS2017 or UNSW-NB15 PCAPs), beyond the lab capture above.
 - GPU models (pending Jetson hardware).

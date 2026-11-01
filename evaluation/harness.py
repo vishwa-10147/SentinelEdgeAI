@@ -2,6 +2,8 @@
 
     python -m evaluation.harness                      # synthetic set, writes reports/eval/
     python -m evaluation.harness --cicids path.csv    # a CIC-IDS2017 CSV (flow detectors only)
+    python -m evaluation.harness --unswnb15 UNSW-NB15_1.csv
+    python -m evaluation.pcap capture.pcap --truth truth.json [--suricata eve.json]   # packets, vs Suricata
 
 Metrics:
   detection rate  per attack class: share of attack instances with a matching
@@ -186,57 +188,90 @@ def load_cicids(path):
 
 # ---------- UNSW-NB15 ----------
 
-UNSW_LABELS = {'reconnaissance': 'port_scan', 'analysis': 'port_scan',
-               'backdoors': 'beaconing', 'worms': 'beaconing',
-               'exploits': 'brute_force'}
+UNSW_LABELS = {'reconnaissance': 'port_scan', 'analysis': 'port_scan', 'backdoor': 'beaconing',
+               'backdoors': 'beaconing'}
+# the 49 columns of the per-flow files UNSW-NB15_1.csv ... UNSW-NB15_4.csv, which have no header row
+# (order from UNSW-NB15_features.csv)
+UNSW_COLUMNS = ['srcip', 'sport', 'dstip', 'dsport', 'proto', 'state', 'dur', 'sbytes', 'dbytes', 'sttl', 'dttl',
+                'sloss', 'dloss', 'service', 'sload', 'dload', 'spkts', 'dpkts', 'swin', 'dwin', 'stcpb', 'dtcpb',
+                'smeansz', 'dmeansz', 'trans_depth', 'res_bdy_len', 'sjit', 'djit', 'stime', 'ltime', 'sintpkt',
+                'dintpkt', 'tcprtt', 'synack', 'ackdat', 'is_sm_ips_ports', 'ct_state_ttl', 'ct_flw_http_mthd',
+                'is_ftp_login', 'ct_ftp_cmd', 'ct_srv_src', 'ct_srv_dst', 'ct_dst_ltm', 'ct_src_ltm',
+                'ct_src_dport_ltm', 'ct_dst_sport_ltm', 'ct_dst_src_ltm', 'attack_cat', 'label']
 
 
 def _unsw_time(index, per_second=10.0):
-    """Synthetic timestamp for UNSW-NB15 rows, which ship without timestamps.
-
-    Rows are spaced `per_second` apart starting at the harness clock base so the
-    pipeline sees a plausible sequence instead of identical timestamps.
-    """
+    """Synthetic timestamp, only for UNSW-NB15 extracts that lost the stime/ltime columns."""
     return synthetic.BASE + index * per_second
 
 
-def load_unswnb15(path):
-    """Flow events from a UNSW-NB15 CSV.
+def _port(value):
+    value = str(value or '').strip()
+    if not value or value == '-':
+        return 0
+    return int(value, 16) if value.lower().startswith('0x') else int(float(value))
 
-    Columns used: srcip, dstip, sport, dsport, proto, dur, sbytes, dbytes, attack_cat, label.
-    The standard release has no timestamps, so rows are spaced 10s apart in file order.
-    Attack categories our flow detectors can cover are mapped to detector classes;
-    the rest (DoS, fuzzers, generic, shellcode) are not covered and count as benign
-    events for false-positive purposes, matching the CIC-IDS2017 treatment of uncovered attacks.
+
+def _looks_like_ip(text):
+    import ipaddress
+    try:
+        ipaddress.ip_address(str(text).strip())
+        return True
+    except ValueError:
+        return False
+
+
+def load_unswnb15(path):
+    """Flow events from UNSW-NB15.
+
+    Reads the per-flow files UNSW-NB15_1.csv ... _4.csv as published (no header row, 49 columns, real
+    start/end times in stime/ltime), or a CSV with those column names as a header. The training/testing
+    set files (UNSW_NB15_training-set.csv) have no addresses or times and are refused: flow detectors
+    need to know who talked to whom, and when.
+
+    Attack categories the flow detectors cover: Reconnaissance and Analysis (scans) -> port scan,
+    Backdoor -> beaconing. The others (DoS, Exploits, Fuzzers, Generic, Shellcode, Worms) need payload
+    signatures; their flows are not counted as benign, so they cost no false positives either.
     """
     rows = []
     with open(path, newline='', encoding='utf-8', errors='ignore') as f:
-        reader = csv.DictReader(f)
-        reader.fieldnames = [h.strip() for h in reader.fieldnames]
-        required = {'srcip', 'dstip', 'sport', 'dsport', 'proto', 'dur', 'sbytes', 'dbytes',
-                    'attack_cat', 'label'}
-        missing = required - set(reader.fieldnames)
+        first = next(csv.reader([f.readline()]), [])
+        f.seek(0)
+        if first and _looks_like_ip(first[0]):
+            reader = csv.DictReader(f, fieldnames=UNSW_COLUMNS)
+        else:
+            reader = csv.DictReader(f)
+            reader.fieldnames = [h.strip().lower() for h in reader.fieldnames]
+        fields = set(reader.fieldnames)
+        if not {'srcip', 'dstip'} <= fields:
+            raise ValueError('this UNSW-NB15 file has no source/destination addresses (the training/testing set '
+                             'files do not); use the per-flow files UNSW-NB15_1.csv ... UNSW-NB15_4.csv')
+        required = {'dsport', 'proto', 'dur', 'sbytes', 'dbytes', 'attack_cat', 'label'}
+        missing = required - fields
         if missing:
             raise ValueError(f'UNSW-NB15 CSV missing columns: {sorted(missing)}')
+        timed = {'stime', 'ltime'} <= fields
         for index, row in enumerate(reader):
             try:
-                rec = {'ts': _unsw_time(index), 'src': row['srcip'].strip(), 'dst': row['dstip'].strip(),
-                       'dport': int(float(row['dsport'])), 'sport': int(float(row.get('sport') or 0)),
+                start = float(row['stime']) if timed else _unsw_time(index)
+                end = float(row['ltime']) if timed else start + float(row['dur'])
+                rec = {'ts': end, 'start': start, 'src': row['srcip'].strip(), 'dst': row['dstip'].strip(),
+                       'dport': _port(row['dsport']), 'sport': _port(row.get('sport')),
                        'proto': str(row.get('proto', '')).strip().upper() or 'OTHER',
                        'duration': float(row['dur']), 'forward_bytes': int(float(row['sbytes'])),
-                       'backward_bytes': int(float(row['dbytes']))}
-            except (KeyError, ValueError, TypeError):
+                       'backward_bytes': int(float(row['dbytes'])),
+                       'forward_packets': int(float(row.get('spkts') or 0)),
+                       'backward_packets': int(float(row.get('dpkts') or 0))}
+            except (KeyError, ValueError, TypeError, AttributeError):
                 continue
-            attack_cat = str(row.get('attack_cat', '')).strip().lower()
-            label = str(row.get('label', '')).strip()
-            if attack_cat == 'normal' or label == '0':
+            attack_cat = str(row.get('attack_cat') or '').strip().lower()
+            label = str(row.get('label') or '').strip()
+            if label == '0' or attack_cat in ('', 'normal'):
                 rows.append((rec, 'benign', None))
                 continue
             kind = UNSW_LABELS.get(attack_cat)
-            if kind is None:
-                rows.append((rec, attack_cat, None))
-                continue
-            rows.append((rec, kind, kind))
+            rows.append((rec, attack_cat, kind))
+    rows.sort(key=lambda r: r[0]['ts'])
     events, truth, seen = [], [], {}
     for rec, label, kind in rows:
         if kind is None:
@@ -245,12 +280,8 @@ def load_unswnb15(path):
         key = (kind, rec['src'])
         if key not in seen:
             seen[key] = f'{kind}-{len(truth)}'
-            truth.append({'id': seen[key], 'kind': kind, 'src': rec['src'], 'start': rec['ts']})
-        else:
-            t = next(x for x in truth if x['id'] == seen[key])
-            t['start'] = min(t['start'], rec['ts'])
+            truth.append({'id': seen[key], 'kind': kind, 'src': rec['src'], 'start': rec['start']})
         events.append({'type': 'flow', 'label': kind, 'attack': seen[key], 'record': rec})
-    events.sort(key=lambda e: e['record']['ts'])
     return events, truth
 
 
@@ -313,7 +344,10 @@ def load_cic_iot2023(path):
         reader.fieldnames = [h.strip() for h in reader.fieldnames]
         fieldset = set(reader.fieldnames)
         if not (fieldset & SRC_ALIASES) or not (fieldset & DST_ALIASES):
-            raise ValueError('CIC-IoT2023 CSV missing source/destination IP columns')
+            raise ValueError('this CIC-IoT2023 CSV has no source/destination addresses: the published CSVs hold '
+                             'per-window features only, which flow detectors cannot use. Evaluate on the '
+                             "dataset's PCAP files instead: python -m evaluation.pcap <file.pcap> --truth "
+                             'truth.json (or convert the PCAPs to flows with IPs, e.g. with Zeek, first)')
         for index, row in enumerate(reader):
             try:
                 rec = {'ts': _ciot_time(index),
