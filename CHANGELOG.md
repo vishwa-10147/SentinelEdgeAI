@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-11-01
+
+Phase 11 software, live integration tests, and an assistant hardening found by running it on a real model.
+
 ### Added
 - **Multi-tenant fleet for MSPs / MSSPs** (Phase 11, `fleet/tenants.py`): customers own groups (existing fleets become the `default` customer, migrated in place); console accounts with customer memberships, and their API tokens, see only those customers' sites, groups, alerts and actions, with roles capped by their console role, and every other request is refused (403, audited); templates, federated learning, sharing and customer management stay with MSP staff. Per-customer branding (display name, accent, support contact) and monthly usage reports (sites, site-days, alerts, remote actions; JSON or CSV). `python -m fleet tenant ...`, `python -m fleet usage`, `/api/fleet/tenants*`, `/api/fleet/usage`; customer filter, branding and usage export in the Fleet panel.
 - **Hosted fleet console** (Phase 11, `deploy/fleet-hosted/`): `docker compose up` runs the fleet server (mutual TLS, read-only root) and the console (HTTPS) on any Linux host or cloud VM, without capture or enforcement; appliances enrol as usual and stay fully functional offline. `python -m fleet init --hostname/--ip` sets the names in the fleet server certificate. Verified end to end with a real appliance enrolling and reporting.

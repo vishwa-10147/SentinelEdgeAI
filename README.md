@@ -32,7 +32,7 @@ SentinelEdgeAI is a network appliance that learns how every device on a network 
 
 | | |
 |---|---|
-| **Current release** | [`v2.17.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.17.0): SAML 2.0 and LDAP/AD sign-in, Web Push approvals, signed update channels, an Ed25519-signed release model (no secret on devices), JA4H and session-rhythm detection, quarantine VLAN on managed switches, a Suricata comparison, passive OS fingerprinting, LDAP / Active Directory reconnaissance detection, IPv6 containment and OT segmentation, an optional local assistant that explains incidents (read-only, off by default), approvals on the phone, digests, guided tuning and single sign-on (OpenID Connect) on top of v2.10, which added deeper visibility (lateral movement, more OT protocols, JA4S and certificate checks, Zeek engine, PCAP buffer), incidents with "what to do now", and Jira/ServiceNow/TheHive ticketing on top of v2.9: all phases (0–7) built — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning, high availability, compliance packs (pen test and beta pending) |
+| **Current release** | [`v2.18.0`](https://github.com/vishwa-10147/SentinelEdgeAI/releases/tag/v2.18.0): multi-tenant fleet for MSPs, extension SDK (signed, sandboxed), community threat sharing, hosted fleet console, VEX per release, live-tested SSO/SIEM/ticketing, SAML 2.0 and LDAP/AD sign-in, Web Push approvals, signed update channels, an Ed25519-signed release model (no secret on devices), JA4H and session-rhythm detection, quarantine VLAN on managed switches, a Suricata comparison, passive OS fingerprinting, LDAP / Active Directory reconnaissance detection, IPv6 containment and OT segmentation, an optional local assistant that explains incidents (read-only, off by default), approvals on the phone, digests, guided tuning and single sign-on (OpenID Connect) on top of v2.10, which added deeper visibility (lateral movement, more OT protocols, JA4S and certificate checks, Zeek engine, PCAP buffer), incidents with "what to do now", and Jira/ServiceNow/TheHive ticketing on top of v2.9: all phases (0–7) built — single-node or sensor/brain deployment, trusted enforcement, detection fusion, SIEM integrations, signed OTA updates, OT protocol awareness and micro-segmentation, device trust and containment, fleet manager, federated learning, response tuning, high availability, compliance packs (pen test and beta pending) |
 | **Target hardware** | Raspberry Pi 5 (sensor) and NVIDIA Jetson Orin Nano (AI and management) |
 | **Supply chain** | Signed ML model, reproducible packages, Sigstore/cosign signatures, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
 | **Supply chain** | Signed ML model, SHA-256 checksums, CycloneDX SBOM, GitHub build-provenance attestation |
@@ -89,7 +89,8 @@ Each phase has explicit exit criteria in [PLAN.md](PLAN.md) and is only marked d
 
 | Version | Highlights |
 |---|---|
-| **v2.17.0** | SAML 2.0 and LDAP/AD sign-in; Web Push approvals; signed stable/beta update channels; Ed25519 release model (devices hold no secret); JA4H and session rhythm; quarantine VLAN on switches; pcap evaluation and a Suricata comparison |
+| **v2.18.0** | Phase 11: multi-tenant fleet for MSPs; extension SDK (signed, sandboxed); community threat sharing; hosted fleet console; VEX per release; assistant prompt-injection fix; live tests (Keycloak, Elastic, TheHive) |
+| v2.17.0 | SAML 2.0 and LDAP/AD sign-in; Web Push approvals; signed stable/beta update channels; Ed25519 release model (devices hold no secret); JA4H and session rhythm; quarantine VLAN on switches; pcap evaluation and a Suricata comparison |
 | v2.16.0 | Phase 9: passive OS and device-type fingerprinting; LDAP metadata and Active Directory reconnaissance detection |
 | v2.15.0 | IPv6 containment and OT segmentation (real-kernel tested); fix: IPv6 quarantine kept neighbour discovery |
 | v2.14.1 | Fix: assistant source free of invisible bidirectional characters (Bandit B613) |
@@ -283,15 +284,15 @@ Approximate hardware cost for the Standard profile: **USD 300–400**.
 2. Optionally verify where the package was built:
 
    ```bash
-   gh attestation verify sentineledgeai-pi-2.17.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
+   gh attestation verify sentineledgeai-pi-2.18.0.tar.gz --repo vishwa-10147/SentinelEdgeAI
    ```
 
 3. Install:
 
    ```bash
-   sha256sum -c sentineledgeai-pi-2.17.0.tar.gz.sha256
-   tar -xzf sentineledgeai-pi-2.17.0.tar.gz
-   sudo bash sentineledgeai-pi-2.17.0/packaging/sentinelctl install sentineledgeai-pi-2.17.0.tar.gz
+   sha256sum -c sentineledgeai-pi-2.18.0.tar.gz.sha256
+   tar -xzf sentineledgeai-pi-2.18.0.tar.gz
+   sudo bash sentineledgeai-pi-2.18.0/packaging/sentinelctl install sentineledgeai-pi-2.18.0.tar.gz
    ```
 
 4. Open `https://<pi-address>:9000` (the installer prints the address). The certificate is self-signed, so the browser warns once: check that the SHA-256 fingerprint matches `sentinelctl tls show` before continuing, or install your own certificate with `sudo sentinelctl tls import cert.pem key.pem`. Sign in as `admin` with the one-time password from `sudo cat /etc/sentinel/initial-admin-password`. You must choose a new password and set up an authenticator app (two-step sign-in), then delete that file. The setup wizard then asks for the network placement, the capture interface and the response mode (reopen it later from **Setup**). Add other users from the **Users** panel.
@@ -473,7 +474,7 @@ docs/         admin guide, runbooks, troubleshooting, API reference, performance
 
 ---
 
-## Known limitations (v2.17.0)
+## Known limitations (v2.18.0)
 
 1. **Self-signed certificate by default.** Browsers warn until you import a certificate from your own CA (`sentinelctl tls import`).
 2. **Jetson brain not yet run on hardware.** Two-node mode is verified in simulation and on the Pi; GPU models wait for the Jetson.
