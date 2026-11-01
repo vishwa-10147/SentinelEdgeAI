@@ -24,6 +24,10 @@ class Sink:
     def send(self, alert):
         raise NotImplementedError
 
+    def message(self, subject, text, link=None):
+        """A plain notification (digest, approval request). Raises on failure."""
+        raise NotImplementedError(f'{self.kind} destinations cannot carry notifications')
+
     def close(self):
         pass
 
@@ -94,6 +98,21 @@ class WebhookSink(Sink):
                           verify=self.config.get('ca_file') or True)
         r.raise_for_status()
 
+    def message(self, subject, text, link=None):
+        self._post_signed({'event': 'notification', 'subject': subject, 'text': text, 'link': link})
+
+    def _post_signed(self, payload):
+        body = json.dumps(payload, sort_keys=True).encode()
+        ts = str(int(time.time()))
+        headers = {'Content-Type': 'application/json', 'User-Agent': 'SentinelEdgeAI'}
+        secret = self.config.get('secret')
+        if secret:
+            mac = hmac.new(secret.encode(), ts.encode() + b'.' + body, hashlib.sha256).hexdigest()
+            headers['X-Sentinel-Signature'] = f't={ts},v1={mac}'
+        r = requests.post(self.config['url'], data=body, headers=headers, timeout=5,
+                          verify=self.config.get('ca_file') or True)
+        r.raise_for_status()
+
 
 def verify_webhook(secret, body, header, tolerance=300, now=None):
     """Receiver-side check of X-Sentinel-Signature (also used in tests)."""
@@ -135,6 +154,10 @@ class SlackSink(Sink):
     def send(self, alert):
         requests.post(self.config['webhook_url'], json={'text': _summary(alert)}, timeout=5).raise_for_status()
 
+    def message(self, subject, text, link=None):
+        body = f'*{subject}*\n{text}' + (f'\n<{link}|Open in SentinelEdgeAI>' if link else '')
+        requests.post(self.config['webhook_url'], json={'text': body}, timeout=5).raise_for_status()
+
 
 class TeamsSink(Sink):
     kind = 'teams'
@@ -144,6 +167,19 @@ class TeamsSink(Sink):
                 'summary': f"SentinelEdgeAI {alert.get('attack_type')}", 'themeColor': 'D97706',
                 'text': _summary(alert).replace('\n', '<br>')}
         requests.post(self.config['webhook_url'], json=card, timeout=5).raise_for_status()
+
+    def message(self, subject, text, link=None):
+        card = {'@type': 'MessageCard', '@context': 'https://schema.org/extensions', 'summary': subject,
+                'title': subject, 'themeColor': '0EA5E9', 'text': _html_escape(text).replace('\n', '<br>')}
+        if link:
+            card['potentialAction'] = [{'@type': 'OpenUri', 'name': 'Open in SentinelEdgeAI',
+                                        'targets': [{'os': 'default', 'uri': link}]}]
+        requests.post(self.config['webhook_url'], json=card, timeout=5).raise_for_status()
+
+
+def _html_escape(text):
+    import html
+    return html.escape(str(text), quote=False)
 
 
 class EmailSink(Sink):
@@ -156,6 +192,17 @@ class EmailSink(Sink):
         msg['From'] = self.config['from']
         msg['To'] = ', '.join(self.config['to']) if isinstance(self.config['to'], list) else self.config['to']
         msg.set_content(_summary(alert).replace('*', '') + '\n\n' + json.dumps(alert, indent=2, default=str))
+        self._smtp(msg)
+
+    def message(self, subject, text, link=None):
+        msg = EmailMessage()
+        msg['Subject'] = f'[SentinelEdgeAI] {subject}'
+        msg['From'] = self.config['from']
+        msg['To'] = ', '.join(self.config['to']) if isinstance(self.config['to'], list) else self.config['to']
+        msg.set_content(text + (f'\n\nOpen in SentinelEdgeAI: {link}' if link else ''))
+        self._smtp(msg)
+
+    def _smtp(self, msg):
         port = int(self.config.get('port', 587))
         with smtplib.SMTP(self.config['host'], port, timeout=10) as smtp:
             if self.config.get('starttls', True):

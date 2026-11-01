@@ -332,6 +332,26 @@ Every rule:
 
 You can also write a rule by hand with `POST /api/guided-tuning/rules`, for example `{"kind": "port_scan", "scope": {"src": "10.0.9.9", "dport": 161}, "action": "downgrade", "days": 30, "note": "SNMP poller"}`. A rule's scope must name a source and/or destination of /16 or narrower: a detector cannot be switched off for the whole network this way. Rules are stored in `data/guided_tuning.json`; the engine picks up changes within 10 seconds.
 
+## 8c. Notifications: approvals on the phone and digests
+
+Set these up under **Operations → Notifications** (Admin), or with `PUT /api/notifications`. Messages go to destinations you have already added under Integrations: e-mail, Slack, Teams or a signed webhook. Select them by name.
+
+**Approval requests.** When the playbook holds an action for an Operator (the approval gate, section 5), a message goes out immediately, for example "Approval needed: block 10.0.0.66". It links to `https://<console>/#approve/<id>`, a page designed for a phone that shows the action, the device, the risk and the reason, with **Approve** and **Deny** buttons.
+
+- The link carries **no credentials**. The Operator signs in first (password with two-step sign-in, or SSO), and the decision goes through the same endpoint, checks and audit as in the console.
+- If the action was already decided, the page says by whom.
+- Set **Console address** so that the links work from outside the appliance's own network.
+
+**Digest.** Daily or weekly, at the hour you choose. It covers:
+- open incidents by severity, plus the ones that need attention
+- incidents opened and resolved in the period
+- actions waiting for approval
+- tuning suggestions
+
+Enabling the digest does not send a catch-up message; the first one goes out at the next scheduled time. Use **Preview digest**, **Send digest now** and **Test <destination>** to check the setup.
+
+Messages are sent in the background, so detection never waits for a mail server or Slack, and a failing destination does not stop the others. The last digest result is shown in the panel.
+
 ## 9. Backups and updates
 
 ```bash

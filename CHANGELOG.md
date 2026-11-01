@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Notifications** (Phase 10, `integrations/notify.py`): approval requests are sent the moment the playbook holds an action for an Operator, to chosen e-mail / Slack / Teams / webhook integrations, with a link to a new phone-friendly approval page (`#approve/<id>`, sign-in required: the link carries no credentials); daily or weekly digests of open incidents, approvals waiting and tuning suggestions. Background queue (the engine never waits on SMTP or Slack), one failing destination does not stop the others, no catch-up message when the digest is first enabled. `GET/PUT /api/notifications`, `POST /api/notifications/test`, `GET /api/notifications/digest/preview`, `POST /api/notifications/digest/send`, `GET /api/playbook/pending/{id}`; **Operations → Notifications**. Notification links (`#approve/…`, `#incidents`) survive sign-in, including SSO.
+- Integrations: e-mail, Slack, Teams and webhook destinations can carry plain notifications (`Sink.message`).
+
 ## [2.12.0] - 2026-11-01
 
 Phase 10: guided tuning.

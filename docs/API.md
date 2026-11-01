@@ -74,6 +74,7 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `POST` | `/api/firewall/unblock` | operator |  |
 | `POST` | `/api/firewall/whitelist` | operator |  |
 | `GET` | `/api/playbook/pending` | viewer |  |
+| `GET` | `/api/playbook/pending/{pending_id}` | viewer | One approval request, for the phone approval page. |
 | `POST` | `/api/playbook/pending/{pending_id}/approve` | operator |  |
 | `POST` | `/api/playbook/pending/{pending_id}/deny` | operator |  |
 | `GET` | `/api/policy` | viewer |  |
@@ -166,6 +167,11 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `GET` | `/api/guided-tuning/suggestions` | viewer | Where analysts' false-positive labels concentrate, with a proposed scoped rule for each. |
 | `POST` | `/api/guided-tuning/suggestions/{suggestion_id}/accept` | analyst | Turn a suggestion into a rule: downgrade (Analyst) or suppress (Operator), for 1-180 days. |
 | `POST` | `/api/guided-tuning/suggestions/{suggestion_id}/dismiss` | analyst | Hide a suggestion for 30 days. |
+| `GET` | `/api/notifications` | admin |  |
+| `PUT` | `/api/notifications` | admin |  |
+| `GET` | `/api/notifications/digest/preview` | viewer |  |
+| `POST` | `/api/notifications/digest/send` | admin |  |
+| `POST` | `/api/notifications/test` | admin | Send a test message to one integration by name. |
 | `GET` | `/api/ot/assets` | viewer | Industrial controllers seen on the network, the hosts that command them and the functions they use. |
 | `GET` | `/api/ot/segmentation` | viewer |  |
 | `POST` | `/api/ot/segmentation` | admin | Set OT segmentation to off, monitor or enforce (enforce needs inline placement). |

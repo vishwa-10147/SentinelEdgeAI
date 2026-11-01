@@ -1575,3 +1575,10 @@ button:disabled {
 .tuning-card p { margin: 0 0 6px; }
 .tuning-row { grid-template-columns: 1.1fr 1.6fr 0.8fr 0.9fr 0.8fr 0.8fr; }
 @media (max-width: 700px) { .tuning-row { grid-template-columns: 1fr 1fr; } }
+
+/* Notifications (Phase 10) */
+.approval-body p { margin: 6px 0; }
+.approval-action { font-size: 1.25rem; text-transform: capitalize; }
+.approval-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+.approval-buttons button { padding: 14px; font-size: 1.05rem; }
+.digest-preview { white-space: pre-wrap; background: #0a0e1a; border: 1px solid var(--line-soft); border-radius: 7px; padding: 10px; }

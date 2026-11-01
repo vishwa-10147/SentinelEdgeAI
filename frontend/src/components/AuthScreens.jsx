@@ -113,7 +113,7 @@ export function LoginScreen({ onSignedIn, sso }){
         {sso?.enabled && (
           <>
             <p className="auth-hint auth-divider">or</p>
-            <a className="ghost-button sso-button" href="/api/auth/oidc/login">{sso.label || 'Sign in with SSO'}</a>
+            <a className="ghost-button sso-button" href="/api/auth/oidc/login" onClick={()=>{ try{ if(window.location.hash) sessionStorage.setItem('sentinel_return', window.location.hash) }catch(e){ /* ignore */ } }}>{sso.label || 'Sign in with SSO'}</a>
           </>
         )}
       </form>

@@ -21,6 +21,18 @@ const AuditModal = lazy(() => import('./components/AuditModal'))
 const OtModal = lazy(() => import('./components/OtModal'))
 const IncidentsModal = lazy(() => import('./components/IncidentsModal'))
 const TuningModal = lazy(() => import('./components/TuningModal'))
+const ApprovalScreen = lazy(() => import('./components/ApprovalScreen'))
+
+// links from notifications: #approve/<id> (phone approval page) and #incidents; kept across sign-in and SSO
+const RETURN_KEY = 'sentinel_return'
+function readHash(){
+  let hash = window.location.hash
+  try{
+    if(!hash){ hash = sessionStorage.getItem(RETURN_KEY) || '' }
+    sessionStorage.removeItem(RETURN_KEY)
+  }catch(e){ /* storage unavailable */ }
+  return hash
+}
 const TrustModal = lazy(() => import('./components/TrustModal'))
 const FleetModal = lazy(() => import('./components/FleetModal'))
 const OperationsModal = lazy(() => import('./components/OperationsModal'))
@@ -570,7 +582,7 @@ function FirewallPolicyModal({ open, onClose, rules, onChanged }){
   )
 }
 
-function Dashboard({ user, onLogout, onChangePassword, onSetup }){
+function Dashboard({ user, onLogout, onChangePassword, onSetup, openIncidents }){
   const [rawDevices, setRawDevices] = useState({})
   const [liveStats, setLiveStats] = useState({})
   const [rawAlerts, setRawAlerts] = useState([])
@@ -586,7 +598,7 @@ function Dashboard({ user, onLogout, onChangePassword, onSetup }){
   const [usersOpen, setUsersOpen] = useState(false)
   const [auditOpen, setAuditOpen] = useState(false)
   const [otOpen, setOtOpen] = useState(false)
-  const [incidentsOpen, setIncidentsOpen] = useState(false)
+  const [incidentsOpen, setIncidentsOpen] = useState(!!openIncidents)
   const [tuningOpen, setTuningOpen] = useState(false)
   const [trustOpen, setTrustOpen] = useState(false)
   const [fleetOpen, setFleetOpen] = useState(false)
@@ -942,6 +954,12 @@ export default function App(){
   const [changingPassword, setChangingPassword] = useState(false)
   const [minLength, setMinLength] = useState(12)
   const [sso, setSso] = useState(null)
+  const [route, setRoute] = useState(readHash)
+  useEffect(()=>{
+    const onHash = ()=>setRoute(window.location.hash)
+    window.addEventListener('hashchange', onHash)
+    return ()=>window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const start = useCallback(async ()=>{
     try{
@@ -1010,5 +1028,14 @@ export default function App(){
       </Suspense>
     )
   }
-  return <Dashboard user={user} onLogout={signOut} onChangePassword={()=>setChangingPassword(true)} onSetup={()=>setEditingSetup(true)} />
+  if(route.startsWith('#approve/')){
+    const id = route.slice('#approve/'.length).replace(/[^0-9]/g, '')
+    const leave = ()=>{ window.history.replaceState(null, '', window.location.pathname); setRoute('') }
+    return (
+      <Suspense fallback={<div className="auth-screen"><p className="auth-hint">Loading…</p></div>}>
+        <ApprovalScreen id={id} user={user} onDone={leave} />
+      </Suspense>
+    )
+  }
+  return <Dashboard user={user} openIncidents={route === '#incidents'} onLogout={signOut} onChangePassword={()=>setChangingPassword(true)} onSetup={()=>setEditingSetup(true)} />
 }

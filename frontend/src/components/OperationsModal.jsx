@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { API_BASE, apiGet, apiPost, errorMessage, getAccessToken, hasRole } from '../api'
+import { API_BASE, apiGet, apiPost, apiPut, errorMessage, getAccessToken, hasRole } from '../api'
 
-const TABS = [['response', 'Response'], ['policy', 'Policy'], ['sensors', 'Sensors'], ['models', 'Models & evaluation'], ['compliance', 'Compliance']]
+const TABS = [['response', 'Response'], ['policy', 'Policy'], ['sensors', 'Sensors'], ['models', 'Models & evaluation'], ['compliance', 'Compliance'], ['notifications', 'Notifications']]
 
 function when(ts){
   return ts ? new Date(ts * 1000).toLocaleString() : '—'
@@ -268,6 +268,74 @@ function ComplianceTab({ user, reloadKey }){
   )
 }
 
+const NOTIFY_TYPES = ['email', 'slack', 'teams', 'webhook']
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+function SinkPicker({ sinks, chosen, onChange }){
+  if(!sinks.length) return <p className="auth-hint">Add an e-mail, Slack, Teams or webhook destination under Integrations first.</p>
+  return (
+    <div className="audit-toolbar">
+      {sinks.map(s=>(
+        <label key={s.name}><input type="checkbox" checked={chosen.includes(s.name)} onChange={e=>onChange(e.target.checked ? [...chosen, s.name] : chosen.filter(n=>n !== s.name))} /> {s.name} ({s.type})</label>
+      ))}
+    </div>
+  )
+}
+
+function NotificationsTab({ user, act, busy, reloadKey }){
+  const [cfg, setCfg] = useState(null)
+  const [sinks, setSinks] = useState([])
+  const [last, setLast] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [error, setError] = useState('')
+  const admin = hasRole(user, 'admin')
+  useEffect(()=>{
+    if(!admin) return
+    apiGet('/api/notifications', null).then(r=>{ setCfg(r.config); setLast(r) }).catch(e=>setError(errorMessage(e)))
+    apiGet('/api/integrations', null).then(r=>setSinks((r?.config?.sinks || []).filter(s=>NOTIFY_TYPES.includes(s.type)).map(s=>({ name: s.name || s.type, type: s.type })))).catch(()=>{})
+  }, [admin, reloadKey])
+  if(!admin) return <p className="auth-hint">Notification settings are for Admins. Approval requests and digests arrive wherever an Admin has sent them.</p>
+  if(error) return <div className="auth-error" role="alert">{error}</div>
+  if(!cfg) return <p className="auth-hint">Loading…</p>
+  const setPart = (part, k, v)=>setCfg({ ...cfg, [part]: { ...cfg[part], [k]: v } })
+  return (
+    <div className="rules-section">
+      <h3>Console address</h3>
+      <input placeholder="https://sentinel.example.org (used for links in messages)" value={cfg.console_url} onChange={e=>setCfg({ ...cfg, console_url: e.target.value })} aria-label="Console address" />
+      <h3>Approval requests</h3>
+      <p className="auth-hint">When an action waits for an Operator, a message with a link to the phone approval page goes out at once. The link carries no credentials: the Operator signs in first.</p>
+      <label><input type="checkbox" checked={cfg.approvals.enabled} onChange={e=>setPart('approvals', 'enabled', e.target.checked)} /> Send approval requests</label>
+      <SinkPicker sinks={sinks} chosen={cfg.approvals.sinks} onChange={v=>setPart('approvals', 'sinks', v)} />
+      <h3>Digest</h3>
+      <label><input type="checkbox" checked={cfg.digest.enabled} onChange={e=>setPart('digest', 'enabled', e.target.checked)} /> Send a digest of open incidents, approvals and tuning suggestions</label>
+      <div className="audit-toolbar">
+        <select value={cfg.digest.frequency} onChange={e=>setPart('digest', 'frequency', e.target.value)} aria-label="Frequency">
+          <option value="daily">Every day</option><option value="weekly">Every week</option>
+        </select>
+        {cfg.digest.frequency === 'weekly' && (
+          <select value={cfg.digest.weekday} onChange={e=>setPart('digest', 'weekday', Number(e.target.value))} aria-label="Weekday">
+            {WEEKDAYS.map((d, i)=><option key={d} value={i}>on {d}</option>)}
+          </select>
+        )}
+        <select value={cfg.digest.hour} onChange={e=>setPart('digest', 'hour', Number(e.target.value))} aria-label="Hour">
+          {Array.from({ length: 24 }, (_, h)=><option key={h} value={h}>at {String(h).padStart(2, '0')}:00</option>)}
+        </select>
+      </div>
+      <SinkPicker sinks={sinks} chosen={cfg.digest.sinks} onChange={v=>setPart('digest', 'sinks', v)} />
+      <div className="audit-toolbar">
+        <button className="primary-button" disabled={busy} onClick={()=>act(async ()=>setCfg(await apiPut('/api/notifications', cfg)), 'Notification settings saved.')}>Save</button>
+        <button className="ghost-button" disabled={busy} onClick={()=>act(async ()=>setPreview(await apiGet('/api/notifications/digest/preview', null)), 'Preview below.')}>Preview digest</button>
+        <button className="ghost-button" disabled={busy || !cfg.digest.sinks.length} onClick={()=>act(()=>apiPost('/api/notifications/digest/send', {}), r=>`Digest sent: ${Object.entries(r.result).map(([k, v])=>`${k} ${v}`).join(', ')}`)}>Send digest now</button>
+        {sinks.map(s=>(
+          <button key={s.name} className="ghost-button" disabled={busy} onClick={()=>act(()=>apiPost('/api/notifications/test', { sink: s.name }), r=>`Test to ${r.sink}: ${r.result}`)}>Test {s.name}</button>
+        ))}
+      </div>
+      {last?.last_digest && <p className="auth-hint">Last digest {new Date(last.last_digest * 1000).toLocaleString()}</p>}
+      {preview && <pre className="digest-preview"><strong>{preview.subject}</strong>{'\n\n'}{preview.text}</pre>}
+    </div>
+  )
+}
+
 export default function OperationsModal({ open, onClose, user }){
   const [tab, setTab] = useState('response')
   const [error, setError] = useState('')
@@ -316,6 +384,7 @@ export default function OperationsModal({ open, onClose, user }){
         {tab === 'sensors' && <SensorsTab {...props} />}
         {tab === 'models' && <ModelsTab {...props} />}
         {tab === 'compliance' && <ComplianceTab {...props} />}
+        {tab === 'notifications' && <NotificationsTab {...props} />}
       </section>
     </div>
   )

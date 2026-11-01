@@ -174,6 +174,8 @@ class Playbook:
             audit.record('playbook', actor='engine', actor_kind='engine', target=ip, outcome='awaiting_approval',
                          details={'action': step['action'], 'risk': int(risk), 'pending_id': pid, 'reason': reason,
                                   **extra})
+            from integrations import notify               # phone/e-mail/chat: an Operator is needed now
+            notify.approval_requested(pid, ip, step['action'], risk, reason, step.get('ttl'))
             return {'action': step['action'], 'status': 'awaiting_approval', 'pending_id': pid, **extra}
         result = self._execute(ip, step['action'], step.get('ttl'), reason)
         if result['status'] == 'refused' and step['action'] == 'contain':
@@ -218,6 +220,11 @@ class Playbook:
             rows = self._db().execute('SELECT * FROM pending WHERE status = ? ORDER BY created DESC LIMIT ?',
                                       (status, int(limit))).fetchall()
         return [dict(r) for r in rows]
+
+    def get(self, pending_id):
+        with self._lock:
+            row = self._db().execute('SELECT * FROM pending WHERE id = ?', (int(pending_id),)).fetchone()
+        return dict(row) if row else None
 
     def decide(self, pending_id, approve, by):
         with self._lock:

@@ -57,6 +57,11 @@ async def lifespan(app: FastAPI):
             app.state.ticketing = ticketing.start_background()
         except Exception:
             logger.exception('ticketing sync failed to start')
+        try:
+            from integrations import notify
+            app.state.digest = notify.start_background()
+        except Exception:
+            logger.exception('digest scheduler failed to start')
     # if CAPTURE_IN_PROCESS=1, attempt to import and run sniffer in a background thread
     if os.environ.get('CAPTURE_IN_PROCESS', '0') == '1':
         try:
@@ -926,6 +931,57 @@ def device_peers(ip: str, principal: dict = Depends(require_viewer)):
             'internet': [{'proto': p, 'port': n} for p, n in profile['external']]}
 
 
+@app.get('/api/notifications')
+def notifications_get(principal: dict = Depends(require_admin)):
+    from integrations import notify
+    state = notify._read(notify.state_file(), {})
+    return {'config': notify.load_config(), 'last_digest': state.get('last_digest'),
+            'last_result': state.get('last_result')}
+
+
+@app.put('/api/notifications')
+def notifications_put(payload: dict, principal: dict = Depends(require_admin)):
+    from integrations import notify
+    try:
+        cfg = notify.save_config(payload or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit_event(principal, 'notifications_update', details=cfg)
+    return cfg
+
+
+@app.post('/api/notifications/test')
+def notifications_test(payload: dict, principal: dict = Depends(require_admin)):
+    """Send a test message to one integration by name."""
+    from integrations import notify
+    name = (payload or {}).get('sink')
+    if name not in notify._sink_configs():
+        raise HTTPException(status_code=404, detail='no integration with that name')
+    result = notify.send([name], 'Test notification', 'This is a test from SentinelEdgeAI. '
+                         'Approval requests and digests will arrive here.',
+                         notify._link(notify.load_config(), 'incidents'))
+    audit_event(principal, 'notifications_test', target=name, outcome='success' if result[name] == 'ok' else 'failure')
+    return {'sink': name, 'result': result[name]}
+
+
+@app.get('/api/notifications/digest/preview')
+def notifications_digest_preview(principal: dict = Depends(require_viewer)):
+    from integrations import notify
+    cfg = notify.load_config()
+    subject, text = notify.build_digest(86400 if cfg['digest']['frequency'] == 'daily' else 7 * 86400)
+    return {'subject': subject, 'text': text}
+
+
+@app.post('/api/notifications/digest/send')
+def notifications_digest_send(principal: dict = Depends(require_admin)):
+    from integrations import notify
+    result = notify.send_digest(force=True)
+    if result is None:
+        raise HTTPException(status_code=400, detail='no digest destinations configured')
+    audit_event(principal, 'notifications_digest', details=result)
+    return {'result': result}
+
+
 @app.get('/api/guided-tuning/suggestions')
 def guided_tuning_suggestions(principal: dict = Depends(require_viewer)):
     """Where analysts' false-positive labels concentrate, with a proposed scoped rule for each."""
@@ -1160,6 +1216,16 @@ def _decide(pending_id, approve, principal):
     audit_event(principal, 'playbook_approve' if approve else 'playbook_deny', target=res['ip'],
                 details={'id': pending_id, 'action': res['action'], 'status': res['status']})
     return res
+
+
+@app.get('/api/playbook/pending/{pending_id}')
+def playbook_pending_one(pending_id: int, principal: dict = Depends(require_viewer)):
+    """One approval request, for the phone approval page."""
+    from enforcement.playbook import get_playbook
+    item = get_playbook().get(pending_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail='no such approval request')
+    return maybe_sanitize(item)
 
 
 @app.post('/api/playbook/pending/{pending_id}/approve')
