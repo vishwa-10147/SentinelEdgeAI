@@ -5,9 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.18.1] - 2026-11-01
+
+The first published 2.18 release: the `v2.18.0` tag exists, but its release build failed on the fix below and nothing was published from it. Includes everything listed under 2.18.0.
+
+### Fixed
+- **Extension sandbox on Python 3.11** (Raspberry Pi OS Bookworm): the launcher used `os.unshare` and `os.CLONE_*`, which exist only from Python 3.12, so extensions could not start there. It now calls `unshare(2)` through libc, and any setup failure makes it exit as "sandbox unavailable" (the extension is disabled, fail closed) instead of counting as crashes. Hosts that forbid unprivileged user namespaces (for example Ubuntu with AppArmor's userns restriction) run no extensions; the tests check that and skip the sandbox tests there.
+
 ## [2.18.0] - 2026-11-01
 
 Phase 11 software, live integration tests, and an assistant hardening found by running it on a real model.
+
 
 ### Added
 - **Multi-tenant fleet for MSPs / MSSPs** (Phase 11, `fleet/tenants.py`): customers own groups (existing fleets become the `default` customer, migrated in place); console accounts with customer memberships, and their API tokens, see only those customers' sites, groups, alerts and actions, with roles capped by their console role, and every other request is refused (403, audited); templates, federated learning, sharing and customer management stay with MSP staff. Per-customer branding (display name, accent, support contact) and monthly usage reports (sites, site-days, alerts, remote actions; JSON or CSV). `python -m fleet tenant ...`, `python -m fleet usage`, `/api/fleet/tenants*`, `/api/fleet/usage`; customer filter, branding and usage export in the Fleet panel.
