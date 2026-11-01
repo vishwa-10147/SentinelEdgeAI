@@ -9,6 +9,12 @@ import pytest
 from common import signing
 from extensions import package
 from extensions.host import MAX_PROBABILITY, MAX_SEVERITY, ExtensionHost
+from extensions.sandbox import available as sandbox_available
+
+# Hosts that forbid unprivileged user namespaces (e.g. Ubuntu runners with AppArmor's userns restriction) cannot
+# build the sandbox; extensions then refuse to run (tested below), and the sandbox tests are skipped.
+SANDBOX = sandbox_available()
+needs_sandbox = pytest.mark.skipif(not SANDBOX, reason='unprivileged user namespaces are not available here')
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 EXAMPLE = os.path.join(ROOT, 'examples', 'extensions', 'default-c2-ports')
@@ -111,6 +117,7 @@ def test_packed_archive_round_trip(tmp_path, publisher):
     assert package.install(archive)['version'] == '1.0.0'
 
 
+@needs_sandbox
 def test_example_runs_in_the_sandbox(tmp_path, publisher):
     package.install(str(make_package(tmp_path, publisher)))
     host, findings = run_flow('default-c2-ports')
@@ -119,6 +126,7 @@ def test_example_runs_in_the_sandbox(tmp_path, publisher):
     assert f.kind == 'ext:default-c2-ports:default_c2_port' and f.src == '10.0.0.66' and 'Metasploit' in f.evidence
 
 
+@needs_sandbox
 def test_sandbox_contains_a_hostile_extension(tmp_path, publisher):
     data_dir = os.path.join(ROOT, 'data')
     os.makedirs(data_dir, exist_ok=True)
@@ -138,6 +146,7 @@ def test_sandbox_contains_a_hostile_extension(tmp_path, publisher):
     assert status['bad'] >= 1
 
 
+@needs_sandbox
 def test_crashing_extension_is_disabled(tmp_path, publisher, monkeypatch):
     import extensions.host as h
     import types
@@ -155,6 +164,7 @@ def test_crashing_extension_is_disabled(tmp_path, publisher, monkeypatch):
     host.stop()
 
 
+@needs_sandbox
 def test_findings_join_the_pipeline_without_auto_response(tmp_path, publisher):
     from detection.pipeline import DetectionPipeline
     package.install(str(make_package(tmp_path, publisher)))
@@ -170,3 +180,17 @@ def test_findings_join_the_pipeline_without_auto_response(tmp_path, publisher):
         time.sleep(0.2)
     host.stop()
     assert kinds == ['ext:default-c2-ports:default_c2_port'] and fused['confirmed'] is False
+
+
+@pytest.mark.skipif(SANDBOX, reason='this host can build the sandbox')
+def test_without_a_sandbox_the_extension_never_runs(tmp_path, publisher):
+    package.install(str(make_package(tmp_path, publisher)))
+    package.set_enabled('default-c2-ports', True)
+    host = ExtensionHost(names=['default-c2-ports'])
+    for _ in range(100):
+        if host.status()['default-c2-ports']['disabled']:
+            break
+        time.sleep(0.1)
+    assert 'sandbox could not be created' in host.status()['default-c2-ports']['disabled']
+    assert host.flow(dict(FLOW)) == []
+    host.stop()

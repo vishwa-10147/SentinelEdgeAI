@@ -19,6 +19,8 @@ import os
 import resource
 import sys
 
+# from <sched.h>; os.CLONE_* exist only from Python 3.12, and Raspberry Pi OS Bookworm ships 3.11
+CLONE_NEWNS, CLONE_NEWUSER, CLONE_NEWNET = 0x00020000, 0x10000000, 0x40000000
 MS_RDONLY, MS_NOSUID, MS_NODEV, MS_NOEXEC = 1, 2, 4, 8
 MS_REMOUNT, MS_BIND, MS_REC, MS_PRIVATE = 32, 4096, 16384, 1 << 18
 PR_SET_NO_NEW_PRIVS = 38
@@ -45,10 +47,12 @@ def enter(spec):
     """Everything up to the exec; raises OSError when the sandbox cannot be built."""
     libc = _libc()
     uid, gid = os.getuid(), os.getgid()
-    flags = os.CLONE_NEWUSER | os.CLONE_NEWNS
+    flags = CLONE_NEWUSER | CLONE_NEWNS
     if not spec.get('network'):
-        flags |= os.CLONE_NEWNET
-    os.unshare(flags)
+        flags |= CLONE_NEWNET
+    if libc.unshare(ctypes.c_int(flags)) != 0:            # unshare(2) through libc: any Python version
+        err = ctypes.get_errno()
+        raise OSError(err, f'unshare: {os.strerror(err)} (unprivileged user namespaces disabled?)')
     _write('/proc/self/setgroups', 'deny')
     _write('/proc/self/uid_map', f'{uid} {uid} 1')        # same uid inside: no capabilities after exec
     _write('/proc/self/gid_map', f'{gid} {gid} 1')
@@ -80,8 +84,8 @@ def main(argv=None):
         with open(argv[0], encoding='utf-8') as f:
             spec = json.load(f)
         enter(spec)
-    except (OSError, ValueError, KeyError, IndexError) as exc:
-        sys.stderr.write(f'sandbox: {exc}\n')
+    except Exception as exc:                                  # any failure: the extension does not run
+        sys.stderr.write(f'sandbox: {exc.__class__.__name__}: {exc}\n')
         sys.stderr.flush()
         os._exit(SANDBOX_FAILED)
     env = {'PYTHONPATH': spec['sdk'], 'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONUNBUFFERED': '1',
@@ -92,3 +96,14 @@ def main(argv=None):
 
 if __name__ == '__main__':
     main()
+
+
+def available():
+    """True when this host can build the sandbox (unprivileged user, mount and network namespaces)."""
+    import subprocess
+    probe = ('import ctypes,sys; l=ctypes.CDLL(None, use_errno=True); '
+             f'sys.exit(0 if l.unshare(ctypes.c_int({CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWNET})) == 0 else 1)')
+    try:
+        return subprocess.run([sys.executable, '-I', '-c', probe], timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
