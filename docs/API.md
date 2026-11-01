@@ -134,15 +134,23 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | Method | Path | Minimum role | Notes |
 |---|---|---|---|
 | `GET` | `/` | public |  |
+| `GET` | `/api/assets` | viewer | List all tracked assets with criticality. |
+| `GET` | `/api/assets/{ip}/criticality` | viewer | Get device criticality (critical | important | standard). |
+| `POST` | `/api/assets/{ip}/criticality` | admin | Set device criticality (Admin only). |
+| `GET` | `/api/assets/{ip}/cves` | viewer | Offline CVE matches for a device based on type/OS fingerprint. |
 | `GET` | `/api/compliance` | admin | Every compliance pack's totals from one evidence collection (documentation support, not certification). |
 | `GET` | `/api/compliance/{pack}` | admin |  |
 | `GET` | `/api/compliance/{pack}/pdf` | admin |  |
 | `GET` | `/api/fleet` | viewer | Fleet server view: sites with their latest reports, groups with rollout progress, templates. |
+| `GET` | `/api/fleet/actions` | viewer | Remote actions queued on this fleet server, newest first. |
+| `POST` | `/api/fleet/actions/{action_id}/cancel` | operator |  |
 | `GET` | `/api/fleet/agent` | viewer | This site's own fleet status: enrolment, last report, applied template, pending version. |
+| `GET` | `/api/fleet/alerts` | viewer | Search alert summaries shared by every site (type, score, addresses, MITRE; no flows or packets). |
 | `POST` | `/api/fleet/codes` | admin | A one-time enrolment code for a new site (valid for an hour). |
 | `POST` | `/api/fleet/federated` | admin | Start a federated learning round ({"min_sites": n}) or close one ({"close": id}). |
 | `POST` | `/api/fleet/groups` | admin | Create or update a group: its template, target version and rollout stages. |
 | `POST` | `/api/fleet/groups/{name}/rollout` | admin | Pause or resume a group's rollout. |
+| `POST` | `/api/fleet/sites/{site_id}/actions` | operator | Queue block | unblock | quarantine | ratelimit | contain | release for one site. It reaches the site with |
 | `POST` | `/api/fleet/sites/{site_id}/group` | admin |  |
 | `GET` | `/api/fleet/sites/{site_id}/history` | viewer |  |
 | `POST` | `/api/fleet/sites/{site_id}/revoke` | admin |  |
@@ -152,6 +160,9 @@ Authentication: `Authorization: Bearer <console access token | sak1 API token>` 
 | `POST` | `/api/ot/segmentation` | admin | Set OT segmentation to off, monitor or enforce (enforce needs inline placement). |
 | `POST` | `/api/ot/segmentation/allow` | admin | Let `src` command controller `dst` over `protocol` (an exception to the learned allow-list). |
 | `POST` | `/api/ot/segmentation/refresh` | admin | While enforcing, take a new snapshot of the learned allow-lists. |
+| `GET` | `/api/pcaps` | viewer | List stored forensic PCAP captures, newest first. |
+| `DELETE` | `/api/pcaps/{name}` | admin | Delete a stored forensic PCAP capture. |
+| `GET` | `/api/pcaps/{name}` | viewer | Download a forensic PCAP capture by filename. |
 | `GET` | `/api/trust` | viewer | Trust score (0-100), level, reasons and recommended response for every known device, least trusted first. |
 | `GET` | `/api/tuning` | viewer | Response tuning: mode and bounds, and the evidence per kind of incident and action. |
 | `POST` | `/api/tuning` | admin | Set mode (off | recommend | apply), target, min_action or window_seconds. |

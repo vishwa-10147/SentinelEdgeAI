@@ -489,7 +489,7 @@ def _forward_to_brain(flow, result, features):
 
 
 def _observe_dns_tls(packet):
-    """Feed DNS answers, TLS ClientHellos and OT protocol requests to the detectors; alert on findings."""
+    """Feed DNS answers, TLS ClientHellos, OT requests and SMB/RPC/Kerberos headers to the detectors."""
     try:
         from detection.pipeline import get_pipeline
         findings = []
@@ -499,11 +499,22 @@ def _observe_dns_tls(packet):
             findings = get_pipeline().observe_dns(packet[IP].dst, qname, nxdomain=packet[DNS].rcode == 3)
         elif TCP in packet and Raw in packet:
             payload = bytes(packet[Raw].load)
-            if payload[:1] == b'\x16':
-                _, findings = get_pipeline().observe_tls(packet[IP].src, packet[IP].dst, payload)
+            pipe = get_pipeline()
+            key = (packet[IP].src, packet[TCP].sport, packet[IP].dst, packet[TCP].dport)
+            if payload[:1] == b'\x16' and payload[5:6] == b'\x02' or key in pipe.server_handshakes.pending:
+                _, findings = pipe.observe_tls_server(*key, payload)     # ServerHello, certificates
+            elif payload[:1] == b'\x16':
+                _, findings = pipe.observe_tls(packet[IP].src, packet[IP].dst, payload)
+            elif packet[TCP].dport in (88, 135, 139, 445):
+                if packet[TCP].dport not in (139, 445) or len(payload) <= 1200:
+                    _, _, findings = get_pipeline().observe_lateral(packet[IP].src, packet[IP].dst, 'TCP',
+                                                                    packet[TCP].dport, payload)
             else:
                 _, _, findings = get_pipeline().observe_ot(packet[IP].src, packet[IP].dst, 'TCP',
                                                            packet[TCP].dport, payload)
+        elif UDP in packet and Raw in packet and packet[UDP].dport == 88:
+            _, _, findings = get_pipeline().observe_lateral(packet[IP].src, packet[IP].dst, 'UDP', 88,
+                                                            bytes(packet[Raw].load))
         elif UDP in packet and Raw in packet:
             _, _, findings = get_pipeline().observe_ot(packet[IP].src, packet[IP].dst, 'UDP',
                                                        packet[UDP].dport, bytes(packet[Raw].load))
@@ -511,7 +522,7 @@ def _observe_dns_tls(packet):
             if f.severity >= config.get("alerts", "min_risk_score"):
                 alert_logger.log({
                     "timestamp": str(time.strftime('%Y-%m-%d %H:%M:%S')), "initiator_ip": f.src,
-                    "responder_ip": f.details.get('target'), "protocol": (f.details.get('protocol') or ('DNS' if 'dns' in f.kind or f.kind == 'dga' else 'TLS')).upper(),
+                    "responder_ip": f.details.get('target'), "protocol": (f.details.get('protocol') or ('DNS' if 'dns' in f.kind or f.kind == 'dga' else 'TCP' if f.kind == 'lateral_fanout' else 'TLS')).upper(),
                     "final_risk_score": f.severity, "severity": "CRITICAL" if f.severity >= 75 else "HIGH",
                     "attack_type": f.kind, "confidence": f.probability, "mitre_technique_id": f.technique,
                     "explanation": [f.evidence], "findings": [f.as_dict()],

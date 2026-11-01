@@ -1,12 +1,13 @@
-"""Detection pipeline: detectors + DNS + TLS + OT protocols + fusion, used by the engine and the evaluator."""
+"""Detection pipeline: detectors + DNS + TLS + OT protocols + lateral movement + fusion, used by the engine and the evaluator."""
 import threading
 import time
 
 from detection.detectors import default_flow_detectors
 from detection.dns_analysis import DNSDetector
 from detection.fusion import Fusion
+from detection.lateral import LateralDetector, LateralStore, parse_lateral
 from detection.ot import OTDetector, OTStore, parse_ot
-from detection.tls import TLSDetector, parse_client_hello
+from detection.tls import ServerHandshakes, TLSDetector, parse_client_hello
 
 
 class _FeedbackCalibration:
@@ -33,11 +34,13 @@ class _FeedbackCalibration:
 
 class DetectionPipeline:
     def __init__(self, flow_detectors=None, dns=None, tls=None, ot=None, peers=None, samples=None, clock=time.time,
-                 calibrate=None, models=True):
+                 calibrate=None, models=True, lateral=None):
         self.flow_detectors = flow_detectors if flow_detectors is not None else default_flow_detectors()
         self.dns = dns or DNSDetector()
         self.tls = tls or TLSDetector(clock=clock)
         self.ot = ot or OTDetector(clock=clock)
+        self.lateral = lateral or LateralDetector(clock=clock)
+        self.server_handshakes = ServerHandshakes()
         self.peers = peers                    # detection.peers.PeerStore: learned peer profiles
         self.samples = samples                # detection.samples.SampleStore: normal flows for local training
         self.fusion = Fusion(clock=clock, calibrate=calibrate)
@@ -75,7 +78,7 @@ class DetectionPipeline:
         record.setdefault('ts', self.clock())
         with self._lock:
             findings = []
-            for det in self.flow_detectors:
+            for det in [*self.flow_detectors, self.lateral]:
                 try:
                     findings.extend(det.observe(record))
                 except Exception:
@@ -137,6 +140,27 @@ class DetectionPipeline:
             self.fusion.add_findings(findings)
         return hello, findings
 
+    def observe_tls_server(self, server, sport, client, cport, payload, ts=None):
+        """Feed a server-to-client TCP segment of a TLS handshake. Returns (server_hello, findings)."""
+        with self._lock:
+            done = self.server_handshakes.feed((server, sport, client, cport), payload)
+        if not done:
+            return None, []
+        hello, certs = done
+        from detection.detectors import Finding
+        ts = ts or self.clock()
+        with self._lock:
+            findings = self.tls.observe_server(server, client, hello, certs, ts)
+            store = self._intel() if self.intel_enabled else None
+            hit = store.match_fingerprint(hello['ja4s']) if store else None
+            if hit and self.tls.cooldown.ready(('intel_fp', server, hello['ja4s']), ts):
+                findings.append(Finding('tls_known_bad', client, 90, 0.9, 'T1071.001',
+                                        f'TLS server fingerprint {hello["ja4s"]} of {server} listed by {hit[0]}'
+                                        + (f' ({hit[1]})' if hit[1] else ''),
+                                        {'fingerprint': hello['ja4s'], 'source': hit[0], 'target': server}, ts=ts))
+            self.fusion.add_findings(findings)
+        return hello, findings
+
     def observe_ot(self, src, dst, proto, dport, payload, ts=None):
         """Feed a payload sent to an industrial protocol port. Returns (protocol, messages, findings)."""
         protocol, messages = parse_ot(proto, dport, payload)
@@ -148,6 +172,22 @@ class DetectionPipeline:
             self.fusion.add_findings(findings)
         return protocol, messages, findings
 
+    def observe_lateral(self, src, dst, proto, dport, payload, ts=None):
+        """Feed a payload sent to SMB, DCE-RPC or Kerberos. Returns (service, parsed, findings)."""
+        service, parsed = parse_lateral(proto, dport, payload)
+        if not service:
+            return None, None, []
+        ts = ts or self.clock()
+        with self._lock:
+            if service == 'smb':
+                findings = self.lateral.observe_smb(src, dst, parsed, ts)
+            elif service == 'rpc':
+                findings = self.lateral.observe_rpc(src, dst, parsed, ts)
+            else:
+                findings = self.lateral.observe_kerberos(src, dst, parsed, ts)
+            self.fusion.add_findings(findings)
+        return service, parsed, findings
+
 
 _pipeline = None
 
@@ -158,5 +198,5 @@ def get_pipeline():
         from detection.peers import PeerStore
         from detection.samples import SampleStore
         _pipeline = DetectionPipeline(calibrate=_FeedbackCalibration(), ot=OTDetector(store=OTStore()), peers=PeerStore(),
-                                      samples=SampleStore())
+                                      samples=SampleStore(), lateral=LateralDetector(store=LateralStore()))
     return _pipeline

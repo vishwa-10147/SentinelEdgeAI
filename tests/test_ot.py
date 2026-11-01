@@ -196,3 +196,89 @@ def test_ot_assets_endpoint():
     finally:
         api.app.dependency_overrides.clear()
     assert body['assets'][0]['ip'] == PLC and body['assets'][0]['masters'][0]['functions'] == ['read']
+
+
+# ---------- Phase 9 protocols: IEC 104, S7comm, EtherNet/IP, MQTT ----------
+
+import struct as _struct
+
+from detection.ot import OT_PORTS, parse_ethernetip, parse_iec104, parse_mqtt, parse_s7comm
+
+
+def iec104(type_id, cot=6, common=1):
+    asdu = bytes([type_id, 1, cot, 0]) + _struct.pack('<H', common) + b'\x00\x00\x00\x01'
+    return bytes([0x68, 4 + len(asdu), 0x00, 0x00, 0x00, 0x00]) + asdu
+
+
+def s7(func, rosctr=1):
+    params = bytes([func, 0x00])
+    s7hdr = bytes([0x32, rosctr, 0, 0, 0, 1]) + _struct.pack('>HH', len(params), 0)
+    body = bytes([0x02, 0xF0, 0x80]) + s7hdr + params
+    return bytes([0x03, 0x00]) + _struct.pack('>H', 4 + len(body)) + body
+
+
+def enip_rr(cip):
+    cpf = _struct.pack('<IHH', 0, 10, 2) + _struct.pack('<HH', 0, 0) + _struct.pack('<HH', 0xB2, len(cip)) + cip
+    return _struct.pack('<HHII', 0x6F, len(cpf), 1, 0) + b'\x00' * 8 + _struct.pack('<I', 0) + cpf
+
+
+def cip(service, cls=0x02):
+    return bytes([service, 2, 0x20, cls, 0x24, 0x01])
+
+
+def test_iec104_commands_and_reset():
+    [m] = parse_iec104(iec104(45))
+    assert m['function'] == 'single command' and m['write'] and m['unit'] == 1
+    assert parse_iec104(iec104(100))[0]['write'] is False                     # interrogation is a read
+    assert parse_iec104(iec104(105))[0]['stop'] == 'restart'
+    assert parse_iec104(iec104(13)) == []                                     # monitor direction: a response
+    assert parse_iec104(bytes([0x68, 4, 0x07, 0, 0, 0])) == []                # U-format STARTDT
+    assert [m['code'] for m in parse_iec104(iec104(100) + iec104(46))] == [100, 46]
+
+
+def test_s7comm_jobs_writes_and_stop():
+    assert parse_s7comm(s7(0x04))[0]['function'] == 'read variable'
+    assert parse_s7comm(s7(0x05))[0]['write'] is True
+    assert parse_s7comm(s7(0x1B))[0]['write'] is True                        # program download
+    assert parse_s7comm(s7(0x29))[0]['stop'] == 'stop'
+    assert parse_s7comm(s7(0x04, rosctr=3)) == []                             # ack data: a response
+    assert parse_s7comm(s7(0x00, rosctr=7))[0]['function'].startswith('userdata')
+    assert parse_s7comm(b'\x03\x00\x00\x16\x11\xe0' + b'\x00' * 16) == []      # COTP connection request
+
+
+def test_ethernetip_cip_services():
+    assert parse_ethernetip(enip_rr(cip(0x0E)))[0]['function'] == 'get attribute single'
+    w = parse_ethernetip(enip_rr(cip(0x4D, cls=0x6B)))[0]
+    assert w['function'] == 'write tag' and w['write']
+    assert parse_ethernetip(enip_rr(cip(0x05, cls=0x01)))[0]['stop'] == 'restart'
+    assert parse_ethernetip(enip_rr(cip(0x54, cls=0x06)))[0]['function'] == 'forward open'
+    inner = cip(0x10)
+    send = bytes([0x52, 2, 0x20, 0x06, 0x24, 0x01, 0x0A, 0x05]) + _struct.pack('<H', len(inner)) + inner
+    assert parse_ethernetip(enip_rr(send))[0]['function'] == 'set attribute single'   # unwrapped
+    assert parse_ethernetip(enip_rr(bytes([0x8E, 0, 0, 0])))== []                       # a reply
+    assert parse_ethernetip(_struct.pack('<HHII', 0x65, 4, 0, 0) + b'\x00' * 16)[0]['function'] == 'register session'
+
+
+def test_mqtt_packets():
+    connect = bytes([0x10, 12]) + b'\x00\x04MQTT\x04\x02\x00\x3c\x00\x00'
+    publish = bytes([0x30, 7]) + b'\x00\x03a/b' + b'on'
+    msgs = parse_mqtt(connect + publish)
+    assert [m['function'] for m in msgs] == ['connect', 'publish'] and msgs[1]['write']
+    assert parse_mqtt(bytes([0x10, 6]) + b'\x00\x04HTTP') == []
+    assert parse_mqtt(b'\x00\x00') == []
+
+
+def test_new_protocols_are_dispatched_and_inspected():
+    assert parse_ot('TCP', 2404, iec104(45))[0] == 'iec104'
+    assert parse_ot('TCP', 102, s7(0x29))[1][0]['stop'] == 'stop'
+    assert parse_ot('TCP', 44818, b'\xff' * 3) == ('ethernetip', [])
+    assert parse_ot('TCP', 1883, b'\x30') == ('mqtt', [])
+    for (l4, port) in OT_PORTS:
+        assert port in (afpacket.SLOW_TCP_PORTS if l4 == 'TCP' else afpacket.SLOW_UDP_PORTS)
+
+
+def test_s7_stop_is_always_reported():
+    pipe = DetectionPipeline(models=False, clock=lambda: T0)
+    _, _, findings = pipe.observe_ot(HMI, PLC, 'TCP', 102, s7(0x29), ts=T0)
+    assert [f.kind for f in findings] == ['ot_device_stop'] and 'S7comm' in findings[0].evidence
+    assert findings[0].technique == 'T0814'

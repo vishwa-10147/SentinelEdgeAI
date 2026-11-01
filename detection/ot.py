@@ -1,4 +1,7 @@
-"""Industrial (OT) protocol awareness: Modbus/TCP, DNP3, BACnet/IP, OPC UA (Phase 7).
+"""Industrial (OT) protocol awareness (Phase 7, extended in Phase 9).
+
+Modbus/TCP, DNP3, BACnet/IP, OPC UA, IEC 60870-5-104, S7comm, EtherNet/IP (CIP)
+and MQTT (IoT).
 
 The parsers read request headers only: which function a master asked a
 controller to perform. Nothing is decoded beyond that and nothing is ever
@@ -27,7 +30,11 @@ from detection.detectors import Cooldown, Finding, _Window, is_external
 
 # (transport, destination port) -> protocol
 OT_PORTS = {('TCP', 502): 'modbus', ('TCP', 20000): 'dnp3', ('UDP', 20000): 'dnp3',
-            ('UDP', 47808): 'bacnet', ('TCP', 4840): 'opcua'}
+            ('UDP', 47808): 'bacnet', ('TCP', 4840): 'opcua',
+            ('TCP', 2404): 'iec104', ('TCP', 102): 's7comm',
+            ('TCP', 44818): 'ethernetip', ('TCP', 1883): 'mqtt'}
+LABELS = {'modbus': 'Modbus', 'dnp3': 'DNP3', 'bacnet': 'BACnet', 'opcua': 'OPC UA', 'iec104': 'IEC 104',
+          's7comm': 'S7comm', 'ethernetip': 'EtherNet/IP', 'mqtt': 'MQTT'}
 
 MODBUS_FUNCTIONS = {1: 'read coils', 2: 'read discrete inputs', 3: 'read holding registers',
                     4: 'read input registers', 5: 'write single coil', 6: 'write single register',
@@ -152,6 +159,168 @@ def parse_opcua(payload):
     return [_msg('opcua', node, OPCUA_REQUESTS[node], node in OPCUA_WRITES)]
 
 
+IEC104_COMMANDS = {45: 'single command', 46: 'double command', 47: 'regulating step command',
+                   48: 'setpoint command (normalised)', 49: 'setpoint command (scaled)',
+                   50: 'setpoint command (float)', 51: 'bitstring command',
+                   58: 'single command (time tag)', 59: 'double command (time tag)',
+                   60: 'regulating step command (time tag)', 61: 'setpoint command (normalised, time tag)',
+                   62: 'setpoint command (scaled, time tag)', 63: 'setpoint command (float, time tag)',
+                   64: 'bitstring command (time tag)', 100: 'interrogation', 101: 'counter interrogation',
+                   102: 'read', 103: 'clock synchronisation', 104: 'test command', 105: 'reset process',
+                   106: 'delay acquisition', 107: 'test command (time tag)', 110: 'parameter (normalised)',
+                   111: 'parameter (scaled)', 112: 'parameter (float)', 113: 'parameter activation'}
+IEC104_WRITES = set(range(45, 52)) | set(range(58, 65)) | {103, 105, 110, 111, 112, 113}
+
+
+def parse_iec104(payload):
+    """IEC 60870-5-104: the type of each control-direction ASDU in I-format APDUs.
+
+    APCI: 0x68, length, four control octets; the ASDU follows (type id, VSQ, cause
+    of transmission, originator, common address). Monitor-direction types (1-44,
+    sent by the outstation) are not requests and are skipped.
+    """
+    out, p = [], 0
+    while p + 2 <= len(payload) and payload[p] == 0x68:
+        length = payload[p + 1]
+        if length < 4 or p + 2 + length > len(payload):
+            break
+        if not payload[p + 2] & 0x01 and length >= 10:          # I-format carries an ASDU
+            type_id = payload[p + 6]
+            common = struct.unpack('<H', payload[p + 10:p + 12])[0]
+            if type_id in IEC104_COMMANDS:
+                out.append(_msg('iec104', type_id, IEC104_COMMANDS[type_id], type_id in IEC104_WRITES,
+                                'restart' if type_id == 105 else None, common))
+        p += 2 + length
+    return out
+
+
+S7_FUNCTIONS = {0x04: 'read variable', 0x05: 'write variable', 0x1A: 'request download',
+                0x1B: 'download block', 0x1C: 'download ended', 0x1D: 'start upload', 0x1E: 'upload',
+                0x1F: 'end upload', 0x28: 'program invocation', 0x29: 'PLC stop',
+                0xF0: 'setup communication'}
+S7_WRITES = {0x05, 0x1A, 0x1B, 0x1C, 0x28}
+
+
+def parse_s7comm(payload):
+    """S7comm (Siemens S7-300/400/1200 classic): the function of a job request.
+
+    TPKT (4 octets) + COTP data TPDU + S7 header (0x32, ROSCTR, ...). Only jobs
+    (ROSCTR 1) are requests; userdata (7) is reported as one function. Connection
+    setup TPDUs and S7comm-plus (0x72) carry no readable function.
+    """
+    if len(payload) < 7 or payload[0] != 0x03 or payload[1] != 0x00:
+        return []
+    cotp_len = payload[4]
+    if payload[5] != 0xF0:                                       # only COTP data TPDUs carry S7
+        return []
+    p = 5 + cotp_len
+    if p + 10 > len(payload) or payload[p] != 0x32:
+        return []
+    rosctr = payload[p + 1]
+    if rosctr == 7:
+        return [_msg('s7comm', 0x700, 'userdata (CPU functions)')]
+    if rosctr != 1 or p + 11 > len(payload):
+        return []
+    func = payload[p + 10]                                       # first parameter octet
+    return [_msg('s7comm', func, S7_FUNCTIONS.get(func, f'S7 function {func:#04x}'), func in S7_WRITES,
+                 'stop' if func == 0x29 else None)]
+
+
+CIP_SERVICES = {0x01: 'get attributes all', 0x02: 'set attributes all', 0x03: 'get attribute list',
+                0x04: 'set attribute list', 0x05: 'reset', 0x06: 'start', 0x07: 'stop', 0x08: 'create',
+                0x09: 'delete', 0x0A: 'multiple service packet', 0x0E: 'get attribute single',
+                0x10: 'set attribute single', 0x4C: 'read tag', 0x4D: 'write tag',
+                0x4E: 'read-modify-write tag', 0x52: 'read tag fragmented', 0x53: 'write tag fragmented'}
+CIP_CONNECTION_MANAGER = {0x4E: 'forward close', 0x52: 'unconnected send', 0x54: 'forward open',
+                          0x5B: 'large forward open'}
+CIP_WRITES = {0x02, 0x04, 0x08, 0x09, 0x10, 0x4D, 0x4E, 0x53}
+CIP_STOPS = {0x05: 'restart', 0x07: 'stop'}
+
+
+def _cip(data, depth=0):
+    """One CIP request: service, then the request path; unwraps an Unconnected Send once."""
+    if len(data) < 2 or data[0] & 0x80:                           # bit 7 set: a reply
+        return []
+    service, words = data[0], data[1]
+    path = data[2:2 + 2 * words]
+    cls = path[1] if len(path) >= 2 and path[0] == 0x20 else None
+    if cls == 0x06 and service in CIP_CONNECTION_MANAGER:
+        if service == 0x52 and depth == 0:
+            body = data[2 + 2 * words:]
+            if len(body) >= 4:
+                size = struct.unpack('<H', body[2:4])[0]
+                inner = _cip(body[4:4 + size], 1)
+                if inner:
+                    return inner
+        return [_msg('ethernetip', 0x600 + service, CIP_CONNECTION_MANAGER[service])]
+    name = CIP_SERVICES.get(service, f'CIP service {service:#04x}')
+    return [_msg('ethernetip', service, name, service in CIP_WRITES, CIP_STOPS.get(service))]
+
+
+def parse_ethernetip(payload):
+    """EtherNet/IP: the CIP service carried by SendRRData / SendUnitData.
+
+    Encapsulation header (24 octets), then interface handle, timeout and a
+    common packet format item list; the CIP request is the data item.
+    """
+    if len(payload) < 24:
+        return []
+    command, length = struct.unpack('<HH', payload[:4])
+    if command == 0x0065:
+        return [_msg('ethernetip', 0x10065, 'register session')]
+    if command == 0x0063:
+        return [_msg('ethernetip', 0x10063, 'list identity')]
+    if command not in (0x006F, 0x0070) or len(payload) < 32:
+        return []
+    count = struct.unpack('<H', payload[30:32])[0]
+    p = 32
+    for _ in range(min(count, 4)):
+        if p + 4 > len(payload):
+            break
+        item, size = struct.unpack('<HH', payload[p:p + 4])
+        data = payload[p + 4:p + 4 + size]
+        if item == 0x00B2:                                        # unconnected data
+            return _cip(data)
+        if item == 0x00B1 and len(data) > 2:                      # connected data: sequence count first
+            return _cip(data[2:])
+        p += 4 + size
+    return []
+
+
+MQTT_PACKETS = {1: 'connect', 3: 'publish', 8: 'subscribe', 10: 'unsubscribe', 12: 'ping', 14: 'disconnect',
+                15: 'auth'}
+
+
+def parse_mqtt(payload):
+    """MQTT 3.1.1 / 5 control packets sent to the broker (several may share a segment).
+
+    A client that publishes is the IoT equivalent of a master writing: publish is
+    the write function. CONNECT must name the MQTT protocol to be accepted.
+    """
+    out, p = [], 0
+    while p + 2 <= len(payload) and len(out) < 16:
+        kind = payload[p] >> 4
+        q, mult, remaining = p + 1, 1, 0
+        for _ in range(4):                                        # variable-length remaining length
+            if q >= len(payload):
+                return out
+            b = payload[q]
+            remaining += (b & 0x7F) * mult
+            mult *= 128
+            q += 1
+            if not b & 0x80:
+                break
+        else:
+            return out
+        if kind not in MQTT_PACKETS:
+            break
+        if kind == 1 and payload[q + 2:q + 6] not in (b'MQTT', b'MQIs'):
+            break
+        out.append(_msg('mqtt', kind, MQTT_PACKETS[kind], kind == 3))
+        p = q + remaining
+    return out
+
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TOUCH_SECONDS = 60                                        # last_seen is written at most once a minute per row
 # a real site has tens or hundreds of controllers; beyond these caps, a flood of spoofed OT packets
@@ -164,7 +333,9 @@ def default_path():
     return os.environ.get('SENTINEL_OT_DB') or os.path.join(ROOT, 'data', 'ot.db')
 
 
-PARSERS = {'modbus': parse_modbus, 'dnp3': parse_dnp3, 'bacnet': parse_bacnet, 'opcua': parse_opcua}
+PARSERS = {'modbus': parse_modbus, 'dnp3': parse_dnp3, 'bacnet': parse_bacnet,
+           'opcua': parse_opcua, 'iec104': parse_iec104, 's7comm': parse_s7comm,
+           'ethernetip': parse_ethernetip, 'mqtt': parse_mqtt}
 
 
 def parse_ot(proto, dport, payload):
@@ -282,7 +453,7 @@ class OTDetector:
             if self.store is not None:
                 self._persist('add_server', dst, protocol, ts)
         learned = self._learned(server, ts)
-        label = protocol.upper() if protocol != 'opcua' else 'OPC UA'
+        label = LABELS.get(protocol, protocol.upper())
 
         if (is_external(src) or is_external(dst)) and self.cooldown.ready(('ot_external', src, dst), ts):
             out.append(Finding('ot_external', src, 80, 0.8, 'T0883',

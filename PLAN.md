@@ -345,6 +345,17 @@ The phases below address these, in that order.
 * **Optional engines:** Zeek and Suricata as first-class sensor engines for busy links, with their output fused like any detector.
 * **Fleet:** remote actions and fleet-wide alert search.
 
+**Status (2026-11-01):**
+- [x] Forensic packet buffer and PCAP export (`capture/packet_buffer.py`, Forensics panel).
+- [x] Asset context: device criticality and offline CVE matching (`core/asset_context.py`). Passive OS fingerprinting beyond the existing DHCP/OUI identity is still open.
+- [x] IPv6 parity in the topology view; IPv6 blocking, containment and segmentation rules already existed.
+- [x] More OT: IEC 60870-5-104, S7comm, EtherNet/IP (CIP), MQTT, fed into the per-controller command baselines (`detection/ot.py`).
+- [x] Lateral movement: SMB2 / DCE-RPC / Kerberos header metadata and seven detectors (`detection/lateral.py`), plus the console panel. LDAP query metadata is not parsed yet.
+- [x] Encrypted traffic: JA4S and certificate anomalies (self-signed, short-lived, expired, name mismatch). JA4H (plain HTTP) and session-rhythm analysis beyond the beaconing detector are still open.
+- [x] Fleet: remote actions and fleet-wide alert search (Phase 8 commits).
+- [ ] Zeek as a first-class sensor engine (Suricata `eve.json` input already exists).
+- [ ] Captured lab traffic from real Windows domains and PLCs to validate the new parsers.
+
 ## Phase 10 — Assisted operations (v4.0)
 
 **Goal:** a non-expert can handle an incident in minutes.

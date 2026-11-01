@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiPost, errorMessage, hasRole } from '../api'
 
-const PROTOCOLS = { modbus: 'Modbus/TCP', dnp3: 'DNP3', bacnet: 'BACnet/IP', opcua: 'OPC UA' }
+const PROTOCOLS = {
+  modbus: 'Modbus/TCP', dnp3: 'DNP3', bacnet: 'BACnet/IP', opcua: 'OPC UA', iec104: 'IEC 60870-5-104',
+  s7comm: 'S7comm', ethernetip: 'EtherNet/IP (CIP)', mqtt: 'MQTT',
+}
 
 function formatTime(ts){
   return ts ? new Date(ts * 1000).toLocaleString() : '—'

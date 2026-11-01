@@ -13,17 +13,26 @@ afpacket or scapy.
 import socket
 import struct
 
+from common.bounded import BoundedDict
+
 ETH_P_ALL = 0x0003
 SO_RCVBUF_BYTES = 8 * 1024 * 1024
-SLOW_UDP_PORTS = frozenset({53, 67, 68, 5353, 20000, 47808})
-SLOW_TCP_PORTS = frozenset({502, 4840, 20000})         # OT protocols (detection.ot)
+SLOW_UDP_PORTS = frozenset({53, 67, 68, 5353, 20000, 47808, 88})
+LATERAL_TCP_PORTS = frozenset({88, 135})                    # Kerberos, RPC endpoint mapper (detection.lateral)
+SMB_TCP_PORTS = frozenset({139, 445})
+SMB_INSPECT_MAX = 1200                                      # detection.lateral.SMB_INSPECT_MAX
+# after a TLS ServerHello the next segments (certificates) also go to the slow path
+TLS_FOLLOW_SEGMENTS = 7                                     # detection.tls.TLS_HANDSHAKE_SEGMENTS - 1
+_tls_follow = BoundedDict(4096)
+SLOW_TCP_PORTS = frozenset({502, 4840, 20000, 2404, 102, 44818, 1883})  # OT protocols (detection.ot.OT_PORTS)
 _IP6_EXT = frozenset({0, 43, 44, 50, 51, 60})   # extension headers the fast path does not walk
 
 
 def parse(frame):
     """(src, dst, sport, dport, proto, size, slow) from an Ethernet frame, or None for non-IP.
 
-    slow=True means the packet also needs scapy (DNS, DHCP, TLS handshake, ARP, OT requests).
+    slow=True means the packet also needs scapy (DNS, DHCP, TLS handshake, ARP, OT requests,
+    SMB control messages, DCE-RPC and Kerberos).
     """
     if len(frame) < 14:
         return None
@@ -61,8 +70,22 @@ def parse(frame):
         sport, dport = struct.unpack_from('!HH', frame, l4)
         data_off = (frame[l4 + 12] >> 4) * 4
         payload = l4 + data_off
-        slow = len(frame) > payload and (frame[payload] == 0x16      # TLS handshake record
-                                         or dport in SLOW_TCP_PORTS)
+        size = len(frame) - payload
+        if size > 0 and _tls_follow:
+            key = (src, sport, dst, dport)
+            left = _tls_follow.get(key)
+            if left is not None:
+                if left <= 1:
+                    del _tls_follow[key]
+                else:
+                    _tls_follow[key] = left - 1
+                return (src, dst, sport, dport, 'TCP', len(frame), True)
+        if size > 5 and frame[payload] == 0x16 and frame[payload + 5] == 0x02:      # ServerHello
+            _tls_follow[(src, sport, dst, dport)] = TLS_FOLLOW_SEGMENTS
+        slow = size > 0 and (frame[payload] == 0x16                 # TLS handshake record
+                             or dport in SLOW_TCP_PORTS or dport in LATERAL_TCP_PORTS
+                             # SMB control messages only; bulk file data stays on the fast path
+                             or (dport in SMB_TCP_PORTS and size <= SMB_INSPECT_MAX))
         return (src, dst, sport, dport, 'TCP', len(frame), slow)
     if proto == 17 and len(frame) >= l4 + 8:
         sport, dport = struct.unpack_from('!HH', frame, l4)

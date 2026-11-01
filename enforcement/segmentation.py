@@ -30,7 +30,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 MODES = ('off', 'monitor', 'enforce')
 LEARNING = 7 * 86400
 PORTS = {'modbus': [('tcp', 502)], 'dnp3': [('tcp', 20000), ('udp', 20000)],
-         'bacnet': [('udp', 47808)], 'opcua': [('tcp', 4840)]}
+         'bacnet': [('udp', 47808)], 'opcua': [('tcp', 4840)], 'iec104': [('tcp', 2404)],
+         's7comm': [('tcp', 102)], 'ethernetip': [('tcp', 44818)], 'mqtt': [('tcp', 1883)]}
 CHAIN = 'ot_segment'
 
 
