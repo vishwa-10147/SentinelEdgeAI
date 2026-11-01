@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-11-01
+
+The remaining software items of Phases 3, 4, 8, 9 and 10. What is left needs hardware, real networks or outside testers.
+
 ### Security
 - **The release model is signed with Ed25519; devices and CI hold no secret** (Phase 8). The Isolation Forest shipped in `model/` used to carry an HMAC-SHA256 signature, so every device and CI job needed the same secret key (and anyone holding one device's key could sign a model all devices accepted). It is now signed with an Ed25519 key that exists only on the maintainer's machine (`scripts/sign_model.py --generate-key`); the public key ships in `security/release_model.pub`. The first install pins it in `/etc/sentinel/release_signing.pub` and every later install refuses a package whose model does not verify against the pinned key. CI (release, model-signing, check-model-signature workflows) verifies with the public key only; the `SENTINEL_MODEL_SIGNING_KEY` secret is no longer used. HMAC (version 1) signatures are refused. `sentinelctl install` and `scripts/install.sh` no longer require a key (`--signing-key` and `deploy/pi/provision_key.sh` are accepted and ignored); the Vault key-delivery files moved to `docs/archive/hmac_model_key/`. Devices can delete `/etc/sentinel/model_signing.key`. The model itself is unchanged (same SHA-256).
 
