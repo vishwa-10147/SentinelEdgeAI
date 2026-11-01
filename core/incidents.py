@@ -147,7 +147,7 @@ CHECKLISTS = [
         'Check the targets\' login logs for a successful login from {src} after the failures.',
         'If any account logged in, reset its password and end its sessions.',
         'Keep {src} blocked or rate-limited until you know who is behind it.']),
-    (('beacon', 'threat_intel', 'tls_known_bad', 'dga', 'dns_tunnel', 'c2'), [
+    (('beacon', 'threat_intel', 'tls_known_bad', 'http_known_bad', 'session_rhythm', 'dga', 'dns_tunnel', 'c2'), [
         '{src} is probably infected: it keeps calling out to a suspicious server.',
         'Contain {src} (Operations → Trust → Contain) so it can only reach what it normally does.',
         'Run an anti-malware scan on {src}, or reinstall it if it is a kiosk, camera or other appliance.']),
@@ -165,9 +165,12 @@ CHECKLISTS = [
         'accounts. Ask your IT admin whether they ran an audit tool (BloodHound, PingCastle) from {src}.',
         'If not: contain {src}, and give the service accounts it could have targeted (those with SPNs, or '
         'without pre-authentication) long new passwords.']),
-    (('ldap_cleartext_bind',), [
-        'An application on {src} logs in to the directory with a password in clear text. Switch it to LDAPS '
-        '(port 636) or StartTLS, then change that account\'s password.']),
+    (('http_lolbin',), [
+        'A Windows tool on {src} (PowerShell or certutil) downloaded something from the internet. Ask its user '
+        'or your IT admin whether that was expected; if not, contain {src} and scan it.']),
+    (('ldap_cleartext_bind', 'http_basic_auth'), [
+        'An application on {src} sends a password in clear text (plain LDAP or HTTP Basic). Switch it to '
+        'LDAPS (port 636), StartTLS or HTTPS, then change that account\'s password.']),
     (('ot_',), [
         'Call the person responsible for the controllers listed above before changing anything on the network.',
         'Check on the HMI / engineering station that the controller is in the expected state (running, '

@@ -20,6 +20,7 @@ from utils.metrics import FLOWS_COUNTER
 from utils.alert_logger import AlertLogger
 import core.audit as audit
 from enforcement import identity, os_fingerprint
+from detection.http import is_http_request
 from detection.fusion import alert_explanation
 import core.firewall as firewall
 import asyncio
@@ -492,7 +493,7 @@ def _forward_to_brain(flow, result, features):
 
 
 def _observe_dns_tls(packet):
-    """Feed DNS answers, TLS ClientHellos, OT requests and SMB/RPC/Kerberos headers to the detectors."""
+    """Feed DNS answers, TLS ClientHellos, HTTP requests, OT requests and SMB/RPC/Kerberos headers to the detectors."""
     try:
         from detection.pipeline import get_pipeline
         findings = []
@@ -508,6 +509,8 @@ def _observe_dns_tls(packet):
                 _, findings = pipe.observe_tls_server(*key, payload)     # ServerHello, certificates
             elif payload[:1] == b'\x16':
                 _, findings = pipe.observe_tls(packet[IP].src, packet[IP].dst, payload)
+            elif is_http_request(payload):
+                _, findings = pipe.observe_http(packet[IP].src, packet[IP].dst, payload)
             elif packet[TCP].dport in (88, 135, 139, 445, 389, 3268):
                 if packet[TCP].dport not in (139, 445, 389, 3268) or len(payload) <= 1200:
                     _, _, findings = get_pipeline().observe_lateral(packet[IP].src, packet[IP].dst, 'TCP',

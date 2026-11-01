@@ -9,6 +9,8 @@ so findings are fused and explained exactly like the engine's own:
     conn.log                  finished connections  -> flow detectors (scan, brute force, beaconing,
                                                        exfiltration, new device, intel, admin fan-out)
     dns.log                   queries               -> DNS tunnelling / DGA / intel
+    http.log                  method, host, User-Agent, Basic-auth user, JA4H (JA4 package)
+                                                    -> HTTP detector
     ssl.log                   SNI, JA3/JA4/JA4S (when the JA4 package is loaded), certificate
                               validation status    -> TLS detector, certificate anomalies
     smb_mapping.log, ntlm.log, dce_rpc.log, kerberos.log,
@@ -32,7 +34,7 @@ from integrations.suricata import EveTailer
 
 logger = logging.getLogger('sentinel.zeek')
 DEFAULT_DIR = '/opt/zeek/logs/current'
-LOGS = ('conn', 'dns', 'ssl', 'notice', 'smb_mapping', 'ntlm', 'dce_rpc', 'kerberos', 'ldap', 'ldap_search',
+LOGS = ('conn', 'dns', 'ssl', 'http', 'notice', 'smb_mapping', 'ntlm', 'dce_rpc', 'kerberos', 'ldap', 'ldap_search',
         'modbus', 'dnp3')
 
 MODBUS_NAMES = {'READ_COILS': 1, 'READ_DISCRETE_INPUTS': 2, 'READ_HOLDING_REGISTERS': 3, 'READ_INPUT_REGISTERS': 4,
@@ -180,6 +182,15 @@ class ZeekFeeder:
         src, dst, _, _ = _ids(rec)
         kind = {'AS': 'as-req', 'TGS': 'tgs-req'}.get(rec.get('request_type'))
         return self._lateral('observe_kerberos', src, dst, kind, rec.get('ts')) if kind else []
+
+    def _http(self, rec):
+        src, dst, _, _ = _ids(rec)
+        ja4h = str(rec.get('ja4h') or '').lower() or None
+        req = {'method': rec.get('method'), 'version': rec.get('version'), 'host': rec.get('host'),
+               'user_agent': (rec.get('user_agent') or '')[:200] or None,
+               'auth_scheme': 'basic' if rec.get('username') else None,
+               'ja4h': ja4h, 'ja4h_ab': '_'.join(ja4h.split('_')[:2]) if ja4h else None}
+        return self.pipe.observe_http(src, dst, b'', ts=rec.get('ts'), request=req)[1]
 
     def _ldap(self, rec):
         """ldap.log: one line per operation; a simple bind with an argument carried a password."""

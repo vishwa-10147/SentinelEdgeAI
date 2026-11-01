@@ -144,8 +144,9 @@ def test_ot_requests_take_the_inspection_path():
     assert afpacket.parse(tcp)[6] is True
     udp = bytes(Ether(**E) / IP(src=HMI, dst='192.168.10.255') / UDP(sport=47808, dport=47808) / Raw(WHO_IS))
     assert afpacket.parse(udp)[6] is True
-    web = bytes(Ether(**E) / IP(src=HMI, dst=PLC) / TCP(sport=40000, dport=8080) / Raw(b'GET /'))
-    assert afpacket.parse(web)[6] is False
+    # other TCP data stays on the fast path (HTTP requests do not: they are inspected for JA4H)
+    other = bytes(Ether(**E) / IP(src=HMI, dst=PLC) / TCP(sport=40000, dport=8080) / Raw(b'\x00\x01binary'))
+    assert afpacket.parse(other)[6] is False
 
 
 def test_pipeline_fuses_ot_findings():

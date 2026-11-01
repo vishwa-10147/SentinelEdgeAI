@@ -30,6 +30,8 @@ _IP6_EXT = frozenset({0, 43, 44, 50, 51, 60})   # extension headers the fast pat
 # called with the IP packet (memoryview) of every TCP SYN without ACK: passive OS fingerprinting
 # (enforcement.os_fingerprint.observe_ip, set by capture.sniffer); it must return quickly
 syn_observer = None
+# first bytes of a plain-HTTP request (detection.http.METHOD_PREFIXES); responses stay on the fast path
+HTTP_METHOD_PREFIXES = frozenset({b'GET ', b'POST', b'HEAD', b'PUT ', b'DELE', b'OPTI', b'PATC', b'CONN'})
 
 
 def parse(frame):
@@ -89,6 +91,7 @@ def parse(frame):
         if size > 5 and frame[payload] == 0x16 and frame[payload + 5] == 0x02:      # ServerHello
             _tls_follow[(src, sport, dst, dport)] = TLS_FOLLOW_SEGMENTS
         slow = size > 0 and (frame[payload] == 0x16                 # TLS handshake record
+                             or frame[payload:payload + 4] in HTTP_METHOD_PREFIXES   # plain-HTTP request (JA4H)
                              or dport in SLOW_TCP_PORTS or dport in LATERAL_TCP_PORTS
                              # SMB control messages only; bulk file data stays on the fast path
                              or (dport in SMB_TCP_PORTS and size <= SMB_INSPECT_MAX))

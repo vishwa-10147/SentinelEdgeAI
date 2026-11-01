@@ -193,6 +193,62 @@ class BeaconingDetector:
         return []
 
 
+class SessionRhythmDetector:
+    """Encrypted sessions to one destination that carry the same amount of data each time.
+
+    Command-and-control implants add random jitter to their sleep so the beaconing detector's
+    interval test fails, but each check-in still sends and receives a near-identical number of
+    bytes. Reported only when the timing is irregular (the beaconing detector covers regular
+    timing), the sessions are small and at least `min_period` apart on average.
+    """
+
+    PORTS = {443, 8443, 4443, 993, 995, 465, 853, 5061}
+
+    def __init__(self, min_events=10, max_size_cv=0.05, min_period=20.0, max_bytes=20000, window=6 * 3600,
+                 beacon_cv=0.15):
+        self.w = _Window(window, max_items=200)
+        self.min_events, self.max_size_cv, self.min_period = min_events, max_size_cv, min_period
+        self.max_bytes, self.beacon_cv = max_bytes, beacon_cv
+        self.cooldown = Cooldown(3600)
+
+    @staticmethod
+    def _cv(values):
+        mean = statistics.mean(values)
+        return statistics.pstdev(values) / mean if mean > 0 else 1.0
+
+    def observe(self, f):
+        if f.get('dport') not in self.PORTS or not is_external(f['dst']) or is_external(f['src']):
+            return []
+        out_b, in_b = f.get('forward_bytes') or 0, f.get('backward_bytes') or 0
+        if not out_b or not in_b or out_b > self.max_bytes or in_b > self.max_bytes:
+            return []
+        key = (f['src'], f['dst'], f['dport'])
+        q = self.w.add(key, f['ts'], (f.get('start') or f['ts'], out_b, in_b))
+        if len(q) < self.min_events:
+            return []
+        sessions = sorted(v for _, v in q)[-self.min_events * 2:]
+        starts = [s for s, _, _ in sessions]
+        gaps = [b - a for a, b in zip(starts, starts[1:]) if b > a]
+        if len(gaps) < self.min_events - 1 or statistics.mean(gaps) < self.min_period:
+            return []
+        timing_cv = self._cv(gaps)
+        out_cv, in_cv = self._cv([o for _, o, _ in sessions]), self._cv([i for _, _, i in sessions])
+        if timing_cv <= self.beacon_cv or out_cv > self.max_size_cv or in_cv > self.max_size_cv * 2:
+            return []
+        if not self.cooldown.ready(('session_rhythm',) + key, f['ts']):
+            return []
+        mean_out = statistics.mean(o for _, o, _ in sessions)
+        mean_in = statistics.mean(i for _, _, i in sessions)
+        return [Finding('session_rhythm', f['src'], 70, 0.6, 'T1071.001',
+                        f'{len(sessions)} encrypted sessions to {f["dst"]}:{f["dport"]} each sent ~{mean_out:.0f} '
+                        f'and received ~{mean_in:.0f} bytes (size variation {out_cv * 100:.1f}%) at irregular '
+                        f'intervals (jitter {timing_cv * 100:.0f}%, mean {statistics.mean(gaps):.0f}s): '
+                        'a jittered command-and-control check-in',
+                        {'target': f['dst'], 'port': f['dport'], 'sessions': len(sessions),
+                         'bytes_out': round(mean_out), 'bytes_in': round(mean_in), 'size_cv': round(out_cv, 4),
+                         'timing_cv': round(timing_cv, 3)}, ts=f['ts'])]
+
+
 class ExfiltrationDetector:
     """Large, one-directional upload to an external destination the device has not used before."""
 
@@ -247,8 +303,8 @@ class NewDeviceDetector:
 
 
 def default_flow_detectors():
-    return [PortScanDetector(), BruteForceDetector(), BeaconingDetector(), ExfiltrationDetector(),
-            NewDeviceDetector(), IntelDetector()]
+    return [PortScanDetector(), BruteForceDetector(), BeaconingDetector(), SessionRhythmDetector(),
+            ExfiltrationDetector(), NewDeviceDetector(), IntelDetector()]
 
 
 class IntelDetector:

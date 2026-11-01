@@ -1,4 +1,4 @@
-"""Detection pipeline: detectors + DNS + TLS + OT protocols + lateral movement + fusion, used by the engine and the evaluator."""
+"""Detection pipeline: detectors + DNS + TLS + HTTP + OT protocols + lateral movement + fusion, used by the engine and the evaluator."""
 import threading
 import time
 
@@ -8,6 +8,7 @@ from detection.fusion import Fusion
 from detection.guided_tuning import RuleSet
 from detection.lateral import LateralDetector, LateralStore, parse_lateral
 from detection.ot import OTDetector, OTStore, parse_ot
+from detection.http import HTTPDetector, parse_http_request
 from detection.tls import ServerHandshakes, TLSDetector, parse_client_hello
 
 
@@ -35,12 +36,13 @@ class _FeedbackCalibration:
 
 class DetectionPipeline:
     def __init__(self, flow_detectors=None, dns=None, tls=None, ot=None, peers=None, samples=None, clock=time.time,
-                 calibrate=None, models=True, lateral=None):
+                 calibrate=None, models=True, lateral=None, http=None):
         self.flow_detectors = flow_detectors if flow_detectors is not None else default_flow_detectors()
         self.dns = dns or DNSDetector()
         self.tls = tls or TLSDetector(clock=clock)
         self.ot = ot or OTDetector(clock=clock)
         self.lateral = lateral or LateralDetector(clock=clock)
+        self.http = http or HTTPDetector(blocklist=self.tls.blocklist, clock=clock)
         self.server_handshakes = ServerHandshakes()
         self.tuning_rules = RuleSet(clock=clock)          # guided tuning: scoped downgrade/suppress rules
         self.peers = peers                    # detection.peers.PeerStore: learned peer profiles
@@ -152,6 +154,18 @@ class DetectionPipeline:
                                             {'fingerprint': fp, 'source': hit[0], 'target': dst}, ts=ts))
             findings = self._accept(findings)
         return hello, findings
+
+    def observe_http(self, src, dst, payload, ts=None, request=None):
+        """Feed the first segment of a plain-HTTP request (or a parsed `request`). Returns (request, findings)."""
+        req = request or parse_http_request(payload)
+        if not req:
+            return None, []
+        ts = ts or self.clock()
+        with self._lock:
+            store = self._intel() if self.intel_enabled else None
+            findings = self.http.observe(src, dst, req, ts, intel=store.match_fingerprint if store else None)
+            findings = self._accept(findings)
+        return req, findings
 
     def observe_tls_server(self, server, sport, client, cport, payload, ts=None):
         """Feed a server-to-client TCP segment of a TLS handshake. Returns (server_hello, findings)."""

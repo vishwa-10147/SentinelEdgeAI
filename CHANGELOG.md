@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **JA4H and plain-HTTP metadata** (Phase 9, `detection/http.py`): the first segment of every plain-HTTP request (any port) gives its JA4H (FoxIO layout) from the request line and header names; only Host, User-Agent and the first Accept-Language tag are read, never the path, cookie values or credentials. Findings: `http_known_bad` (JA4H, full or first two parts, on the blocklist or in threat intel, which now accepts `ja4h` / STIX `x-ja4h` indicators), `http_lolbin` (PowerShell or certutil fetching from an internet host, T1105), `http_basic_auth` (a password in HTTP Basic over plain HTTP; low probability, never a response on its own), `http_new_client` (new HTTP client fingerprint on a device after its first day). Zeek's `http.log` feeds the same detector (JA4H when the JA4 package is loaded).
+- **Session rhythm** (Phase 9, `SessionRhythmDetector`): small encrypted sessions (TLS ports) to one internet host that carry near-identical byte counts at irregular intervals, the jittered check-in that defeats the interval-based beaconing detector. Reported only when the timing is irregular, so the two detectors do not report the same thing.
+
 ## [2.16.0] - 2026-11-01
 
 Phase 9: passive OS fingerprinting and LDAP / Active Directory reconnaissance.

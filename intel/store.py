@@ -6,9 +6,9 @@
     python -m intel update              # fetch every configured feed (sentineledgeai-intel.timer, daily)
     python -m intel list | check 203.0.113.9
 
-Indicator types: ip, cidr, domain, url, ja3, ja4. STIX 2.1 indicators with
+Indicator types: ip, cidr, domain, url, ja3, ja4, ja4h (HTTP client). STIX 2.1 indicators with
 patterns on ipv4-addr, ipv6-addr, domain-name and url are understood, plus
-the custom x-ja3 / x-ja4 objects; valid_until becomes the expiry.
+the custom x-ja3 / x-ja4 / x-ja4h objects; valid_until becomes the expiry.
 """
 import argparse
 import ipaddress
@@ -23,11 +23,13 @@ import time
 import requests
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-TYPES = ('ip', 'cidr', 'domain', 'url', 'ja3', 'ja4')
-_PATTERN = re.compile(r"\[\s*(ipv4-addr|ipv6-addr|domain-name|url|x-ja3|x-ja4):value\s*=\s*'([^']+)'\s*\]")
-_STIX_TYPE = {'ipv4-addr': 'ip', 'ipv6-addr': 'ip', 'domain-name': 'domain', 'url': 'url', 'x-ja3': 'ja3', 'x-ja4': 'ja4'}
+TYPES = ('ip', 'cidr', 'domain', 'url', 'ja3', 'ja4', 'ja4h')
+_PATTERN = re.compile(r"\[\s*(ipv4-addr|ipv6-addr|domain-name|url|x-ja3|x-ja4h|x-ja4):value\s*=\s*'([^']+)'\s*\]")
+_STIX_TYPE = {'ipv4-addr': 'ip', 'ipv6-addr': 'ip', 'domain-name': 'domain', 'url': 'url', 'x-ja3': 'ja3', 'x-ja4': 'ja4', 'x-ja4h': 'ja4h'}
 _DOMAIN = re.compile(r'^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$')
 _JA4 = re.compile(r'^[tq]\d{2}[di]\d{4}[0-9a-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}$')
+# JA4H: full (four parts) or its first two parts
+_JA4H = re.compile(r'^[a-z]{2}\d{2}[cn][rn]\d{2}[0-9a-z]{4}_[0-9a-f]{12}(_[0-9a-f]{12}_[0-9a-f]{12})?$')
 
 
 def default_path():
@@ -50,6 +52,8 @@ def classify(value):
         return 'ja3', v
     if _JA4.match(v):
         return 'ja4', v
+    if _JA4H.match(v):
+        return 'ja4h', v
     if v.startswith(('http://', 'https://')):
         return 'url', v
     if _DOMAIN.match(v):
@@ -232,7 +236,8 @@ class IntelStore:
 
     def match_fingerprint(self, fp):
         exact, _ = self._snapshot()
-        return exact.get(('ja3', fp.lower())) or exact.get(('ja4', fp.lower()))
+        fp = fp.lower()
+        return exact.get(('ja3', fp)) or exact.get(('ja4', fp)) or exact.get(('ja4h', fp))
 
 
 def _fetch(url, fmt):
